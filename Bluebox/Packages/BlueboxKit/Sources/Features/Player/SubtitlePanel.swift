@@ -16,7 +16,7 @@ func subtitleStyleNote(_ session: PlayerSession) -> String? {
         return "This subtitle track is made of pictures (PGS or VobSub), so it keeps the look it came with. Style applies to text subtitles."
     }
     if session.snapshot.drawsEmbeddedSubtitles {
-        return "Subtitles from the video take a new look a second after you stop adjusting. Italic and Left/Right alignment apply to subtitle files only."
+        return "Size changes straight away. Font, colour and outline for subtitles from the video apply when you close this panel (the video reopens where it was). Italic and Left/Right alignment apply to subtitle files only."
     }
     return nil
 }

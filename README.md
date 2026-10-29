@@ -87,6 +87,3 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 ## Licence
 
 Bluebox is released under the [MIT licence](LICENSE). Third-party components (libtorrent, Boost, VLC through SwiftVLC and others) are used under their own licences; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-## Contact
-Discord: aloosely

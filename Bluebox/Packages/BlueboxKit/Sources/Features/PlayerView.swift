@@ -360,6 +360,7 @@ struct PlayerView: View {
             // which for add-on torrents replaces the one playing now.
             await episodes.load(for: session.item?.key, app: app)
         }
+        .onChange(of: panel == nil, initial: true) { _, closed in session.holdsSubtitleRestyle = !closed }
         .onChange(of: app.subtitleStyle, initial: true) { old, new in
             session.subtitleStyle = new
             guard old != new else { return }

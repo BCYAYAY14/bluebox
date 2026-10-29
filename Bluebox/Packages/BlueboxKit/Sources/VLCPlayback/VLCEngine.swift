@@ -44,6 +44,12 @@ public final class VLCEngine: PlaybackEngine {
     private var playerStyleArguments: [String] = []
     /// The style arguments wanted (from `setEmbeddedSubtitleStyle`).
     private var styleArguments: [String] = []
+    /// Subtitle size, VLC's `sub-text-scale` / 100. Set on the player live,
+    /// so resizing never reopens the stream.
+    private var subtitleTextScale: Float = 0.9
+    /// While the subtitle panel is open, a new look waits (one reopen when it
+    /// closes, not one per tweak).
+    private var restyleHeld = false
     private var restyleTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
     private var subtitleDelay: TimeInterval = 0
@@ -128,6 +134,11 @@ public final class VLCEngine: PlaybackEngine {
             // The instance is made off the main thread (libVLC's setup is slow on iOS).
             let instance = await Self.preparedInstance(night: night, style: style)
             guard self.resource == resource else { throw CancellationError() }
+            // The old player's decoder and video output must be gone before
+            // the new one takes the surface: releasing it while they ran
+            // crashed in VLC's picture pool (AV1 especially).
+            await player.shutdown()
+            guard self.resource == resource else { throw CancellationError() }
             player = Player(instance: instance)
             playerInstanceKey = night
             playerStyleArguments = style
@@ -161,6 +172,7 @@ public final class VLCEngine: PlaybackEngine {
             throw PlaybackError.decodeFailed(error.localizedDescription)
         }
         if snapshot.rate != 1 { try? player.setPlaybackRate(PlaybackRate(snapshot.rate)) }
+        player.setSubtitleScale(SubtitleScale(subtitleTextScale))
         if subtitleDelay != 0 { try? player.setSubtitleDelay(.milliseconds(Int((subtitleDelay * 1000).rounded()))) }
         if audioDelay != 0 { try? player.setAudioDelay(.milliseconds(Int((audioDelay * 1000).rounded()))) }
         applyVolume()
@@ -372,10 +384,20 @@ public final class VLCEngine: PlaybackEngine {
     /// while a text track shows, playback moves to a restyled player once the
     /// changes pause for a moment.
     public func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {
+        let scale = Self.textScale(for: style)
+        if scale != subtitleTextScale {
+            subtitleTextScale = scale
+            if resource != nil { player.setSubtitleScale(SubtitleScale(scale)) }
+        }
         let args = Self.styleArguments(for: style)
         guard args != styleArguments else { return }
         styleArguments = args
-        Self.prewarm(night: Self.instanceKey(for: audioEffects), style: args)
+        scheduleRestyleIfNeeded()
+    }
+
+    public func setSubtitleRestyleHeld(_ held: Bool) {
+        guard held != restyleHeld else { return }
+        restyleHeld = held
         scheduleRestyleIfNeeded()
     }
 
@@ -387,11 +409,11 @@ public final class VLCEngine: PlaybackEngine {
 
     private func scheduleRestyleIfNeeded() {
         restyleTask?.cancel()
-        guard resource != nil, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle else { return }
+        guard resource != nil, !restyleHeld, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle else { return }
         restyleTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
             guard !Task.isCancelled, let self, self.styleArguments != self.playerStyleArguments,
-                  self.showsEmbeddedTextSubtitle, self.snapshot.status != .loading else { return }
+                  !self.restyleHeld, self.showsEmbeddedTextSubtitle, self.snapshot.status != .loading else { return }
             self.replacePlayer()
         }
     }
@@ -399,10 +421,13 @@ public final class VLCEngine: PlaybackEngine {
     /// libVLC text renderer arguments for a subtitle style. Sizes are relative
     /// to the picture like Bluebox's own: VLC's default text is about 1/20 of
     /// the video height, scaled by `sub-text-scale`.
+    static func textScale(for style: SubtitleStyle) -> Float {
+        Float(SubtitleStyle.clampSize(style.relativeSize) / 0.05)
+    }
+
     static func styleArguments(for style: SubtitleStyle) -> [String] {
         func rgb(_ c: RGBA) -> Int { Int(c.r * 255) << 16 | Int(c.g * 255) << 8 | Int(c.b * 255) }
         func alpha(_ a: Double) -> Int { Int((min(max(a, 0), 1) * 255).rounded()) }
-        let scale = Int((SubtitleStyle.clampSize(style.relativeSize) / 0.05 * 100).rounded())
         let outline: Int = switch style.outlineWidth { case ..<0.1: 0; case ..<1.5: 2; case ..<3.5: 4; default: 6 }
         let font: String = style.fontName ?? {
             switch style.design {
@@ -413,7 +438,6 @@ public final class VLCEngine: PlaybackEngine {
             }
         }()
         var args = [
-            "--sub-text-scale=\(min(max(scale, 10), 500))",
             "--freetype-font=\(font)",
             "--freetype-color=\(rgb(style.textColor))",
             "--freetype-opacity=\(alpha(style.textColor.a))",
@@ -558,19 +582,6 @@ public final class VLCEngine: PlaybackEngine {
         }.value
         if let made { if instances[key] == nil { instances[key] = made } } else { refused.insert(key) }
         return instance(night: night, style: style)
-    }
-
-    /// Makes the instance for the next video off the main thread (plugin setup is slow on iOS).
-    private static func prewarm(night: Int, style: [String]) {
-        let extra = arguments(night: night, style: style)
-        let key = extra.joined(separator: " ")
-        guard !extra.isEmpty, instances[key] == nil, !refused.contains(key) else { return }
-        Task.detached(priority: .utility) {
-            let made = try? VLCInstance(arguments: VLCInstance.defaultArguments + extra)
-            await MainActor.run {
-                if let made { if instances[key] == nil { instances[key] = made } } else { refused.insert(key) }
-            }
-        }
     }
 
     private func applyEqualizer() {

@@ -2,6 +2,7 @@
 import Addons
 import Domain
 import Playback
+import Subtitles
 import Foundation
 
 /// Debug-only launch arguments for checking player features without UI
@@ -18,6 +19,9 @@ import Foundation
 ///   normal release path (torrent engine, stream server, player).
 /// - `-player-popover <tracks|episodes|speed|tools|chapters>` with `-player-page <page>`:
 ///   open that card (and a page inside it) once the video plays (see PlayerView).
+/// - `-subtitle-stress <count>`: once playing, turns on the first text subtitle
+///   from the file and changes the subtitle look `count` times, 3 s apart
+///   (colour changes reopen VLC's player; size changes don't).
 extension AppModel {
     public func runPlayerDebugLaunchArguments(_ launchArgs: [String]) async {
         let args = launchArgs + Self.environmentDebugArguments
@@ -44,6 +48,25 @@ extension AppModel {
         } else if let raw = value("-handoff-key") {
             await continueWatching(WatchActivityPayload(key: MediaKey(rawValue: raw), title: "Handoff Test", position: position))
         }
+        if let count = value("-subtitle-stress").flatMap(Int.init) { await stressSubtitleStyle(count) }
+    }
+
+    private func stressSubtitleStyle(_ count: Int) async {
+        try? await Task.sleep(for: .seconds(6))
+        for i in 0..<count {
+            guard let session = activePlayer else { return }
+            if let track = session.snapshot.embeddedSubtitles.first(where: { !$0.isBitmap }),
+               session.subtitleSelection != .embedded(track.id) {
+                session.selectSubtitle(.embedded(track.id), remember: false)
+            }
+            var style = subtitleStyle
+            if i.isMultiple(of: 2) { style.textColor = style.textColor == .white ? RGBA(1, 0.85, 0.2) : .white }
+            else { style.relativeSize = style.relativeSize > 0.05 ? 0.045 : 0.07 }
+            subtitleStyle = style
+            Log.playback.notice("subtitle stress \(i + 1, privacy: .public) of \(count, privacy: .public)")
+            try? await Task.sleep(for: .seconds(3))
+        }
+        Log.playback.notice("subtitle stress done")
     }
 
     /// `-player-preview <fraction>`: hold the scrub preview there (as if hovering).

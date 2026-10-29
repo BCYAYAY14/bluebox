@@ -68,6 +68,10 @@ public final class PlayerSession {
     public var subtitleStyle = SubtitleStyle() {
         didSet { if subtitleStyle != oldValue { engine.setEmbeddedSubtitleStyle(subtitleStyle) } }
     }
+    /// True while the subtitle panel is open (see `PlaybackEngine.setSubtitleRestyleHeld`).
+    public var holdsSubtitleRestyle = false {
+        didSet { if holdsSubtitleRestyle != oldValue { engine.setSubtitleRestyleHeld(holdsSubtitleRestyle) } }
+    }
     /// The audio and subtitle choices made in this session, applied to every
     /// item it plays next (Up Next, Next Episode, the Episodes list).
     public private(set) var rememberedAudio: TrackChoice?

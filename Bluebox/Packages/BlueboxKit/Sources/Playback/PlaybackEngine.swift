@@ -117,6 +117,9 @@ public protocol PlaybackEngine: AnyObject {
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval)
     /// The look for embedded text subtitles the engine draws itself.
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle)
+    /// Holds back a style change that needs the stream reopened (VLC's look,
+    /// apart from size) while the subtitle panel is open.
+    func setSubtitleRestyleHeld(_ held: Bool)
     /// Output volume, 0…1, and mute. Audio only: never touches the video output.
     func setVolume(_ volume: Float, muted: Bool)
     /// Shifts the sound against the picture (positive plays it later).
@@ -128,6 +131,7 @@ public protocol PlaybackEngine: AnyObject {
 public extension PlaybackEngine {
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {}
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {}
+    func setSubtitleRestyleHeld(_ held: Bool) {}
     func setVolume(_ volume: Float, muted: Bool) {}
     func setAudioDelay(_ seconds: TimeInterval) {}
     var supportsAudioDelay: Bool { false }
