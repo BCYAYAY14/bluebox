@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+let log = Logger(subsystem: "app.bluebox", category: "updater")
 
 // Bluebox's Mac updater: an XPC service outside the app's sandbox, so it can
 // mount the new DMG and put the new Bluebox.app where the old one is, which
@@ -7,67 +10,73 @@ import Foundation
 
 /// Must match `BlueboxUpdaterProtocol` in Features/UpdateInstaller.swift.
 @objc(BlueboxUpdaterProtocol) protocol BlueboxUpdaterProtocol {
-    /// Downloads `dmg`, checks the Bluebox.app inside it, and swaps it in for
-    /// the app at `appPath`. Then, once process `pid` has quit, opens the new
-    /// one. Replies nil, or what went wrong.
-    func install(dmg: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
+    /// Mounts `dmgFile` (downloaded by the app), checks the Bluebox.app inside
+    /// it, and swaps it in for the app at `appPath`. Then, once process `pid`
+    /// has quit, opens the new one. Replies nil, or what went wrong.
+    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
 }
 
 final class Updater: NSObject, BlueboxUpdaterProtocol {
     static let bundleID = "app.bluebox.Bluebox.mac"
 
-    func install(dmg: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
+    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
         nonisolated(unsafe) let reply = reply
-        Task {
+        DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try await Self.install(dmg: dmg, app: URL(fileURLWithPath: appPath))
+                try Self.install(dmg: dmgFile, app: URL(fileURLWithPath: appPath))
                 Self.relaunch(appPath, after: pid)
+                log.notice("installed; relaunching after \(pid, privacy: .public) quits")
                 reply(nil)
             } catch {
-                reply((error as? UpdateError)?.message ?? error.localizedDescription)
+                let message = (error as? UpdateError)?.message ?? error.localizedDescription
+                log.error("failed: \(message, privacy: .public)")
+                reply(message)
             }
         }
     }
 
     struct UpdateError: Error { let message: String }
 
-    static func install(dmg: URL, app: URL) async throws {
-        // Only Bluebox's own releases, from GitHub.
-        guard dmg.scheme == "https", dmg.host() == "github.com",
-              dmg.path().hasPrefix("/BCYAYAY14/bluebox/releases/") else {
-            throw UpdateError(message: "That download isn't one of Bluebox's releases.")
-        }
-        guard app.pathExtension == "app", FileManager.default.isWritableFile(atPath: app.deletingLastPathComponent().path) else {
-            throw UpdateError(message: "Bluebox can't replace itself in \(app.deletingLastPathComponent().path). Move it to Applications, or download the update from GitHub.")
-        }
+    static func install(dmg: URL, app: URL) throws {
         let fm = FileManager.default
+        log.notice("installing \(dmg.path, privacy: .public) over \(app.path, privacy: .public)")
+        guard dmg.isFileURL, fm.fileExists(atPath: dmg.path) else { throw UpdateError(message: "The download is missing.") }
+        let folder = app.deletingLastPathComponent()
+        guard app.pathExtension == "app", fm.isWritableFile(atPath: folder.path) else {
+            throw UpdateError(message: "Bluebox can't replace itself in \(folder.path). Move it to Applications, or download the update from GitHub.")
+        }
         let work = fm.temporaryDirectory.appending(path: "BlueboxUpdate-\(UUID().uuidString)", directoryHint: .isDirectory)
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: work) }
 
-        let (downloaded, response) = try await URLSession.shared.download(from: dmg)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError(message: "The download failed.") }
-        let image = work.appending(path: "Bluebox.dmg")
-        try fm.moveItem(at: downloaded, to: image)
-
+        // The app's own downloads are quarantined; this copy is checked below instead.
+        try? run("/usr/bin/xattr", "-d", "com.apple.quarantine", dmg.path)
         let mount = work.appending(path: "mount", directoryHint: .isDirectory)
-        try run("/usr/bin/hdiutil", "attach", image.path, "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount.path)
-        defer { try? run("/usr/bin/hdiutil", "detach", mount.path, "-force") }
+        log.notice("mounting")
+        try run("/usr/bin/hdiutil", "attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen", "-noverify",
+                "-mountpoint", mount.path, timeout: 90)
+        defer { try? run("/usr/bin/hdiutil", "detach", mount.path, "-force", timeout: 30) }
 
         let new = mount.appending(path: "Bluebox.app")
         guard let info = Bundle(url: new)?.infoDictionary, info["CFBundleIdentifier"] as? String == bundleID else {
             throw UpdateError(message: "The download doesn't hold Bluebox.")
         }
         // Copied next to the old app first, so the swap is a rename on one disk.
-        let staged = app.deletingLastPathComponent().appending(path: ".Bluebox-update.app")
+        let staged = folder.appending(path: ".Bluebox-update.app")
         try? fm.removeItem(at: staged)
-        try run("/usr/bin/ditto", new.path, staged.path)
+        log.notice("copying")
+        try run("/usr/bin/ditto", new.path, staged.path, timeout: 120)
         try? run("/usr/bin/xattr", "-dr", "com.apple.quarantine", staged.path)
+        log.notice("swapping")
         do {
             _ = try fm.replaceItemAt(app, withItemAt: staged)
         } catch {
             try? fm.removeItem(at: staged)
-            throw UpdateError(message: "Bluebox couldn't replace itself: \(error.localizedDescription)")
+            let code = ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)?.code ?? (error as NSError).code
+            if code == Int(EPERM) || code == NSFileWriteNoPermissionError {
+                throw UpdateError(message: "macOS didn't let Bluebox replace itself. Turn on Bluebox in System Settings › Privacy & Security › App Management, then try again. Nothing was changed.")
+            }
+            throw UpdateError(message: "Bluebox couldn't replace itself: \(error.localizedDescription) Nothing was changed.")
         }
     }
 
@@ -87,7 +96,7 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
     }
 
     @discardableResult
-    static func run(_ tool: String, _ args: String...) throws -> String {
+    static func run(_ tool: String, _ args: String..., timeout: TimeInterval = 30) throws -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
@@ -95,8 +104,12 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
         p.standardOutput = out
         p.standardError = out
         try p.run()
+        // A tool that hangs (a mount waiting on something) is stopped, not waited on forever.
+        let watchdog = DispatchWorkItem { if p.isRunning { log.error("\(tool, privacy: .public) timed out"); p.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
+        watchdog.cancel()
         let text = String(decoding: data, as: UTF8.self)
         guard p.terminationStatus == 0 else {
             throw UpdateError(message: "\(URL(fileURLWithPath: tool).lastPathComponent) failed: \(text.trimmingCharacters(in: .whitespacesAndNewlines))")

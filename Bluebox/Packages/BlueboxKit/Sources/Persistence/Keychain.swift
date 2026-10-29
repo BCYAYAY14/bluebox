@@ -95,6 +95,42 @@ extension KeychainStore {
         for account in accounts() { try? write(nil, for: account) }
     }
 
+    /// The one item every secret lives in (a JSON object of account → value),
+    /// so a Mac asks for Keychain access once, not once per secret.
+    static let bundleAccount = "secrets.v1"
+
+    /// Every secret, from the one bundled item, read off the main thread (a
+    /// Mac's Keychain prompt can wait there). Secrets saved one per item by
+    /// earlier versions are moved into it, then deleted.
+    public func cachedBundle() async -> CachedSecretStore {
+        let store = self
+        return await Task.detached(priority: .userInitiated) {
+            let bundle = BundledSecretStore(keychain: store)
+            var values: [String: String] = [:]
+            do {
+                if let json = try store.read(Self.bundleAccount) {
+                    values = (try? JSONDecoder().decode([String: String].self, from: Data(json.utf8))) ?? [:]
+                }
+            } catch let e as KeychainError {
+                // Couldn't read it (access denied): don't overwrite it with less.
+                bundle.blocked = e
+                return CachedSecretStore(backing: bundle, values: [:], failures: [:], everything: e)
+            } catch {}
+            let legacy = store.accounts().filter { $0 != Self.bundleAccount }
+            for account in legacy {
+                if values[account] == nil, let value = try? store.read(account) { values[account] = value }
+            }
+            bundle.values = values
+            if !legacy.isEmpty {
+                do {
+                    try bundle.save()
+                    for account in legacy { try? store.write(nil, for: account) }
+                } catch {}
+            }
+            return CachedSecretStore(backing: bundle, values: values, failures: [:])
+        }.value
+    }
+
     /// Reads every secret off the main thread. On a Mac the first read after a
     /// new build can wait on a "wants to use your confidential information"
     /// prompt; read on the main thread, that froze the app with no window.
@@ -121,13 +157,16 @@ public final class CachedSecretStore: SecretStore, @unchecked Sendable {
     /// Accounts whose read failed at launch (access denied, say); reading them
     /// fails the same way until they're written again.
     private var failures: [String: KeychainError]
+    /// The bundled item couldn't be read: every read fails like it.
+    private let everything: KeychainError?
 
-    init(backing: any SecretStore, values: [String: String], failures: [String: KeychainError]) {
-        self.backing = backing; self.values = values; self.failures = failures
+    init(backing: any SecretStore, values: [String: String], failures: [String: KeychainError], everything: KeychainError? = nil) {
+        self.backing = backing; self.values = values; self.failures = failures; self.everything = everything
     }
 
     public func read(_ account: String) throws -> String? {
         try lock.withLock {
+            if let everything { throw everything }
             if let failure = failures[account] { throw failure }
             return values[account]
         }
@@ -139,6 +178,34 @@ public final class CachedSecretStore: SecretStore, @unchecked Sendable {
             values[account] = value
             failures[account] = nil
         }
+    }
+}
+
+/// Writes the whole set of secrets back to the one Keychain item.
+final class BundledSecretStore: SecretStore, @unchecked Sendable {
+    private let keychain: KeychainStore
+    private let lock = NSLock()
+    var values: [String: String] = [:]
+    /// Set when the item couldn't be read: writing would lose what's in it.
+    var blocked: KeychainError?
+
+    init(keychain: KeychainStore) { self.keychain = keychain }
+
+    func read(_ account: String) throws -> String? { lock.withLock { values[account] } }
+
+    func write(_ value: String?, for account: String) throws {
+        try lock.withLock {
+            if let blocked { throw blocked }
+            values[account] = value
+            try saveLocked()
+        }
+    }
+
+    func save() throws { try lock.withLock { try saveLocked() } }
+
+    private func saveLocked() throws {
+        let json = String(decoding: try JSONEncoder().encode(values), as: UTF8.self)
+        try keychain.write(values.isEmpty ? nil : json, for: KeychainStore.bundleAccount)
     }
 }
 

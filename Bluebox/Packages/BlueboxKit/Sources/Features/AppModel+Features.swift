@@ -380,7 +380,7 @@ extension AppModel {
         scheduleEpisodeRefresh()
         let app: AppModel
         if let current { app = current } else {
-            guard let fresh = try? AppModel.live() else { return }
+            guard let fresh = try? await AppModel.liveReadingSecrets() else { return }
             current = fresh
             app = fresh
         }

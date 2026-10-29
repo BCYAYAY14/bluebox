@@ -608,14 +608,16 @@ public final class VLCEngine: PlaybackEngine {
         if case .failed = snapshot.status { return }
         let position = snapshot.position
         let wasPlaying = !intendedPaused
-        let subtitle = desiredSubtitleID, audio = desiredAudioID, rate = snapshot.rate
+        let subtitle = desiredSubtitleID, audio = desiredAudioID ?? snapshot.selectedAudioID, rate = snapshot.rate
         reloadTask?.cancel()
         reloadTask = Task { [weak self] in
             guard let self else { return }
             do { try await self.load(resource, startAt: max(position, 0.5)) } catch { return }
             guard self.resource == resource else { return }
             // VLC keeps track ids for the same file: the same tracks come back on.
-            self.desiredAudioID = audio
+            // The audio has to be chosen again too, or VLC plays the file's default
+            // track (another language, or the commentary) after a subtitle change.
+            if let audio { self.selectAudio(audio) }
             self.desiredSubtitleID = subtitle
             self.snapshot.selectedEmbeddedSubtitleID = subtitle
             self.applySubtitleSelection()

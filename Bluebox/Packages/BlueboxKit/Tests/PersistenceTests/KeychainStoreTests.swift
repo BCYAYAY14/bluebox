@@ -35,6 +35,24 @@ struct KeychainStoreTests {
         try store.write(nil, for: "a")
     }
 
+    @Test func bundleMovesOldItemsIntoOneAndWritesThrough() async throws {
+        let store = KeychainStore(service: "app.bluebox.tests.\(UUID().uuidString)")
+        try store.write("token", for: "a")
+        try store.write("key", for: "b")
+        let cached = await store.cachedBundle()
+        #expect(try cached.read("a") == "token")
+        #expect(try cached.read("b") == "key")
+        #expect(store.accounts() == [KeychainStore.bundleAccount])  // the old items are gone
+
+        try cached.write("new", for: "a")
+        try cached.write(nil, for: "b")
+        let again = await store.cachedBundle()
+        #expect(try again.read("a") == "new")
+        #expect(try again.read("b") == nil)
+        store.deleteAll()
+        #expect(store.accounts().isEmpty)
+    }
+
     @Test func aFailedLaunchReadStaysFailedUntilWritten() throws {
         let cached = CachedSecretStore(backing: MemorySecretStore(), values: [:],
                                        failures: ["a": KeychainError(status: errSecAuthFailed)])

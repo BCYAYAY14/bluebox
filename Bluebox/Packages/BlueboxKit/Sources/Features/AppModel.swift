@@ -352,9 +352,9 @@ public final class AppModel {
     }
 
     /// The live app: on-disk store, Keychain, standard defaults. Pass the
-    /// Keychain already read (`KeychainStore().cached()`) so nothing here
+    /// Keychain already read (`KeychainStore().cachedBundle()`) so nothing here
     /// waits on the Keychain on the main thread.
-    public static func live(secrets: any SecretStore = KeychainStore()) throws -> AppModel {
+    public static func live(secrets: any SecretStore) throws -> AppModel {
         let dir = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appending(path: "Bluebox", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -369,7 +369,7 @@ public final class AppModel {
     /// The live app, with the Keychain read off the main thread first. Use at
     /// launch: a Keychain prompt then can't hold up the first window.
     public static func liveReadingSecrets() async throws -> AppModel {
-        try live(secrets: await KeychainStore().cached())
+        try live(secrets: await KeychainStore().cachedBundle())
     }
 
     /// Deterministic in-memory app for previews and UI tests: sample catalog,

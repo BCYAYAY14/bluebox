@@ -112,7 +112,7 @@ extension AppModel {
     static func handleBackgroundDownloads(_ task: BGProcessingTask) async {
         let app: AppModel
         if let current { app = current } else {
-            guard let fresh = try? AppModel.live() else { task.setTaskCompleted(success: false); return }
+            guard let fresh = try? await AppModel.liveReadingSecrets() else { task.setTaskCompleted(success: false); return }
             current = fresh
             app = fresh
         }

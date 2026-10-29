@@ -26,6 +26,8 @@ public final class AppUpdater {
     public enum State: Equatable {
         case idle, checking, upToDate
         case available(AvailableUpdate)
+        /// Bluebox-mac.dmg coming down; the fraction once the size is known.
+        case downloading(AvailableUpdate, Double?)
         case installing(AvailableUpdate)
         case failed(String)
     }
@@ -69,6 +71,7 @@ public final class AppUpdater {
     public func check(userInitiated: Bool) async {
         if case .checking = state { return }
         if case .installing = state { return }
+        if case .downloading = state { return }
         state = .checking
         do {
             let update = try await Self.latest()
@@ -97,8 +100,20 @@ public final class AppUpdater {
     /// Downloads and installs the new version, then quits; it opens again by itself.
     public func install(_ update: AvailableUpdate) async {
         guard let dmg = update.macDMG else { NSWorkspace.shared.open(update.page); return }
+        if case .downloading = state { return }
+        if case .installing = state { return }
+        state = .downloading(update, nil)
+        let file: URL
+        do {
+            file = try await UpdateDownload.run(dmg) { [weak self] fraction in self?.state = .downloading(update, fraction) }
+        } catch {
+            state = .available(update)
+            prompt = .failed("The download didn't finish: \(error.localizedDescription) Try again, or download Bluebox from GitHub.")
+            return
+        }
         state = .installing(update)
-        if let message = await UpdateInstaller.install(dmg: dmg) {
+        if let message = await UpdateInstaller.install(dmgFile: file) {
+            try? FileManager.default.removeItem(at: file)
             state = .available(update)
             prompt = .failed(message)
         } else {
@@ -147,14 +162,78 @@ public final class AppUpdater {
 #if os(macOS)
 /// Must match the protocol in Apps/macOSUpdater/main.swift.
 @objc(BlueboxUpdaterProtocol) protocol BlueboxUpdaterProtocol {
-    func install(dmg: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
+    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
 }
 
-/// Talks to BlueboxUpdater.xpc, which runs outside the sandbox: it downloads
-/// the DMG, swaps the new Bluebox.app in, and opens it once this one quits.
+/// Downloads Bluebox-mac.dmg into this app's temporary folder, reporting
+/// progress. Gives up after 30 s without data (or 10 minutes in all).
+final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URL, Error>?
+    private let progress: @MainActor (Double) -> Void
+    private let destination: URL
+    private var lastReported = -1.0
+
+    private init(destination: URL, progress: @escaping @MainActor (Double) -> Void) {
+        self.destination = destination; self.progress = progress
+    }
+
+    static func run(_ url: URL, progress: @escaping @MainActor (Double) -> Void) async throws -> URL {
+        let destination = FileManager.default.temporaryDirectory.appending(path: "Bluebox-update.dmg")
+        try? FileManager.default.removeItem(at: destination)
+        let download = UpdateDownload(destination: destination, progress: progress)
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 600
+        let session = URLSession(configuration: config, delegate: download, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await withCheckedThrowingContinuation { c in
+            download.lock.withLock { download.continuation = c }
+            session.downloadTask(with: url).resume()
+        }
+    }
+
+    private func finish(_ result: Result<URL, Error>) {
+        lock.withLock {
+            continuation?.resume(with: result)
+            continuation = nil
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        let report = lock.withLock { () -> Bool in
+            guard fraction - lastReported >= 0.01 else { return false }
+            lastReported = fraction
+            return true
+        }
+        if report { Task { @MainActor in progress(fraction) } }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard (downloadTask.response as? HTTPURLResponse)?.statusCode == 200 else {
+            finish(.failure(URLError(.badServerResponse))); return
+        }
+        do {
+            try FileManager.default.moveItem(at: location, to: destination)
+            finish(.success(destination))
+        } catch {
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error { finish(.failure(error)) }
+    }
+}
+
+/// Talks to BlueboxUpdater.xpc, which runs outside the sandbox: it mounts the
+/// downloaded DMG, swaps the new Bluebox.app in, and opens it once this one quits.
 enum UpdateInstaller {
-    /// Nil when installed (quit to finish), or what went wrong.
-    static func install(dmg: URL) async -> String? {
+    /// Nil when installed (quit to finish), or what went wrong. Gives up after `timeout`.
+    static func install(dmgFile: URL, timeout: Duration = .seconds(120)) async -> String? {
         let connection = NSXPCConnection(serviceName: "app.bluebox.Bluebox.mac.Updater")
         connection.remoteObjectInterface = NSXPCInterface(with: BlueboxUpdaterProtocol.self)
         connection.resume()
@@ -163,11 +242,15 @@ enum UpdateInstaller {
         let pid = ProcessInfo.processInfo.processIdentifier
         return await withCheckedContinuation { (done: CheckedContinuation<String?, Never>) in
             let once = Once(done)
+            Task {
+                try? await Task.sleep(for: timeout)
+                once.resume("Installing took too long, so Bluebox stopped waiting. Nothing was changed. Try again, or download Bluebox from GitHub.")
+            }
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 once.resume("The updater didn't start: \(error.localizedDescription)")
             } as? BlueboxUpdaterProtocol
             guard let proxy else { once.resume("The updater is missing from this copy of Bluebox."); return }
-            proxy.install(dmg: dmg, appPath: path, relaunchAfter: pid) { once.resume($0) }
+            proxy.install(dmgFile: dmgFile, appPath: path, relaunchAfter: pid) { once.resume($0) }
         }
     }
 
@@ -200,6 +283,7 @@ private struct UpdatePromptModifier: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var updater = updater
         content
+            .overlay(alignment: .bottom) { UpdateProgressBadge() }
             .task { await updater.checkIfDue() }
             .alert(title(updater.prompt), isPresented: Binding(get: { updater.prompt != nil }, set: { if !$0 { updater.prompt = nil } }),
                    presenting: updater.prompt) { prompt in
@@ -245,6 +329,42 @@ private struct UpdatePromptModifier: ViewModifier {
     }
 }
 
+/// Over the window while an update downloads and installs, wherever you are.
+private struct UpdateProgressBadge: View {
+    private var updater: AppUpdater { .shared }
+
+    var body: some View {
+        Group {
+            switch updater.state {
+            case .downloading(let update, let fraction):
+                badge("Downloading Bluebox \(update.version)", fraction: fraction ?? 0)
+            case .installing(let update):
+                badge("Installing Bluebox \(update.version)", fraction: nil)
+            default:
+                EmptyView()
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: updater.state)
+    }
+
+    private func badge(_ title: String, fraction: Double?) -> some View {
+        HStack(spacing: 12) {
+            Text(title).font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+            if let fraction {
+                ProgressView(value: fraction).tint(Palette.brand).frame(width: 120)
+                Text("\(Int(fraction * 100))%").font(.callout).monospacedDigit().foregroundStyle(Palette.textSecondary)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.bottom, 24)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - Settings › About
 
 /// Settings › About › Updates.
@@ -262,6 +382,11 @@ struct UpdateSection: View {
                 #else
                 Button("Open GitHub") { openURL(update.page) }
                 #endif
+            case .downloading(let update, let fraction):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Downloading Bluebox \(update.version)…")
+                    ProgressView(value: fraction ?? 0).tint(Palette.brand)
+                }
             case .installing(let update):
                 HStack {
                     Text("Installing Bluebox \(update.version)…")
