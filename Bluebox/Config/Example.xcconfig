@@ -1,0 +1,13 @@
+// Copy to Config/Secrets.xcconfig (git-ignored) and fill in. Only client-safe values belong here.
+// Supabase dashboard › Project Settings › API Keys: the project URL and the publishable key
+// (sb_publishable_…; a legacy "anon" key also works).
+SUPABASE_URL = https:/$()/YOUR-PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
+// NEVER put the Supabase service-role or secret key in any app config.
+// Trakt › Settings › Your API Apps › New Application. Redirect URI: urn:ietf:wg:oauth:2.0:oob
+// (Bluebox signs in with Trakt's device-code flow). The secret identifies the app, not a user.
+TRAKT_CLIENT_ID = YOUR_TRAKT_CLIENT_ID
+TRAKT_CLIENT_SECRET = YOUR_TRAKT_CLIENT_SECRET
+// Sign in with Apple: enable the capability for the app's bundle IDs in your developer account,
+// enable the Apple provider in Supabase (Authentication › Providers), then:
+// ENABLE_APPLE_SIGN_IN = YES

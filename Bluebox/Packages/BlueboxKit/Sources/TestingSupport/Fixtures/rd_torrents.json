@@ -1,0 +1,6 @@
+[
+  {"id":"T1","filename":"Sintel.2010.1080p.WEB-DL.mkv","hash":"aaa","bytes":1200000000,"host":"real-debrid.com","split":2000,"progress":100,"status":"downloaded","added":"2026-10-20T10:00:00.000Z","links":["https://real-debrid.com/d/LINK1"]},
+  {"id":"T2","filename":"Open.Show.S01.1080p","hash":"bbb","bytes":3000000000,"host":"real-debrid.com","split":2000,"progress":100,"status":"downloaded","added":"2026-10-21T10:00:00.000Z","links":["https://real-debrid.com/d/LINK2","https://real-debrid.com/d/LINK3"]},
+  {"id":"T3","filename":"Still.Downloading.2024.mkv","hash":"ccc","bytes":100,"progress":40,"status":"downloading","added":"2026-10-22T10:00:00.000Z","links":[]},
+  {"id":"T4","filename":"Readme.txt","hash":"ddd","bytes":10,"progress":100,"status":"downloaded","added":"2026-10-19T10:00:00.000Z","links":["https://real-debrid.com/d/LINK4"]}
+]

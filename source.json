@@ -1,0 +1,43 @@
+{
+  "name": "Bluebox",
+  "identifier": "app.bluebox.source",
+  "subtitle": "Bluebox's iPhone builds",
+  "iconURL": "https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png",
+  "website": "https://github.com/BCYAYAY14/bluebox",
+  "apps": [
+    {
+      "name": "Bluebox",
+      "subtitle": "Movies and TV, your sources",
+      "localizedDescription": "A Netflix-style player for your own sources: Stremio add-ons, torrents, debrid, Jellyfin and your files. Personal builds.",
+      "bundleIdentifier": "app.bluebox.Bluebox",
+      "developerName": "BCYAYAY14",
+      "iconURL": "https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "1.0.9",
+          "buildVersion": "10",
+          "date": "2026-10-29T12:18:26Z",
+          "localizedDescription": "1.0.9 (10): main at ef9dc1f",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.9/Bluebox-1.0.9.ipa",
+          "size": 28726811,
+          "sha256": "c47ef42ca025c17e269123108b9daeba7a4e4f94f07584e4f2fdde6fe8c15ba5",
+          "minOSVersion": "18.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "Bluebox connects to media servers on your local network that you add in Settings.",
+          "NSPhotoLibraryAddUsageDescription": "Bluebox saves video frames you capture with Snapshot to your photo library."
+        }
+      },
+      "version": "1.0.9",
+      "versionDate": "2026-10-29T12:18:26Z",
+      "versionDescription": "1.0.9 (10): main at ef9dc1f",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.9/Bluebox-1.0.9.ipa",
+      "size": 28726811
+    }
+  ],
+  "news": []
+}

@@ -1,0 +1,14 @@
+{
+  "originHash" : "32db0dd899a3df4c897cdb9bfd3ad50e27269b1bc8cd79c540f586ed79d7ccff",
+  "pins" : [
+    {
+      "identity" : "swiftvlc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/harflabs/SwiftVLC.git",
+      "state" : {
+        "revision" : "f0da22b7944deddf855882e1cbb627f8f486f683"
+      }
+    }
+  ],
+  "version" : 3
+}

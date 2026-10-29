@@ -1,0 +1,6 @@
+{"success":true,"detail":"Torrent list retrieved successfully.","data":[
+  {"id":11,"name":"Big Buck Bunny (2008) [1080p]","created_at":"2026-10-25T09:00:00Z","download_finished":true,
+   "files":[{"id":0,"name":"Big Buck Bunny (2008) [1080p]/bbb.1080p.mp4","short_name":"bbb.1080p.mp4","size":700000000,"mimetype":"video/mp4"},
+            {"id":1,"name":"Big Buck Bunny (2008) [1080p]/poster.jpg","short_name":"poster.jpg","size":100,"mimetype":"image/jpeg"}]},
+  {"id":12,"name":"Unfinished","created_at":"2026-10-26T09:00:00Z","download_finished":false,"files":[]}
+]}

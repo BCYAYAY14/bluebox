@@ -1,0 +1,5 @@
+[
+  {"id":"D1","filename":"Sintel.2010.1080p.WEB-DL.mkv","mimeType":"video/x-matroska","filesize":1200000000,"link":"https://real-debrid.com/d/LINK1","host":"real-debrid.com","download":"https://cdn.example/dl/old1","streamable":1,"generated":"2026-10-20T11:00:00.000Z"},
+  {"id":"D2","filename":"Big.Buck.Bunny.2008.720p.mp4","mimeType":"video/mp4","filesize":400000000,"link":"https://hoster.example/file/BBB","host":"hoster.example","download":"https://cdn.example/dl/bbb","streamable":1,"generated":"2026-10-23T11:00:00.000Z"},
+  {"id":"D3","filename":"Mystery.Upload.mkv","mimeType":"video/x-matroska","filesize":5000,"link":"https://hoster.example/file/X","host":"hoster.example","download":"https://cdn.example/dl/x","streamable":1,"generated":"2026-10-24T11:00:00.000Z"}
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "name": "auth",
+    "healthy": true,
+    "status": "ACTIVE_HEALTHY",
+    "info": { "name": "GoTrue", "version": "2.180.0", "description": "GoTrue is a user registration and authentication API" }
+  },
+  { "name": "db", "healthy": true, "status": "ACTIVE_HEALTHY" },
+  { "name": "rest", "healthy": true, "status": "ACTIVE_HEALTHY", "info": { "db_schema": "public,graphql_public" } }
+]

@@ -1,0 +1,244 @@
+name: Bluebox
+options:
+  bundleIdPrefix: app.bluebox
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+packages:
+  BlueboxKit:
+    path: Packages/BlueboxKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: Z6Z3BJY3S7
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+targets:
+  Bluebox-iOS:
+    type: application
+    configFiles:
+      Debug: Config/Bluebox.xcconfig
+      Release: Config/Bluebox.xcconfig
+    platform: iOS
+    sources:
+      - Apps/Shared
+    dependencies:
+      - package: BlueboxKit
+      # The Downloads Live Activity (Apps/iOSWidgets).
+      - target: Bluebox-iOS-Widgets
+    settings:
+      base:
+        PRODUCT_NAME: Bluebox
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Bluebox
+        CODE_SIGN_ENTITLEMENTS: $(BLUEBOX_IOS_ENTITLEMENTS_$(ENABLE_APPLE_SIGN_IN))
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # iPhone: the library is portrait-only; the player turns to landscape at run time
+        # (AppDelegate.supportedInterfaceOrientationsFor → PlayerOrientation).
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Apps/iOS/Info.plist
+      properties:
+        # audio: also keeps torrent downloads running in the background (DownloadLifecycle).
+        # processing: resumes them while the device charges (AppModel.downloadResumeTaskID).
+        UIBackgroundModes: [audio, fetch, processing]
+        # Checks followed shows for new episodes (AppModel.episodeRefreshTaskID) and
+        # resumes torrent downloads (AppModel.downloadResumeTaskID).
+        BGTaskSchedulerPermittedIdentifiers: [app.bluebox.refresh.episodes, app.bluebox.downloads.resume]
+        NSUserActivityTypes: [app.bluebox.watch]
+        # The Downloads Live Activity (Features/DownloadsPresence.swift). Needs no entitlement.
+        NSSupportsLiveActivities: true
+        NSPhotoLibraryAddUsageDescription: Bluebox saves video frames you capture with Snapshot to your photo library.
+        SupabaseURL: $(SUPABASE_URL)
+        SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
+        TraktClientID: $(TRAKT_CLIENT_ID)
+        TraktClientSecret: $(TRAKT_CLIENT_SECRET)
+        AppleSignInEnabled: $(ENABLE_APPLE_SIGN_IN)
+        NSLocalNetworkUsageDescription: Bluebox connects to media servers on your local network that you add in Settings.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Sign-in links in Supabase emails come back as bluebox://auth-callback.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.bluebox.auth
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [bluebox]
+
+  # Live Activities only, for now. Its bundle ID sits under the app's, and it
+  # signs with the same team and automatic signing; it needs no capabilities.
+  Bluebox-iOS-Widgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Apps/iOSWidgets
+    dependencies:
+      - package: BlueboxKit
+        product: DownloadsActivity
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_NAME: BlueboxWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Bluebox
+        SKIP_INSTALL: YES
+    info:
+      path: Apps/iOSWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Bluebox
+        # Must match the app's.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  Bluebox-macOS:
+    type: application
+    configFiles:
+      Debug: Config/Bluebox.xcconfig
+      Release: Config/Bluebox.xcconfig
+    platform: macOS
+    sources:
+      - Apps/Shared
+      # Shown by Bluebox › About Bluebox › Acknowledgements and Licence (AboutWindow.swift).
+      - path: THIRD-PARTY-NOTICES.md
+        buildPhase: resources
+      - path: LICENSE
+        buildPhase: resources
+    dependencies:
+      - package: BlueboxKit
+      # Installs updates (Apps/macOSUpdater), in Contents/XPCServices.
+      - target: BlueboxUpdater
+    settings:
+      base:
+        PRODUCT_NAME: Bluebox
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.mac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Bluebox
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
+        CODE_SIGN_ENTITLEMENTS: $(BLUEBOX_MAC_ENTITLEMENTS_$(ENABLE_APPLE_SIGN_IN))
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Apps/macOS/Info.plist
+      properties:
+        NSUserActivityTypes: [app.bluebox.watch]
+        SupabaseURL: $(SUPABASE_URL)
+        SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
+        TraktClientID: $(TRAKT_CLIENT_ID)
+        TraktClientSecret: $(TRAKT_CLIENT_SECRET)
+        AppleSignInEnabled: $(ENABLE_APPLE_SIGN_IN)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Sign-in links in Supabase emails come back as bluebox://auth-callback.
+        # magnet: links clicked in a browser open in Bluebox (AppModel.handleOpenURL).
+        CFBundleURLTypes:
+          - CFBundleURLName: app.bluebox.auth
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [bluebox]
+          - CFBundleURLName: app.bluebox.magnet
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [magnet]
+        # .torrent files and videos can be opened with Bluebox (Finder's Open With).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: BitTorrent File
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes: [org.bittorrent.torrent]
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.movie, org.matroska.mkv]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.bittorrent.torrent
+            UTTypeDescription: BitTorrent File
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [torrent]
+              public.mime-type: [application/x-bittorrent]
+          - UTTypeIdentifier: org.matroska.mkv
+            UTTypeDescription: Matroska Video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification:
+              public.filename-extension: [mkv]
+              public.mime-type: [video/x-matroska]
+
+  # The Mac app's update installer: an XPC service outside the app's sandbox,
+  # so it can swap in a new Bluebox.app (Features/UpdateInstaller.swift).
+  BlueboxUpdater:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - Apps/macOSUpdater
+    settings:
+      base:
+        PRODUCT_NAME: BlueboxUpdater
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.mac.Updater
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Apps/macOSUpdater/Info.plist
+      properties:
+        CFBundleDisplayName: BlueboxUpdater
+        CFBundlePackageType: XPC!
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        XPCService:
+          ServiceType: Application
+
+  Bluebox-iOS-UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/UITests
+    dependencies:
+      - target: Bluebox-iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.uitests
+        TEST_TARGET_NAME: Bluebox-iOS
+
+  Bluebox-macOS-UITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - Tests/MacUITests
+    dependencies:
+      - target: Bluebox-macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.mac.uitests
+        TEST_TARGET_NAME: Bluebox-macOS
+
+schemes:
+  Bluebox-iOS:
+    build:
+      targets:
+        Bluebox-iOS: all
+        Bluebox-iOS-UITests: [test]
+    test:
+      targets:
+        - Bluebox-iOS-UITests
+  Bluebox-macOS:
+    build:
+      targets:
+        Bluebox-macOS: all
+        Bluebox-macOS-UITests: [test]
+    test:
+      targets:
+        - Bluebox-macOS-UITests

@@ -1,0 +1,14 @@
+{
+  "id": 21,
+  "cast": [
+    {"id": 45745, "media_type": "movie", "title": "Sintel", "release_date": "2010-09-30", "genre_ids": [16], "vote_count": 900, "popularity": 10.0, "poster_path": "/sintel.jpg", "character": "Cameo"},
+    {"id": 777, "media_type": "tv", "name": "Late Talk", "first_air_date": "2015-01-01", "genre_ids": [10767], "vote_count": 5000, "popularity": 50.0, "poster_path": null, "character": "Self", "episode_count": 1}
+  ],
+  "crew": [
+    {"id": 45745, "media_type": "movie", "title": "Sintel", "release_date": "2010-09-30", "genre_ids": [16], "vote_count": 900, "popularity": 10.0, "poster_path": "/sintel.jpg", "job": "Director", "department": "Directing"},
+    {"id": 45745, "media_type": "movie", "title": "Sintel", "release_date": "2010-09-30", "genre_ids": [16], "vote_count": 900, "popularity": 10.0, "poster_path": "/sintel.jpg", "job": "Director", "department": "Directing"},
+    {"id": 133701, "media_type": "movie", "title": "Tears of Steel", "release_date": "2012-09-26", "genre_ids": [878], "vote_count": 400, "popularity": 6.0, "poster_path": "/tos.jpg", "job": "Animator", "department": "Visual Effects"},
+    {"id": 999, "media_type": "movie", "title": "Next Open Film", "release_date": "", "genre_ids": [], "vote_count": 0, "popularity": 2.0, "poster_path": null, "job": "Director", "department": "Directing"},
+    {"id": 9100001, "media_type": "tv", "name": "Open Show", "first_air_date": "2024-03-01", "genre_ids": [18], "vote_count": 120, "popularity": 30.0, "poster_path": "/show.jpg", "job": "Director", "department": "Directing", "episode_count": 3}
+  ]
+}

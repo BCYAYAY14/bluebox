@@ -1,0 +1,6 @@
+module LibTorrentEngine {
+    header "BBTorrent.h"
+    link "c++"
+    link framework "SystemConfiguration"
+    export *
+}

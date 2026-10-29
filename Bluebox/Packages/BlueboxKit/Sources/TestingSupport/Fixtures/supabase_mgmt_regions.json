@@ -1,0 +1,20 @@
+{
+  "recommendations": {
+    "smartGroup": { "name": "Europe, Middle East and Africa", "code": "emea", "type": "smartGroup" },
+    "specific": [
+      { "name": "West EU (London)", "code": "eu-west-2", "type": "specific", "provider": "AWS", "status": "capacity" },
+      { "name": "West EU (Ireland)", "code": "eu-west-1", "type": "specific", "provider": "AWS" }
+    ]
+  },
+  "all": {
+    "smartGroup": [
+      { "name": "Americas", "code": "americas", "type": "smartGroup" },
+      { "name": "Europe, Middle East and Africa", "code": "emea", "type": "smartGroup" },
+      { "name": "Asia-Pacific", "code": "apac", "type": "smartGroup" }
+    ],
+    "specific": [
+      { "name": "West EU (Ireland)", "code": "eu-west-1", "type": "specific", "provider": "AWS" },
+      { "name": "West EU (London)", "code": "eu-west-2", "type": "specific", "provider": "AWS", "status": "capacity" }
+    ]
+  }
+}

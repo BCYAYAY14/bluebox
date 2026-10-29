@@ -1,0 +1,5 @@
+{"status":"success","files":[
+  {"id":"P1","name":"Tears.of.Steel.2012.1080p.mkv","created_at":1790000000,"size":900000000,"mime_type":"video/x-matroska","link":"https://cdn.premiumize.example/P1/tos.mkv","stream_link":"https://cdn.premiumize.example/P1/tos.m3u8","path":"Tears.of.Steel.2012.1080p.mkv"},
+  {"id":"P2","name":"cover.jpg","created_at":1790000000,"size":1000,"mime_type":"image/jpeg","link":"https://cdn.premiumize.example/P2/cover.jpg","path":"Open Show S02/cover.jpg"},
+  {"id":"P3","name":"S02E04.mp4","created_at":1790000100,"size":500000000,"mime_type":"video/mp4","link":"https://cdn.premiumize.example/P3/e4.mp4","path":"Open Show S02/S02E04.mp4"}
+]}

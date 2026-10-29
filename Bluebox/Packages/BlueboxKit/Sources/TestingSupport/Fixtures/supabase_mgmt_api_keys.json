@@ -1,0 +1,41 @@
+[
+  {
+    "name": "anon",
+    "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsdWVib3hwcm9qZWN0cmVmYWFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MDAwMDAsImV4cCI6MjA3NzE3NjAwMH0.c2lnbmF0dXJlLW5vdC1jaGVja2Vk",
+    "id": "anon",
+    "type": "legacy",
+    "hash": "",
+    "prefix": "",
+    "description": "Legacy anon API key"
+  },
+  {
+    "name": "service_role",
+    "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsdWVib3hwcm9qZWN0cmVmYWFhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTYwMDAwMCwiZXhwIjoyMDc3MTc2MDAwfQ.c2lnbmF0dXJlLW5vdC1jaGVja2Vk",
+    "id": "service_role",
+    "type": "legacy",
+    "hash": "",
+    "prefix": "",
+    "description": "Legacy service_role API key"
+  },
+  {
+    "name": "default",
+    "api_key": "sb_publishable_FixturePublishableKey123",
+    "id": "6f1d3c2e-0000-4000-8000-000000000001",
+    "type": "publishable",
+    "prefix": "sb_publishable_Fixtu",
+    "description": "Default publishable key",
+    "inserted_at": "2026-10-28T21:41:00.000Z",
+    "updated_at": "2026-10-28T21:41:00.000Z"
+  },
+  {
+    "name": "default",
+    "api_key": "sb_secret_Fixt••••••••••••••••",
+    "id": "6f1d3c2e-0000-4000-8000-000000000002",
+    "type": "secret",
+    "prefix": "sb_secret_Fixt",
+    "hash": "hashed",
+    "description": "Default secret key",
+    "inserted_at": "2026-10-28T21:41:00.000Z",
+    "updated_at": "2026-10-28T21:41:00.000Z"
+  }
+]

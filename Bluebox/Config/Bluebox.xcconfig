@@ -1,0 +1,15 @@
+// Shared by both app targets. Supabase values come from the untracked
+// Secrets.xcconfig (copy Example.xcconfig). Left empty, sync is turned off.
+SUPABASE_URL =
+SUPABASE_PUBLISHABLE_KEY =
+// Trakt app credentials (trakt.tv/oauth/applications). Left empty, Trakt is hidden.
+TRAKT_CLIENT_ID =
+TRAKT_CLIENT_SECRET =
+// Sign in with Apple needs the capability on your App ID. Set YES in Secrets.xcconfig
+// to use the entitlements files that include it (see SETUP.md).
+ENABLE_APPLE_SIGN_IN = NO
+BLUEBOX_IOS_ENTITLEMENTS_NO =
+BLUEBOX_IOS_ENTITLEMENTS_YES = Apps/iOS/AppleSignIn.entitlements
+BLUEBOX_MAC_ENTITLEMENTS_NO = Apps/macOS/Bluebox.entitlements
+BLUEBOX_MAC_ENTITLEMENTS_YES = Apps/macOS/Bluebox-AppleSignIn.entitlements
+#include? "Secrets.xcconfig"

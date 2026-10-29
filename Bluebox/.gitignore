@@ -1,0 +1,48 @@
+.DS_Store
+*.xcodeproj
+build/
+DerivedData/
+.build/
+.swiftpm/
+Config/Secrets.xcconfig
+*.xcuserstate
+# macOS
+._*
+
+# Xcode
+xcuserdata/
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+*.dmg
+*.pkg
+*.profraw
+timeline.xctimeline
+playground.xcworkspace
+# Secrets / local config
+*.env
+.env.*
+*.mobileprovision
+*.p12
+*.cer
+ExportOptions*.local.plist
+# Logs & temp
+*.log
+*.tmp
+*.orig
+*.swp
+*~
+# Web
+node_modules/
+# Local tooling
+.claude/
+# Firebase config (kept locally)
+GoogleService-Info.plist
+firestore.rules
+storage.rules
+firebase.json
+*.bak

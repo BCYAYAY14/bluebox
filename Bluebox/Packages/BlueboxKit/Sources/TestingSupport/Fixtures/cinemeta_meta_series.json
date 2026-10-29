@@ -1,0 +1,19 @@
+{"meta":{
+  "id":"tt9999901","imdb_id":"tt9999901","type":"series","name":"Open Show",
+  "description":"An open series made with free tools.","releaseInfo":"2024–","released":"2024-03-01T00:00:00.000Z",
+  "genres":["Drama","Sci-Fi"],"imdbRating":"8.1","runtime":"48 min","status":"Continuing",
+  "cast":["Lead Actor","Second Lead"],"director":null,"writer":["Ada Creator"],
+  "poster":"https://images.metahub.space/poster/small/tt9999901/img",
+  "background":"https://images.metahub.space/background/medium/tt9999901/img",
+  "logo":"https://images.metahub.space/logo/medium/tt9999901/img",
+  "trailers":[{"source":"trailer0001","type":"Trailer"}],
+  "trailerStreams":[{"title":"Open Show","ytId":"trailer0001"},{"title":"Open Show","ytId":"trailer0002"}],
+  "videos":[
+    {"id":"tt9999901:1:2","name":"Second","season":1,"episode":2,"released":"2024-03-08T05:00:00.000Z","overview":"Two."},
+    {"id":"tt9999901:1:1","name":"Pilot","season":1,"number":1,"firstAired":"2024-03-01T05:00:00.000Z","description":"One.","thumbnail":"https://episodes.metahub.space/tt9999901/1/1/w780.jpg"},
+    {"id":"tt9999901:2:1","title":"Return","season":2,"episode":1,"released":"2026-10-20T05:00:00.000Z"},
+    {"id":"tt9999901:2:2","name":"Later","season":2,"episode":2,"released":"2026-11-03T05:00:00.000Z"},
+    {"id":"tt9999901:0:1","name":"Behind the Show","season":0,"episode":1,"released":"2024-01-01T05:00:00.000Z"},
+    {"id":"broken","season":"one","episode":true}
+  ]
+}}

@@ -1,0 +1,220 @@
+//
+//  AddonsSettingsPage.swift
+//  Bluebox
+//
+//  Written for Bluebox from public documentation (the Stremio add-on SDK's
+//  manifest docs). Settings › Torrents & Debrid › Add-ons: your
+//  add-ons with health dots, turning them on and off, the order they're
+//  asked in, adding any Stremio add-on by its link, and the presets.
+//
+
+import Addons
+import DesignSystem
+import SwiftUI
+
+extension AppModel {
+    /// Removes an add-on at once, with Undo in a toast that puts it back where it was.
+    func removeAddonUndoably(_ addon: InstalledAddon) {
+        let index = addonSettings.addons.firstIndex { $0.id == addon.id }
+        removeAddon(addon.id)
+        showToast(AppToast("Removed \(addon.name)", actionTitle: "Undo") { [weak self] in
+            guard let self else { return }
+            var s = self.addonSettings
+            guard !s.addons.contains(where: { $0.id == addon.id }) else { return }
+            s.addons.insert(addon, at: min(index ?? s.addons.count, s.addons.count))
+            self.setAddonSettings(s)
+        })
+    }
+}
+
+struct AddonsSettingsPage: View {
+    @Environment(AppModel.self) private var app
+    @State private var health: [String: AddonHealth] = [:]
+    @State private var link = ""
+    @State private var adding = false
+    @State private var addResult: (ok: Bool, message: String)?
+
+    var body: some View {
+        let settings = app.addonSettings
+        SettingsForm(title: "Add-ons") {
+            Section {
+                if settings.addons.isEmpty {
+                    Text("No add-ons. Add one below.").foregroundStyle(Palette.textSecondary)
+                }
+                ForEach(settings.addons) { addon in
+                    AddonSettingsRow(addon: addon, health: health[addon.id],
+                                     isOn: Binding { addon.isEnabled } set: { app.setAddon(addon.id, enabled: $0) })
+                        .contextMenu { menu(addon) }
+                }
+                if settings.addons.count > 1 {
+                    SettingsLink("Order and Remove", value: nil) { AddonOrderPage() }
+                        .settingsRow("Add-on Order")
+                }
+            } header: {
+                Text("Your Add-ons")
+            } footer: {
+                Text("Every add-on that's on is asked at once; a slow one is skipped for a few minutes after repeated timeouts. When two releases are equally good, the add-on higher in the list wins.")
+            }
+
+            Section {
+                TextField("Add-on link", text: $link, prompt: Text("stremio://… or https://…/manifest.json"))
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    #endif
+                    .onSubmit { Task { await add() } }
+                    .settingsRow("Add Add-on by Link")
+                Button {
+                    Task { await add() }
+                } label: {
+                    HStack {
+                        Text(adding ? "Checking the Add-on…" : "Add Add-on")
+                        if adding { Spacer(); ProgressView().controlSize(.small) }
+                    }
+                }
+                .disabled(adding || link.trimmingCharacters(in: .whitespaces).isEmpty)
+                if let addResult { SettingsStatus(ok: addResult.ok, message: addResult.message) }
+            } header: {
+                Text("Add by Link")
+            } footer: {
+                Text("Paste the link an add-on's configure page gives you (Install, or Copy Link). Bluebox reads its manifest and adds it if it offers streams for movies or series. The link can contain your settings for that add-on, so it's only shown by its host.")
+            }
+
+            if !settings.availablePresets.isEmpty {
+                Section {
+                    ForEach(settings.availablePresets) { preset in
+                        Button { app.addPreset(preset) } label: {
+                            HStack(spacing: Spacing.m) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(preset.title).foregroundStyle(Palette.textPrimary)
+                                    Text(preset.summary).font(.caption).foregroundStyle(Palette.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "plus.circle.fill").font(.title3).foregroundStyle(Palette.brandBright)
+                            }
+                        }
+                        .accessibilityLabel("Add \(preset.title)")
+                    }
+                } header: {
+                    Text("Presets")
+                } footer: {
+                    Text("Presets are set up from your debrid service and release settings, so changing those updates them.")
+                }
+            }
+        }
+        .task {
+            // Health changes as searches run; refresh while the page is open.
+            while !Task.isCancelled {
+                health = await app.addonHealth()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    @ViewBuilder private func menu(_ addon: InstalledAddon) -> some View {
+        Button { app.setAddon(addon.id, enabled: !addon.isEnabled) } label: {
+            Label(addon.isEnabled ? "Turn Off" : "Turn On", systemImage: addon.isEnabled ? "pause.circle" : "play.circle")
+        }
+        if health[addon.id]?.state() == .skipped || health[addon.id]?.state() == .failing {
+            Button { Task { await app.retryAddon(addon.id); health = await app.addonHealth() } } label: {
+                Label("Try Again Now", systemImage: "arrow.clockwise")
+            }
+        }
+        Button(role: .destructive) { app.removeAddonUndoably(addon) } label: { Label("Remove", systemImage: "trash") }
+    }
+
+    private func add() async {
+        let text = link.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !adding else { return }
+        adding = true
+        addResult = nil
+        defer { adding = false }
+        do {
+            let addon = try await app.addAddon(link: text)
+            link = ""
+            addResult = (true, "Added \(addon.name).")
+        } catch {
+            addResult = (false, (error as? LocalizedError)?.errorDescription ?? UserFacingError.message(for: error, context: .addons))
+        }
+    }
+}
+
+/// One add-on: a health dot, its name, where it lives and how it's been answering, and a switch.
+struct AddonSettingsRow: View {
+    let addon: InstalledAddon
+    let health: AddonHealth?
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: Spacing.m) {
+                Circle()
+                    .fill(Self.color(health?.state() ?? .unknown, enabled: addon.isEnabled))
+                    .frame(width: 9, height: 9)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(addon.name).lineLimit(1)
+                    Text(subtitle).font(.caption).foregroundStyle(Palette.textSecondary).lineLimit(2)
+                }
+            }
+        }
+        .accessibilityValue(addon.isEnabled ? (health?.summary() ?? "Not used yet") : "Off")
+    }
+
+    private var subtitle: String {
+        var parts = [addon.hostLabel]
+        if addon.preset?.requiresDebrid == true { parts.append("Debrid only") }
+        if addon.isEnabled, let health { parts.append(health.summary()) }
+        return parts.joined(separator: " · ")
+    }
+
+    static func color(_ state: AddonHealth.State, enabled: Bool) -> Color {
+        guard enabled else { return Palette.textTertiary.opacity(0.5) }
+        return switch state {
+        case .unknown: Palette.textTertiary
+        case .healthy: SwarmHealth.good
+        case .slow: SwarmHealth.fair
+        case .failing, .skipped: SwarmHealth.poor
+        }
+    }
+}
+
+/// Settings › Torrents & Debrid › Add-ons › Order and Remove: drag to
+/// reorder, delete to remove.
+private struct AddonOrderPage: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(app.addonSettings.addons) { addon in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(addon.name)
+                            Text(addon.hostLabel).font(.caption).foregroundStyle(Palette.textSecondary)
+                        }
+                        Spacer()
+                        if !addon.isEnabled { Text("Off").font(.caption).foregroundStyle(Palette.textTertiary) }
+                    }
+                    .listRowBackground(Palette.background)
+                }
+                .onMove { from, to in app.moveAddons(from: from, to: to) }
+                .onDelete { offsets in
+                    for i in offsets.sorted(by: >) where app.addonSettings.addons.indices.contains(i) {
+                        app.removeAddonUndoably(app.addonSettings.addons[i])
+                    }
+                }
+            } footer: {
+                Text("Drag to reorder. Releases come from every add-on that's on; the order breaks ties between equally good releases.")
+            }
+        }
+        #if os(iOS)
+        .environment(\.editMode, .constant(.active))
+        #endif
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .blueboxScreen()
+        .navigationTitle("Add-on Order")
+    }
+}

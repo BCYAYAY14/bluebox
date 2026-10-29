@@ -1,0 +1,15 @@
+{
+  "id": 9100001,
+  "cast": [
+    {"id": 31, "name": "Lead Actor", "profile_path": "/lead.jpg", "order": 0, "total_episode_count": 20,
+     "roles": [{"character": "Young Lead", "episode_count": 2}, {"character": "The Lead", "episode_count": 18}]},
+    {"id": 32, "name": "Guest Star", "profile_path": null, "order": 5, "total_episode_count": 1,
+     "roles": [{"character": "Visitor", "episode_count": 1}]}
+  ],
+  "crew": [
+    {"id": 41, "name": "Pat Writer", "profile_path": null, "department": "Writing", "total_episode_count": 10,
+     "jobs": [{"job": "Writer", "episode_count": 10}]},
+    {"id": 42, "name": "Sam Producer", "profile_path": null, "department": "Production", "total_episode_count": 20,
+     "jobs": [{"job": "Executive Producer", "episode_count": 20}]}
+  ]
+}

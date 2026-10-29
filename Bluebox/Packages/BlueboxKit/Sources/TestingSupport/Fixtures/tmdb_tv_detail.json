@@ -1,0 +1,6 @@
+{"backdrop_path":"/gotb.jpg","episode_run_time":[60],"first_air_date":"2011-04-17","genres":[{"id":10765,"name":"Sci-Fi & Fantasy"},{"id":18,"name":"Drama"}],"id":1399,"name":"Game of Thrones","number_of_seasons":8,"overview":"Seven noble families fight.","poster_path":"/p2.jpg","tagline":"Winter is coming.","vote_average":8.4,
+"seasons":[{"air_date":"2010-12-05","episode_count":14,"id":3627,"name":"Specials","overview":"","poster_path":"/sp.jpg","season_number":0},{"air_date":"2011-04-17","episode_count":10,"id":3624,"name":"Season 1","overview":"","poster_path":"/s1.jpg","season_number":1},{"air_date":"2012-04-01","episode_count":10,"id":3625,"name":"Season 2","poster_path":null,"season_number":2}],
+"credits":{"cast":[{"id":22970,"name":"Peter Dinklage","character":"Tyrion Lannister","profile_path":"/pd.jpg","order":0}],"crew":[]},
+"images":{"logos":[{"file_path":"/neutral.png","iso_639_1":null}]},
+"recommendations":{"page":1,"results":[{"id":1402,"name":"The Walking Dead","media_type":"tv","genre_ids":[18],"first_air_date":"2010-10-31","vote_average":8.1}],"total_pages":1,"total_results":1},
+"content_ratings":{"results":[{"iso_3166_1":"US","rating":"TV-MA"}]},"external_ids":{"imdb_id":"tt0944947","tvdb_id":121361}}

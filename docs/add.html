@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Add Bluebox</title>
+<!-- GitHub strips altstore:// links from READMEs, so the README's buttons come here.
+     add.html?to=altstore (or sidestore, feather) opens that app with Bluebox's source. -->
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#000; color:#fff;
+         font:16px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing:antialiased; }
+  main { max-width:420px; padding:32px 24px; text-align:center; }
+  img { width:96px; height:96px; border-radius:22px; }
+  h1 { font-size:26px; margin:18px 0 6px; } p { color:#A3A3A3; margin:0 0 22px; }
+  a.b, button { display:block; width:100%; box-sizing:border-box; margin:10px 0; padding:14px; border-radius:12px; border:0;
+         font:600 16px -apple-system, sans-serif; text-decoration:none; cursor:pointer; }
+  .w { background:#fff; color:#000; } .g { background:#1c1c1e; color:#fff; }
+  code { display:block; margin-top:18px; padding:12px; border-radius:10px; background:#111; color:#cfcfcf; font-size:12px; word-break:break-all; }
+</style></head>
+<body><main>
+  <img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt="">
+  <h1>Add Bluebox</h1>
+  <p>Pick the app you sideload with. It opens with Bluebox's source, ready to add.</p>
+  <a class="b w" id="altstore">Open in AltStore</a>
+  <a class="b g" id="sidestore">Open in SideStore</a>
+  <a class="b g" id="feather">Open in Feather</a>
+  <button class="g" id="copy">Copy source link (FlareStore, ESign)</button>
+  <code id="url"></code>
+</main>
+<script>
+  const SOURCE = 'https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/source.json';
+  const links = {
+    altstore: 'altstore://source?url=' + encodeURIComponent(SOURCE),
+    sidestore: 'sidestore://source?url=' + encodeURIComponent(SOURCE),
+    feather: 'feather://source/' + SOURCE,
+  };
+  for (const [id, href] of Object.entries(links)) document.getElementById(id).href = href;
+  document.getElementById('url').textContent = SOURCE;
+  document.getElementById('copy').onclick = async e => {
+    try { await navigator.clipboard.writeText(SOURCE); e.target.textContent = 'Copied'; } catch { }
+  };
+  const to = new URLSearchParams(location.search).get('to');
+  if (links[to]) location.href = links[to];
+</script>
+</body></html>

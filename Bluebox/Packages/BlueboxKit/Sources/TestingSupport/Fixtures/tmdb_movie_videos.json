@@ -1,0 +1,12 @@
+{
+  "id": 45745,
+  "results": [
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Sintel Clip: Scales", "key": "clip0000001", "site": "YouTube", "size": 1080, "type": "Clip", "official": true, "published_at": "2010-09-20T10:00:00.000Z", "id": "v-clip"},
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Fan Trailer", "key": "fan00000001", "site": "YouTube", "size": 1080, "type": "Trailer", "official": false, "published_at": "2012-01-01T10:00:00.000Z", "id": "v-fan"},
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Official Trailer", "key": "eRsGyueVLvQ", "site": "YouTube", "size": 1080, "type": "Trailer", "official": true, "published_at": "2010-09-27T10:00:00.000Z", "id": "v-official"},
+    {"iso_639_1": "de", "iso_3166_1": "DE", "name": "Offizieller Trailer", "key": "de000000001", "site": "YouTube", "size": 1080, "type": "Trailer", "official": true, "published_at": "2010-09-28T10:00:00.000Z", "id": "v-de"},
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Making of Sintel", "key": "bts00000001", "site": "YouTube", "size": 720, "type": "Behind the Scenes", "official": true, "published_at": "2010-10-01T10:00:00.000Z", "id": "v-bts"},
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Teaser", "key": "teaser00001", "site": "YouTube", "size": 720, "type": "Teaser", "official": true, "published_at": "2010-05-01T10:00:00.000Z", "id": "v-teaser"},
+    {"iso_639_1": "en", "iso_3166_1": "US", "name": "Vimeo Trailer", "key": "12345", "site": "Vimeo", "size": 1080, "type": "Trailer", "official": true, "published_at": "2010-09-27T10:00:00.000Z", "id": "v-vimeo"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": 9100001,
+  "name": "Open Show",
+  "status": "Returning Series",
+  "in_production": true,
+  "created_by": [
+    {"id": 501, "name": "Ada Creator", "profile_path": "/ada.jpg"}
+  ],
+  "last_episode_to_air": {
+    "id": 77001, "name": "The Render Farm", "overview": "Frames go missing.", "air_date": "2026-10-24",
+    "episode_number": 4, "season_number": 2, "runtime": 48, "still_path": "/s2e4.jpg"
+  },
+  "next_episode_to_air": {
+    "id": 77002, "name": "Keyframes", "overview": "", "air_date": "2026-10-31",
+    "episode_number": 5, "season_number": 2, "runtime": null, "still_path": null
+  }
+}
