@@ -68,6 +68,9 @@ public final class PlayerSession {
     public var subtitleStyle = SubtitleStyle() {
         didSet { if subtitleStyle != oldValue { engine.setEmbeddedSubtitleStyle(subtitleStyle) } }
     }
+    /// The look waiting for the card to close goes on the video now.
+    public func applySubtitleStyleNow() { engine.applySubtitleRestyleNow() }
+
     /// True while the subtitle panel is open (see `PlaybackEngine.setSubtitleRestyleHeld`).
     public var holdsSubtitleRestyle = false {
         didSet { if holdsSubtitleRestyle != oldValue { engine.setSubtitleRestyleHeld(holdsSubtitleRestyle) } }
@@ -128,6 +131,10 @@ public final class PlayerSession {
     /// True while `start` swaps items: the old engine may still report positions, which
     /// mustn't be saved under the new item.
     @ObservationIgnored private var isStarting = false
+    /// Bumped by every `start` and by `end`: a start that is still opening when
+    /// the player closes (or another item starts) sees it and stands down,
+    /// rather than loading and playing with nothing on screen.
+    @ObservationIgnored private var generation = 0
 
     public init(
         engine: any PlaybackEngine, progress: any ProgressRepository, policy: ProgressPolicy = .standard,
@@ -149,32 +156,45 @@ public final class PlayerSession {
     ///   and saved progress.
     public func start(_ item: NowPlayingItem, resource: PlaybackResource, resume: Bool = true,
                       startAt explicitStart: TimeInterval? = nil, autoplay: Bool = true) async {
+        generation &+= 1
+        let mine = generation
         await persistProgress()
+        guard generation == mine else { return }
         cancelUpNext()
         isStarting = true
-        defer { isStarting = false }
+        defer { if generation == mine { isStarting = false } }
         engine.pause()
         self.item = item
         self.resource = resource
         lastSavedPosition = nil
         timeline = nil; subtitleText = nil; subtitleError = nil; subtitleSelection = .off
         secondaryTimeline = nil; secondarySubtitleID = nil; secondarySubtitleText = nil; pendingSyncPoint = nil
+        // Timing fixes belong to one file: the next episode's starts in sync
+        // (Settings' default delay is applied again when it starts).
+        subtitleOffset.reset()
         loopStart = nil; loopEnd = nil
         isScrubbing = false; resumesAfterScrub = false
         videoFraming = VideoFraming()
         externalByID = Dictionary(resource.externalSubtitles.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         externalSubtitles = resource.externalSubtitles.map {
-            MediaTrack(id: $0.id, kind: .subtitle, label: $0.label, languageCode: $0.languageCode, isExternal: true)
+            MediaTrack(id: $0.id, kind: .subtitle, label: $0.label, languageCode: $0.languageCode, isExternal: true,
+                       format: $0.format.isEmpty ? nil : $0.format.uppercased())
         }
 
         if let replacement = engineSwitcher?(resource, engine) { replaceEngine(with: replacement) }
 
         let saved = resume && explicitStart == nil ? (try? await progress.progress(for: item.key)) ?? nil : nil
+        guard generation == mine else { return }
         let startAt = explicitStart.flatMap { $0 > 0 ? $0 : nil } ?? policy.resumePosition(for: saved)
         do {
             try await engine.load(resource, startAt: startAt)
         } catch {
             return  // engine published .failed
+        }
+        // Closed (or replaced) while it opened: nothing may play now.
+        guard generation == mine else {
+            if self.resource == nil { engine.stop() }
+            return
         }
         lastSavedPosition = startAt ?? 0
         engine.setEmbeddedSubtitleDelay(subtitleOffset.seconds)
@@ -205,7 +225,17 @@ public final class PlayerSession {
     }
 
     /// Saves progress and releases the engine.
+    /// The player is going away: silent at once, and a start still opening
+    /// stands down. (`end` does this too; call it first when there's other
+    /// work to await before `end`.)
+    public func beginClosing() {
+        generation &+= 1
+        isStarting = false
+        engine.pause()
+    }
+
     public func end() async {
+        beginClosing()
         cancelUpNext()
         subtitleTask?.cancel()
         secondaryTask?.cancel()
@@ -285,7 +315,9 @@ public final class PlayerSession {
         await seek(to: displayPosition + delta)
     }
 
-    public func setRate(_ rate: Float) { engine.setRate(rate) }
+    /// The speed last set in this session: the next episode keeps it.
+    public private(set) var chosenRate: Float?
+    public func setRate(_ rate: Float) { chosenRate = rate; engine.setRate(rate) }
 
     public func setVolume(_ volume: Float) {
         self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
@@ -422,14 +454,36 @@ public final class PlayerSession {
         updateSubtitleText()
     }
 
+    /// "Movie.2019.en" reads as "English - Movie.2019", so it sorts and groups with English.
+    nonisolated static func importLabel(_ name: String) -> String {
+        guard let code = languageCode(inFileName: name),
+              let language = Locale.current.localizedString(forLanguageCode: code) else { return name }
+        return "\(language) - \(name.split(separator: ".").dropLast().joined(separator: "."))"
+    }
+
+    /// "Movie.2019.en" → "en": the language tag subtitle files carry before the extension.
+    nonisolated static func languageCode(inFileName name: String) -> String? {
+        let parts = name.split(separator: ".")
+        guard parts.count > 1, let last = parts.last.map(String.init), (2...3).contains(last.count),
+              last.allSatisfy(\.isLetter) else { return nil }
+        let code = TrackChoice.normalized(last)
+        guard code.count == 2, Locale(identifier: "en").localizedString(forLanguageCode: code) != nil else { return nil }
+        return code
+    }
+
     /// Adds a user-imported subtitle file and selects it.
     public func importSubtitle(_ url: URL) {
         let ext = url.pathExtension.lowercased()
-        let sub = ExternalSubtitle(id: "import-\(url.lastPathComponent)", url: url, languageCode: nil,
-                                   label: url.deletingPathExtension().lastPathComponent, format: ext)
+        // The whole path: two downloads can share a file name in different folders.
+        let sub = ExternalSubtitle(id: "import-\(url.standardizedFileURL.path)", url: url,
+                                   languageCode: Self.languageCode(inFileName: url.deletingPathExtension().lastPathComponent),
+                                   label: Self.importLabel(url.deletingPathExtension().lastPathComponent), format: ext)
+        // A file picked now wins over the choice carried from the last episode.
+        restoreTracksPending = false
         externalByID[sub.id] = sub
         if !externalSubtitles.contains(where: { $0.id == sub.id }) {
-            externalSubtitles.append(MediaTrack(id: sub.id, kind: .subtitle, label: sub.label, languageCode: nil, isExternal: true))
+            externalSubtitles.append(MediaTrack(id: sub.id, kind: .subtitle, label: sub.label, languageCode: sub.languageCode, isExternal: true,
+                                                format: ext.isEmpty ? nil : ext.uppercased()))
         }
         // A file for this video only: what's remembered for the next ones stays as it was.
         selectSubtitle(.external(sub.id), remember: false)
@@ -514,12 +568,15 @@ public final class PlayerSession {
     }
 
     private func applyPreferredSubtitle() {
-        guard rememberedSubtitle == nil, let lang = subtitleStyle.preferredLanguage else { return }
-        if let t = TrackChoice(languageCode: lang).best(in: externalSubtitles) {
-            selectSubtitle(.external(t.id), remember: false)
-        } else if let t = TrackChoice(languageCode: lang).best(in: snapshot.embeddedSubtitles) {
-            selectSubtitle(.embedded(t.id), remember: false)
+        let lang = subtitleStyle.preferredLanguage
+        if rememberedSubtitle == nil, let lang {
+            if let t = TrackChoice(languageCode: lang).best(in: externalSubtitles) {
+                selectSubtitle(.external(t.id), remember: false)
+            } else if let t = TrackChoice(languageCode: lang).best(in: snapshot.embeddedSubtitles) {
+                selectSubtitle(.embedded(t.id), remember: false)
+            }
         }
+        // The second line follows its setting on every item, even after a manual pick of the first.
         if let second = subtitleStyle.secondaryLanguage, second != lang,
            let t = TrackChoice(languageCode: second).best(in: externalSubtitles) {
             selectSecondarySubtitle(t.id)
@@ -569,7 +626,8 @@ public final class PlayerSession {
             return
         }
         guard let provider = nextProvider, let current = item,
-              let (nextItem, res) = await provider(current.key), nextItem == next else { return }
+              let (nextItem, res) = await provider(current.key), nextItem == next,
+              item == current else { return }  // closed while it was found
         await start(nextItem, resource: res, resume: true)
     }
 

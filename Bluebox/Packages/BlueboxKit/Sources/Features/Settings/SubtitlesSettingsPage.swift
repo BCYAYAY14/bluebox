@@ -58,7 +58,7 @@ struct SubtitlesSettingsPage: View {
 
             Section {
                 SettingsPicker("Position", selection: $app.subtitleStyle.anchor,
-                               options: [.init("Bottom", value: .bottom), .init("Top", value: .top)])
+                               options: [.init("Bottom", value: .bottom), .init("Middle", value: .middle), .init("Top", value: .top)])
                 SettingsPicker("Alignment", selection: $app.subtitleStyle.alignment, options: [
                     .init("Left", value: .leading, systemImage: "text.alignleft"),
                     .init("Centre", value: .center, systemImage: "text.aligncenter"),

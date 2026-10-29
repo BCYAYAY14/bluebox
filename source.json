@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.0.12",
+          "buildVersion": "13",
+          "date": "2026-10-29T14:29:05Z",
+          "localizedDescription": "1.0.12 (13): main at 1d81e49",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.12/Bluebox-1.0.12.ipa",
+          "size": 28846390,
+          "sha256": "9f3972561d8e247acdc4bc9b55214e279f9773fe56fce0f5f519d88349fbe8ef",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.0.11",
           "buildVersion": "12",
           "date": "2026-10-29T13:00:55Z",
@@ -52,11 +62,11 @@
           "NSPhotoLibraryAddUsageDescription": "Bluebox saves video frames you capture with Snapshot to your photo library."
         }
       },
-      "version": "1.0.11",
-      "versionDate": "2026-10-29T13:00:55Z",
-      "versionDescription": "1.0.11 (12): main at 3ece788",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.11/Bluebox-1.0.11.ipa",
-      "size": 28743531
+      "version": "1.0.12",
+      "versionDate": "2026-10-29T14:29:05Z",
+      "versionDescription": "1.0.12 (13): main at 1d81e49",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.12/Bluebox-1.0.12.ipa",
+      "size": 28846390
     }
   ],
   "news": []

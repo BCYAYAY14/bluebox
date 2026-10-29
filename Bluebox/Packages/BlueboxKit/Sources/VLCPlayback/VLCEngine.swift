@@ -52,6 +52,9 @@ public final class VLCEngine: PlaybackEngine {
     private var restyleHeld = false
     private var restyleTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
+    /// While a reopen runs: what to come back to. A pause or a track picked
+    /// meanwhile updates these, so the reopen doesn't undo it.
+    private var reopen: (playing: Bool, subtitle: String?, audio: String?)?
     private var subtitleDelay: TimeInterval = 0
     private var audioDelay: TimeInterval = 0
     private var volume: Float = 1
@@ -105,7 +108,16 @@ public final class VLCEngine: PlaybackEngine {
     // MARK: Loading
 
     public func load(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
-        stop()
+        // A new video: a reopen of the old one under way is dropped.
+        restyleTask?.cancel(); restyleTask = nil
+        reloadTask?.cancel(); reloadTask = nil
+        reopen = nil
+        try await loadMedia(resource, startAt: startAt)
+    }
+
+    /// Opens `resource` (a new video, or the same one reopened for a new look).
+    private func loadMedia(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
+        teardown()
         let container = resource.variant.container ?? resource.url.pathExtension
         guard Self.canAttempt(container: container) else {
             fail(.unsupportedFormat(container))
@@ -240,6 +252,7 @@ public final class VLCEngine: PlaybackEngine {
 
     public func play() {
         guard let resource else { return }
+        if reopen != nil { reopen?.playing = true; return }  // the reopen starts it when it's ready
         intendedPaused = false
         if ended || player.state == .stopped {
             restart(resource, at: 0)
@@ -254,6 +267,7 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func pause() {
+        reopen?.playing = false
         intendedPaused = true
         lastPauseReassert = .now
         player.pause()
@@ -329,6 +343,7 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func selectAudio(_ trackID: String?) {
+        if reopen != nil { reopen?.audio = trackID }
         desiredAudioID = trackID
         let track = trackID.flatMap { id in player.audioTracks.first { $0.id == id } } ?? player.audioTracks.first
         if let track { player.selectedAudioTrack = track }
@@ -336,6 +351,8 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func selectEmbeddedSubtitle(_ trackID: String?) {
+        // Mid-reopen the track list is empty: keep the id for when it's back.
+        if reopen != nil { reopen?.subtitle = trackID; snapshot.selectedEmbeddedSubtitleID = trackID; return }
         desiredSubtitleID = trackID.flatMap { id in player.subtitleTracks.contains { $0.id == id } ? id : nil }
         applySubtitleSelection()
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
@@ -401,13 +418,28 @@ public final class VLCEngine: PlaybackEngine {
         scheduleRestyleIfNeeded()
     }
 
-    /// True when a text subtitle (not a picture one) from the file is showing.
+    public func applySubtitleRestyleNow() {
+        restyleTask?.cancel()
+        guard resource != nil, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle,
+              snapshot.status != .loading else { return }
+        snapshot.subtitleRestylePending = false
+        replacePlayer()
+    }
+
+    /// True when a text subtitle VLC styles (SRT-like: not pictures, not ASS,
+    /// which libass draws in the file's own look) from the file is showing.
     private var showsEmbeddedTextSubtitle: Bool {
         guard let id = desiredSubtitleID else { return false }
-        return snapshot.embeddedSubtitles.first { $0.id == id }.map { !$0.isBitmap } ?? false
+        return snapshot.embeddedSubtitles.first { $0.id == id }.map { !$0.isBitmap && !$0.keepsOwnStyle } ?? false
+    }
+
+    private func updateRestylePending() {
+        let pending = resource != nil && restyleHeld && styleArguments != playerStyleArguments && showsEmbeddedTextSubtitle
+        if pending != snapshot.subtitleRestylePending { snapshot.subtitleRestylePending = pending }
     }
 
     private func scheduleRestyleIfNeeded() {
+        updateRestylePending()
         restyleTask?.cancel()
         guard resource != nil, !restyleHeld, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle else { return }
         restyleTask = Task { [weak self] in
@@ -452,14 +484,41 @@ public final class VLCEngine: PlaybackEngine {
             "--freetype-background-opacity=\(alpha(style.backgroundOpacity))",
             "--freetype-background-color=\(rgb(style.backgroundColor))",
         ]
-        // Distance from the bottom, beyond VLC's own, in pixels of a 1080-line picture.
-        if style.anchor == .bottom, style.verticalMargin > SubtitleStyle.defaultMargin + 0.005 {
-            args.append("--sub-margin=\(Int((style.verticalMargin - SubtitleStyle.defaultMargin) * 1080))")
+        // libass (ASS tracks) finds no system fonts by itself: without a folder,
+        // a track whose video carries no fonts shows nothing at all.
+        if let fonts = SubtitleFontFolder.path { args.append("--ssa-fontsdir=\(fonts)") }
+        // VLC only places text up from the bottom: its margin, beyond VLC's own, in
+        // pixels of a 1080-line picture. Middle and top are reached by raising it
+        // (a typical line's height is allowed for the text: a fixed amount, so a size
+        // change, which VLC takes live, never reopens the stream).
+        let line = 0.06
+        let fromBottom: Double = switch style.anchor {
+        case .bottom: style.verticalMargin
+        case .middle: 0.5 - line / 2
+        case .top: 1 - style.verticalMargin - line
+        }
+        if fromBottom > SubtitleStyle.defaultMargin + 0.005 {
+            args.append("--sub-margin=\(Int((fromBottom - SubtitleStyle.defaultMargin) * 1080))")
+        }
+        // Left and right alignment (VLC's text decoder: 1 left, 2 right; 0 centre).
+        switch style.alignment {
+        case .leading: args.append("--subsdec-align=1")
+        case .trailing: args.append("--subsdec-align=2")
+        case .center: break
         }
         return args
     }
 
+    /// Stops for good: a restyle or Night Mode reopen still waiting can't start it again.
     public func stop() {
+        restyleTask?.cancel(); restyleTask = nil
+        reloadTask?.cancel(); reloadTask = nil
+        reopen = nil
+        teardown()
+    }
+
+    /// Stops what's playing (also the first step of every load, including a reopen's).
+    private func teardown() {
         eventTask?.cancel(); eventTask = nil
         tickTask?.cancel(); tickTask = nil
         if resource != nil || player.state != .idle { player.stop() }
@@ -607,13 +666,18 @@ public final class VLCEngine: PlaybackEngine {
         guard let resource else { return }
         if case .failed = snapshot.status { return }
         let position = snapshot.position
-        let wasPlaying = !intendedPaused
-        let subtitle = desiredSubtitleID, audio = desiredAudioID ?? snapshot.selectedAudioID, rate = snapshot.rate
+        let rate = snapshot.rate
+        if reopen == nil { reopen = (!intendedPaused, desiredSubtitleID, desiredAudioID ?? snapshot.selectedAudioID) }
         reloadTask?.cancel()
         reloadTask = Task { [weak self] in
             guard let self else { return }
-            do { try await self.load(resource, startAt: max(position, 0.5)) } catch { return }
-            guard self.resource == resource else { return }
+            do { try await self.loadMedia(resource, startAt: max(position, 0.5)) } catch {
+                if !Task.isCancelled { self.reopen = nil }  // failed: play and pause work directly again
+                return
+            }
+            guard self.resource == resource, !Task.isCancelled, let wanted = self.reopen else { return }
+            self.reopen = nil
+            let wasPlaying = wanted.playing, subtitle = wanted.subtitle, audio = wanted.audio
             // VLC keeps track ids for the same file: the same tracks come back on.
             // The audio has to be chosen again too, or VLC plays the file's default
             // track (another language, or the commentary) after a subtitle change.
@@ -822,11 +886,12 @@ public final class VLCEngine: PlaybackEngine {
         if audio != snapshot.audioTracks { snapshot.audioTracks = audio }
         let subs = player.subtitleTracks.enumerated().map { i, t in
             MediaTrack(id: t.id, kind: .subtitle, label: Self.label(t, index: i), languageCode: t.language,
-                       isBitmap: Self.isBitmapSubtitle(codec: t.codecString))
+                       isBitmap: Self.isBitmapSubtitle(codec: t.codecString), format: Self.subtitleFormat(codec: t.codecString))
         }
         if subs != snapshot.embeddedSubtitles { snapshot.embeddedSubtitles = subs }
         snapshot.selectedAudioID = player.selectedAudioTrack?.id
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
+        updateRestylePending()
     }
 
     /// VLC picks "default" subtitle tracks itself; Bluebox's session decides.
@@ -848,6 +913,23 @@ public final class VLCEngine: PlaybackEngine {
     static func isBitmapSubtitle(codec: String?) -> Bool {
         guard let c = codec?.lowercased().trimmingCharacters(in: .whitespaces) else { return false }
         return ["pgs", "pgss", "spu", "spub", "dvbs", "xsub", "cvd", "ogt", "scte", "kate"].contains(c)
+    }
+
+    /// A subtitle codec's everyday name (VLC FourCCs).
+    static func subtitleFormat(codec: String?) -> String? {
+        guard let c = codec?.lowercased().trimmingCharacters(in: .whitespaces) else { return nil }
+        switch c {
+        case "subt": return "SRT"
+        case "ssa", "ass": return "ASS"
+        case "pgs", "pgss": return "PGS"
+        case "spu", "spub": return "VobSub"
+        case "dvbs": return "DVB"
+        case "wvtt", "webvtt": return "WebVTT"
+        case "ttml", "dfxp": return "TTML"
+        case "tx3g": return "Text"
+        case "cea6", "c608", "c708", "cea7": return "CC"
+        default: return c.uppercased()
+        }
     }
 
     static func label(_ track: Track, index: Int) -> String {
@@ -889,4 +971,38 @@ public final class VLCEngine: PlaybackEngine {
         }.value
         #endif
     }
+}
+
+/// A folder of links to the fonts ASS subtitles usually ask for, for libass.
+///
+/// libass in this libVLC build has no system font lookup, only `ssa-fontsdir`,
+/// and it reads every file in that folder each time a subtitle decoder starts
+/// (the whole system font folder costs up to a second). So it gets a small
+/// folder: Helvetica Neue (libass's fallback for any font it can't find), the
+/// common Windows families, and wide-coverage fonts for CJK and other scripts.
+enum SubtitleFontFolder {
+    static let wanted = [
+        "HelveticaNeue.ttc", "Helvetica.ttc", "Arial.ttf", "Arial Bold.ttf", "Arial Italic.ttf", "Arial Bold Italic.ttf",
+        "Arial Unicode.ttf", "Times New Roman.ttf", "Times New Roman Bold.ttf", "Times New Roman Italic.ttf",
+        "Verdana.ttf", "Verdana Bold.ttf", "Trebuchet MS.ttf", "Trebuchet MS Bold.ttf", "Georgia.ttf", "Georgia Bold.ttf",
+        "Tahoma.ttf", "Tahoma Bold.ttf", "Comic Sans MS.ttf", "Comic Sans MS Bold.ttf", "Impact.ttf",
+        "Hiragino Sans GB.ttc", "ヒラギノ角ゴシック W3.ttc", "ヒラギノ角ゴシック W6.ttc", "AppleSDGothicNeo.ttc", "PingFang.ttc",
+    ]
+    static let searched = ["/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/System/Library/Fonts/Core",
+                           "/System/Library/Fonts/CoreAddition", "/System/Library/Fonts/CoreUI", "/Library/Fonts"]
+
+    /// Made once per launch; nil when no font could be linked.
+    static let path: String? = {
+        let fm = FileManager.default
+        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let dir = caches.appending(path: "SubtitleFonts", directoryHint: .isDirectory)
+        try? fm.removeItem(at: dir)  // system fonts move between OS versions: link afresh
+        guard (try? fm.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else { return nil }
+        var linked = 0
+        for name in wanted {
+            guard let source = searched.lazy.map({ "\($0)/\(name)" }).first(where: fm.isReadableFile(atPath:)) else { continue }
+            if (try? fm.createSymbolicLink(atPath: dir.appending(path: name).path, withDestinationPath: source)) != nil { linked += 1 }
+        }
+        return linked > 0 ? dir.path : nil
+    }()
 }

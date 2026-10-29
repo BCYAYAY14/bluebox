@@ -217,7 +217,7 @@ func waitUntil(_ timeout: Duration = .seconds(3), _ condition: @MainActor () -> 
         await s.start(movie, resource: resource(), resume: false)
         s.importSubtitle(Fixtures.testSubtitleURL)
         #expect(s.externalSubtitles.count == 1)
-        #expect(s.subtitleSelection == .external("import-en.srt"))
+        #expect(s.subtitleSelection == .external("import-\(Fixtures.testSubtitleURL.standardizedFileURL.path)"))
         await s.end()
     }
 

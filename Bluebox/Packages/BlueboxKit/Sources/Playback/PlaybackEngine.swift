@@ -44,10 +44,19 @@ public struct MediaTrack: Identifiable, Hashable, Sendable {
     /// Picture subtitles (PGS, VobSub, DVB): the engine draws them as they are,
     /// so the subtitle style can't change them.
     public let isBitmap: Bool
-    public init(id: String, kind: Kind, label: String, languageCode: String?, isExternal: Bool = false, isBitmap: Bool = false) {
+    /// The subtitle format as people know it ("SRT", "ASS", "PGS"), when known.
+    /// Shown beside tracks of the same language so they can be told apart.
+    public let format: String?
+    public init(id: String, kind: Kind, label: String, languageCode: String?, isExternal: Bool = false, isBitmap: Bool = false,
+                format: String? = nil) {
         self.id = id; self.kind = kind; self.label = label; self.languageCode = languageCode; self.isExternal = isExternal
-        self.isBitmap = isBitmap
+        self.isBitmap = isBitmap; self.format = format
     }
+
+    /// ASS/SSA tracks in the video carry their own fonts, colours and
+    /// positions, which the engine draws as the file says. (Bluebox draws
+    /// subtitle files itself, in the user's style.)
+    public var keepsOwnStyle: Bool { !isExternal && format == "ASS" }
 }
 
 /// Everything the UI needs to render player state, published as one value.
@@ -78,6 +87,9 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     /// True when the engine draws embedded subtitles itself and can delay them
     /// and restyle text tracks (VLC). AVPlayer hands the text to Bluebox instead.
     public var drawsEmbeddedSubtitles = false
+    /// A new subtitle look is waiting for the stream to reopen (VLC text tracks
+    /// while the subtitle card is open); `applySubtitleRestyleNow` does it now.
+    public var subtitleRestylePending = false
     public init() {}
 }
 
@@ -120,6 +132,8 @@ public protocol PlaybackEngine: AnyObject {
     /// Holds back a style change that needs the stream reopened (VLC's look,
     /// apart from size) while the subtitle panel is open.
     func setSubtitleRestyleHeld(_ held: Bool)
+    /// Applies a held subtitle look now (one reopen), without waiting for the card to close.
+    func applySubtitleRestyleNow()
     /// Output volume, 0…1, and mute. Audio only: never touches the video output.
     func setVolume(_ volume: Float, muted: Bool)
     /// Shifts the sound against the picture (positive plays it later).
@@ -132,6 +146,7 @@ public extension PlaybackEngine {
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {}
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {}
     func setSubtitleRestyleHeld(_ held: Bool) {}
+    func applySubtitleRestyleNow() {}
     func setVolume(_ volume: Float, muted: Bool) {}
     func setAudioDelay(_ seconds: TimeInterval) {}
     var supportsAudioDelay: Bool { false }

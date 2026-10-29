@@ -127,6 +127,9 @@ public final class AppModel {
     public private(set) var addonStatus: AddonPlaybackStatus?
     /// What Play is opening, for the preparing overlay's title and art.
     public private(set) var preparingItem: NowPlayingItem?
+    /// Bumped by every `play`: only the newest one opens the player (a double
+    /// click, or Play pressed twice, never leaves two videos playing).
+    @ObservationIgnored private var playRequest = 0
     public nonisolated var addonsCanStreamTorrents: Bool { addons.canStreamTorrents }
     @ObservationIgnored private var preparing: Task<PlaybackResource, Error>?
     /// The episode Up Next resolved, so the countdown and the play that
@@ -652,7 +655,8 @@ public final class AppModel {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "Subtitles", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safe = result.release.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" ? String($0) : "_" }.joined().prefix(80)
-        let url = dir.appending(path: "\(safe).\(result.language ?? "und").srt")
+        // The result's id too: several files often share a release name and language (SDH and plain).
+        let url = dir.appending(path: "\(safe)-\(result.id).\(result.language ?? "und").srt")
         try data.write(to: url, options: .atomic)
         return url
     }
@@ -906,12 +910,19 @@ public final class AppModel {
             alert = AppAlert(title: "You're offline", message: "Connect to the internet to stream “\(item.title)”. Downloaded titles still play.")
             return
         }
+        playRequest &+= 1
+        let request = playRequest
+        // One video at a time: what's playing ends (and saves its place) before the next opens.
+        if activePlayer != nil { await closePlayer() }
+        guard request == playRequest else { return }
         resolvedNext = nil
         await holdTorrentDownloads(before: variant, key: item.key)
         preparingItem = item
         defer { if preparingItem == item { preparingItem = nil } }
         do {
             let resource = try await resolveCancellably(variant)
+            // Cancelled, or another Play came after this one: it opens nothing.
+            guard request == playRequest else { return }
             await holdTorrentDownloads(streaming: resource.variant)
             rememberSource(variant, for: item.key)
             noteStreaming(resource.variant)  // the mobile data counter
@@ -976,11 +987,14 @@ public final class AppModel {
         // `addonStatus` (the overlay) stays until `play` has put the player in
         // its place, so the library doesn't flash between the two.
         defer { preparing = nil }
-        return try await withTaskCancellationHandler {
+        let resource = try await withTaskCancellationHandler {
             try await task.value
         } onCancel: {
             task.cancel()
         }
+        // A source that finished anyway after Cancel: the player still doesn't open.
+        if task.isCancelled { throw CancellationError() }
+        return resource
     }
 
     /// Prefers the source that last played this item (or its series).
@@ -1005,6 +1019,9 @@ public final class AppModel {
 
     public func closePlayer() async {
         guard let session = activePlayer else { return }
+        // Quiet straight away, and a video still opening stands down: the steps
+        // below can take a moment, and the player is already leaving.
+        session.beginClosing()
         if let v = activeVariant, let jf = await registry.source(v.sourceID) as? JellyfinSource {
             let position = session.snapshot.position
             Task { await jf.reportProgress(itemID: v.id, position: position, isPaused: true, stopped: true) }
@@ -1050,7 +1067,8 @@ public final class AppModel {
         // Defaults for every item the session starts, Up Next and Next Episode included.
         session.onItemStarted = { [weak self, weak session] _ in
             guard let self, let session else { return }
-            session.setRate(self.defaultSpeed); self.applyPlaybackDefaults(to: session)
+            // The first item takes Settings' speed; later ones (next episode) keep the one in use.
+            session.setRate(session.chosenRate ?? self.defaultSpeed); self.applyPlaybackDefaults(to: session)
         }
         let settings = settings
         session.engineSwitcher = { resource, current in settings.replacementEngine(for: resource, current: current, streams: streams) }
@@ -1080,7 +1098,10 @@ public final class AppModel {
         }
         let fetched: TitleDetail? = if let known { known } else { try? await metadata.detail(for: seriesKey) }
         guard let detail = fetched else { return nil }
+        // The player this is for; if it closes meanwhile, nothing new may start.
+        let owner = activePlayer
         let availability = await registry.availability(for: nextKey)
+        guard activePlayer === owner else { return nil }
         guard let variant = chooseVariant(availability.variants, for: nextKey),
               PlaybackEngines.canAttempt(container: variant.container) else { return nil }
         await holdTorrentDownloads(before: variant, key: nextKey)
@@ -1089,6 +1110,12 @@ public final class AppModel {
             resource = try await registry.resolve(variant)
         } catch {
             Log.playback.error("Up Next couldn't resolve \(nextKey.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            return nil
+        }
+        guard activePlayer === owner else {
+            // Closed while it was found: let its stream and the paused downloads go.
+            if resource.variant.sourceID == addons.id { await addons.stopStreaming() }
+            releaseTorrentDownloadHolds()
             return nil
         }
         await holdTorrentDownloads(streaming: resource.variant)

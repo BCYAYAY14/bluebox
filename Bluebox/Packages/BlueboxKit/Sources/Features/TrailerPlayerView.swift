@@ -200,6 +200,9 @@ private struct YouTubeWebView: PlatformViewRepresentable {
             web.evaluateJavaScript("if(player&&player.stopVideo){player.stopVideo()}")
             web.configuration.userContentController.removeScriptMessageHandler(forName: "bluebox")
             web.stopLoading()
+            // A closed sheet's web view can outlive it for a moment: no sound from it meanwhile.
+            web.pauseAllMediaPlayback()
+            web.loadHTMLString("", baseURL: nil)
         }
 
         /// Only the player page and YouTube load here; links (the YouTube logo) open in the browser.

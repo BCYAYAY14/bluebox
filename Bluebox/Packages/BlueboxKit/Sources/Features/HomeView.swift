@@ -991,14 +991,14 @@ struct HeroView: View {
     // MARK: Preview
 
     private var previewID: String {
-        "\(title.key.rawValue)|\(app.features.autoplayPreviews)|\(app.canAutoplayPreviews)|\(app.activePlayer == nil)|\(isTabVisible)"
+        "\(title.key.rawValue)|\(app.features.autoplayPreviews)|\(app.canAutoplayPreviews)|\(app.activePlayer == nil && app.preparingItem == nil)|\(isTabVisible)"
     }
 
     /// `heroTrailer` answers nil on mobile data, in Low Data Mode, offline, or
     /// with Settings › Playback › Autoplay Previews off.
     private func loadTrailer() async {
         stopTrailer()
-        guard !isCompact, isTabVisible, app.activePlayer == nil, let video = await app.heroTrailer(for: title) else { return }
+        guard !isCompact, isTabVisible, app.activePlayer == nil, app.preparingItem == nil, let video = await app.heroTrailer(for: title) else { return }
         try? await Task.sleep(for: .seconds(1))  // the artwork first, then the preview fades in over it
         guard !Task.isCancelled else { return }
         trailerMuted = true

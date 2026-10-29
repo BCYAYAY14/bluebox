@@ -4,14 +4,23 @@ import SwiftUI
 /// Building blocks for the player's cards: titled sections, chips for short
 /// option lists, sliders with a value and a reset, and key caps that show
 /// Mac shortcuts. Touch targets are 44 pt on iOS and compact (28 pt) on the Mac.
+@MainActor
 enum PanelMetrics {
     #if os(iOS)
-    static let control: CGFloat = 44
-    static let chipFont = Font.subheadline.weight(.semibold)
+    /// A phone on its side: the cards are short, so their controls are
+    /// tighter (34 pt, still easy to hit) and their type a step smaller.
+    /// Set by the player from its stage height.
+    static var dense = false
+    static var control: CGFloat { dense ? 34 : 44 }
+    static var chipFont: Font { dense ? .footnote.weight(.semibold) : .subheadline.weight(.semibold) }
+    /// The big number in a dial (speed, delays).
+    static var valueFont: Font { dense ? .title3.weight(.bold) : .title2.weight(.bold) }
     static let showsShortcuts = false
     #else
+    static let dense = false
     static let control: CGFloat = 28
     static let chipFont = Font.callout.weight(.medium)
+    static let valueFont = Font.title2.weight(.bold)
     static let showsShortcuts = true
     #endif
     static let cardRadius: CGFloat = 14
@@ -59,7 +68,7 @@ struct PanelChip: View {
                 .font(PanelMetrics.chipFont)
                 .monospacedDigit()
                 .lineLimit(1)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, PanelMetrics.dense ? 10 : 12)
                 .frame(minWidth: PanelMetrics.control, minHeight: PanelMetrics.control)
                 .foregroundStyle(selected ? Color.black : Palette.textPrimary)
                 .background(selected ? Color.white : Color.white.opacity(hovering ? 0.1 : 0), in: Capsule())
@@ -260,5 +269,106 @@ struct PanelPressStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             #endif
             .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// One number you tune by ear or eye (subtitle timing, audio delay, speed):
+/// the value large, what it means in words, fine and coarse steps that repeat
+/// while held, and a slider for big moves. The same in every card that has one.
+struct ValueDial: View {
+    let title: String
+    let value: Double
+    let range: ClosedRange<Double>
+    let defaultValue: Double
+    /// Fine and coarse step sizes (the buttons are −coarse −fine +fine +coarse).
+    let fine: Double
+    let coarse: Double
+    let format: (Double) -> String
+    /// "Subtitles show 0.4 s later": what the value does, in words.
+    let meaning: (Double) -> String
+    /// Mac keys for the fine steps ("{" and "}").
+    var keys: (String, String)? = nil
+    var stepLabel: (Double) -> String = { String(format: "%+g", $0) }
+    let set: (Double) -> Void
+
+    private var isDefault: Bool { abs(value - defaultValue) < 0.0005 }
+
+    var body: some View {
+        VStack(spacing: PanelMetrics.dense ? 5 : 8) {
+            VStack(spacing: 1) {
+                Text(format(value))
+                    .font(PanelMetrics.valueFont).monospacedDigit()
+                    .foregroundStyle(isDefault ? Palette.textPrimary : Palette.brandBright)
+                    .contentTransition(.numericText(value: value))
+                Text(meaning(value))
+                    .font(.caption).foregroundStyle(Palette.textSecondary)
+                    .lineLimit(2).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+            .accessibilityValue("\(format(value)), \(meaning(value))")
+            .accessibilityAdjustableAction { d in set(clamp(value + (d == .increment ? fine : -fine))) }
+            HStack(spacing: 6) {
+                step(-coarse, key: nil)
+                step(-fine, key: keys?.0)
+                step(fine, key: keys?.1)
+                step(coarse, key: nil)
+            }
+            HStack(spacing: Spacing.s) {
+                // No fill (a delay of zero sits in the middle, not at the start), with a tick at the default.
+                Slider(value: Binding(get: { value }, set: { set(snap($0)) }), in: range)
+                    .tint(.white.opacity(0.25))
+                    .controlSize(.small)
+                    .background(alignment: .leading) {
+                        GeometryReader { g in
+                            let f = (defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound)
+                            Capsule().fill(.white.opacity(0.6)).frame(width: 2, height: 10)
+                                .position(x: 8 + (g.size.width - 16) * f, y: g.size.height / 2)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                    .accessibilityHidden(true)
+                Button { set(defaultValue) } label: {
+                    Image(systemName: "arrow.counterclockwise").font(.caption.weight(.bold))
+                        .frame(width: PanelMetrics.control * 0.8, height: PanelMetrics.control * 0.8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PanelPressStyle())
+                .foregroundStyle(Palette.textSecondary)
+                .opacity(isDefault ? 0.3 : 1)
+                .disabled(isDefault)
+                .accessibilityLabel("Reset \(title)")
+                .help("Reset \(title)")
+            }
+        }
+        .padding(PanelMetrics.dense ? 6 : 8)
+        .background(Palette.elevated, in: RoundedRectangle(cornerRadius: PlayerCardMetrics.tileRadius, style: .continuous))
+        .animation(.snappy(duration: 0.2), value: value)
+    }
+
+    private func clamp(_ v: Double) -> Double { min(max(v, range.lowerBound), range.upperBound) }
+    /// The slider lands on fine steps, and on the default when near it.
+    private func snap(_ v: Double) -> Double {
+        let s = (v / fine).rounded() * fine
+        return abs(s - defaultValue) < fine * 1.5 ? defaultValue : clamp(s)
+    }
+
+    private func step(_ d: Double, key: String?) -> some View {
+        let next = clamp(value + d)
+        return Button { set(next) } label: {
+            VStack(spacing: 2) {
+                Text(stepLabel(d)).font(PanelMetrics.chipFont).monospacedDigit()
+                if let key { KeyCap(key) }
+            }
+            // All four the same height, whether or not they show a key.
+            .frame(maxWidth: .infinity, minHeight: PanelMetrics.control + (keys != nil && PanelMetrics.showsShortcuts ? 16 : 0))
+            .background(.white.opacity(abs(d) == coarse ? 0.06 : 0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(PanelPressStyle())
+        .buttonRepeatBehavior(.enabled)
+        .disabled(abs(next - value) < 0.0001)
+        .accessibilityLabel("\(title) \(stepLabel(d))")
     }
 }

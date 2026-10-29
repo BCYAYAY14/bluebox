@@ -15,6 +15,16 @@ struct TrackRow: Identifiable, Equatable {
     let languageCode: String?
     let selected: Bool
     let selection: SubtitleSelection?
+    /// "ASS", "SRT", "PGS": shown when it tells tracks of one language apart.
+    var format: String? = nil
+    /// Draws in the file's own look (ASS in the video), not the subtitle style.
+    var keepsOwnStyle = false
+
+    /// What's shown at the row's end: the detail and where it's from ("SDH · File").
+    var tag: String? {
+        let parts = [detail, sourceLabel].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 
     /// "Subtitle file" / "Added": only files are marked; tracks in the video are the norm.
     var sourceLabel: String? {
@@ -24,6 +34,15 @@ struct TrackRow: Identifiable, Equatable {
         case .added: "Added"
         }
     }
+}
+
+/// One language in the subtitle list and its tracks ("English": plain, SDH, ASS, a file).
+struct TrackLanguageGroup: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let languageCode: String?
+    let rows: [TrackRow]
+    var selected: TrackRow? { rows.first(where: \.selected) }
 }
 
 /// Builds the rows for the picker and the subtitle panel: cleaned names,
@@ -44,14 +63,46 @@ enum TrackRows {
         let embedded = session.snapshot.embeddedSubtitles
         let external = session.externalSubtitles
         let labels = TrackLabel.labels(for: embedded + external)
-        let rows = (embedded + external).map { t in
+        let tracks = embedded + external
+        let details = distinctDetails(tracks, labels: labels)
+        let rows = tracks.map { t in
             let l = labels[t.id] ?? TrackLabel(title: t.label)
             let selection: SubtitleSelection = t.isExternal ? .external(t.id) : .embedded(t.id)
             let source: TrackRow.Source = !t.isExternal ? .video : t.id.hasPrefix("import-") ? .added : .file
-            return TrackRow(id: t.id, title: l.title, detail: l.detail, source: source, isBitmap: t.isBitmap,
-                            languageCode: l.languageCode, selected: session.subtitleSelection == selection, selection: selection)
+            return TrackRow(id: t.id, title: l.title, detail: details[t.id] ?? nil, source: source, isBitmap: t.isBitmap,
+                            languageCode: l.languageCode, selected: session.subtitleSelection == selection, selection: selection,
+                            format: t.format, keepsOwnStyle: t.keepsOwnStyle)
         }
         return ordered(rows, preferred: preferred)
+    }
+
+    /// Details that tell tracks with the same name apart: "SDH", "Forced",
+    /// then the format ("ASS", "SRT") when that differs, and only then a number
+    /// ("2 of 3"), never VLC's "Track 7".
+    static func distinctDetails(_ tracks: [MediaTrack], labels: [String: TrackLabel]) -> [String: String?] {
+        var out: [String: String?] = [:]
+        let parsed = tracks.map { t -> (MediaTrack, TrackLabel) in
+            var l = labels[t.id] ?? TrackLabel(title: t.label)
+            l.details.removeAll { $0.range(of: #"^Track \d+$"#, options: .regularExpression) != nil }
+            return (t, l)
+        }
+        let groups = Dictionary(grouping: parsed, by: { $0.1.title })
+        for (_, group) in groups {
+            let formats = Set(group.map { $0.0.format ?? "" })
+            var withFormat = group.map { t, l in
+                (t.id, l.details + (group.count > 1 && formats.count > 1 ? [t.format].compactMap { $0 } : []))
+            }
+            // Still the same: number them in the file's order.
+            let counts = Dictionary(grouping: withFormat, by: { $0.1 }).mapValues(\.count)
+            var seen: [[String]: Int] = [:]
+            for i in withFormat.indices where counts[withFormat[i].1, default: 0] > 1 {
+                let key = withFormat[i].1
+                seen[key, default: 0] += 1
+                withFormat[i].1.append("\(seen[key]!) of \(counts[key]!)")
+            }
+            for (id, parts) in withFormat { out[id] = parts.isEmpty ? nil : parts.joined(separator: " · ") }
+        }
+        return out
     }
 
     /// Languages you use first (in the file's order), then the rest A to Z.
@@ -76,6 +127,37 @@ enum TrackRows {
             if let code, !out.contains(TrackChoice.normalized(code)) { out.append(TrackChoice.normalized(code)) }
         }
         return out
+    }
+
+    /// Subtitle rows by language, in the rows' order (your languages first):
+    /// one row per language in the list, its tracks a tap away.
+    static func languageGroups(_ rows: [TrackRow], locale: Locale = .current) -> [TrackLanguageGroup] {
+        var order: [String] = []
+        var byKey: [String: [TrackRow]] = [:]
+        for r in rows {
+            let key = r.languageCode.map { "lang:" + TrackChoice.normalized($0) } ?? "name:" + r.title
+            if byKey[key] == nil { order.append(key) }
+            byKey[key, default: []].append(r)
+        }
+        return order.map { key in
+            let members = byKey[key] ?? []
+            let code = members.first?.languageCode.map(TrackChoice.normalized)
+            let name = code.flatMap { locale.localizedString(forLanguageCode: $0) }.map { $0.capitalized(with: locale) }
+            return TrackLanguageGroup(id: key, title: name ?? members.first?.title ?? "Unknown", languageCode: code, rows: members)
+        }
+    }
+
+    /// Long language lists show your languages, the chosen one and added files, then "More".
+    static func split(_ groups: [TrackLanguageGroup], preferred: [String], limit: Int = 6)
+        -> (shown: [TrackLanguageGroup], more: [TrackLanguageGroup]) {
+        guard groups.count > limit + 2 else { return (groups, []) }
+        let prefs = preferred.map(TrackChoice.normalized)
+        var shown = groups.filter { g in
+            g.selected != nil || g.rows.contains { $0.source == .added } || g.languageCode.map(prefs.contains) == true
+        }
+        if shown.count < limit { shown += groups.filter { !shown.contains($0) }.prefix(limit - shown.count) }
+        let ids = Set(shown.map(\.id))
+        return (groups.filter { ids.contains($0.id) }, groups.filter { !ids.contains($0.id) })
     }
 
     /// Long lists show the first few, the selected one, and a "More Languages" disclosure.

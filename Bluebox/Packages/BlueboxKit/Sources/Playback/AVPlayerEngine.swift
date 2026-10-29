@@ -134,6 +134,8 @@ public final class AVPlayerEngine: PlaybackEngine {
             }
             snapshot.chapters = chapters
         }
+        // Stopped or replaced while the tracks and chapters loaded: install nothing.
+        guard self.resource == resource else { throw CancellationError() }
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 0  // let AVFoundation choose
         // Only used to notice frozen video; frames are read and dropped.
@@ -447,9 +449,11 @@ public final class AVPlayerEngine: PlaybackEngine {
                 return  // stopped or replaced meanwhile
             }
         }
+        guard self.resource == resource else { return }
         if audio != nil { selectAudio(audio) }
         if subtitle != nil { selectEmbeddedSubtitle(subtitle) }
-        if resume { player.playImmediately(atRate: snapshot.rate) }
+        // A pause during the reopen wins over playing on.
+        if resume, wantsPlayback { player.playImmediately(atRate: snapshot.rate) }
     }
 
     /// Network failures get a fresh connection before they're shown.

@@ -20,6 +20,8 @@ struct TracksPanel: View {
     let onAddFile: () -> Void
     let onSearch: () -> Void
     @State private var page: TracksPage?
+    /// The language whose subtitle tracks are open (a page in the card).
+    @State private var language: String?
     @State private var showsMoreSubtitles = false
     @State private var showsMoreAudio = false
 
@@ -35,9 +37,14 @@ struct TracksPanel: View {
     var body: some View {
         @Bindable var app = app
         Group {
+            if let language, page == nil,
+               let group = TrackRows.languageGroups(TrackRows.subtitles(session, preferred: TrackRows.preferredLanguages(session, style: app.subtitleStyle)))
+                .first(where: { $0.id == language }) {
+                languagePage(group).transition(pageTransition)
+            } else {
             switch page {
             case .style:
-                SubtitleStylePage(style: $app.subtitleStyle, note: subtitleStyleNote(session), onBack: { page = nil })
+                SubtitleStylePage(style: $app.subtitleStyle, session: session, onBack: { page = nil })
                     .transition(pageTransition)
             case .timing:
                 SubtitleTimingPage(session: session, onBack: { page = nil })
@@ -48,8 +55,10 @@ struct TracksPanel: View {
             case nil:
                 main.transition(reduceMotion ? .opacity : .push(from: .leading))
             }
+            }
         }
         .animation(Motion.snappy(reduceMotion), value: page)
+        .animation(Motion.snappy(reduceMotion), value: language)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Audio and Subtitles")
         .accessibilityIdentifier("tracksPicker")
@@ -108,12 +117,15 @@ struct TracksPanel: View {
     }
 
     private func subtitleColumn(_ rows: [TrackRow], preferred: [String]) -> some View {
-        let parts = TrackRows.split(rows, preferred: preferred)
+        let parts = TrackRows.split(TrackRows.languageGroups(rows), preferred: preferred)
         return column("Subtitles", shortcut: "V") {
             row(TrackRow(id: "off", title: "Off", detail: nil, source: .video, isBitmap: false, languageCode: nil,
                          selected: session.subtitleSelection == .off, selection: .off)) { session.selectSubtitle(.off) }
-            ForEach(parts.shown) { r in row(r) { if let s = r.selection { session.selectSubtitle(s) } } }
-            more(parts.more, expanded: $showsMoreSubtitles) { r in if let s = r.selection { session.selectSubtitle(s) } }
+            ForEach(parts.shown) { g in groupRow(g) }
+            if !parts.more.isEmpty {
+                moreToggle(count: parts.more.count, expanded: $showsMoreSubtitles)
+                if showsMoreSubtitles { ForEach(parts.more) { g in groupRow(g) } }
+            }
             if rows.isEmpty {
                 Text("None in this video.")
                     .font(.caption).foregroundStyle(Palette.textTertiary)
@@ -166,6 +178,90 @@ struct TracksPanel: View {
         }
     }
 
+    /// One language: a single track picks straight away; several open their list.
+    @ViewBuilder private func groupRow(_ g: TrackLanguageGroup) -> some View {
+        if g.rows.count == 1, let only = g.rows.first {
+            row(TrackRow(id: only.id, title: g.title, detail: only.detail, source: only.source, isBitmap: only.isBitmap,
+                         languageCode: only.languageCode, selected: only.selected, selection: only.selection,
+                         format: only.format, keepsOwnStyle: only.keepsOwnStyle)) {
+                if let s = only.selection { session.selectSubtitle(s) }
+            }
+        } else {
+            let chosen = g.selected
+            Button { language = g.id } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold)).foregroundStyle(Palette.brandBright)
+                        .opacity(chosen != nil ? 1 : 0).frame(width: 14)
+                        .accessibilityHidden(true)
+                    Text(g.title)
+                        .font(PlayerPopoverMetrics.rowFont.weight(chosen != nil ? .semibold : .regular))
+                        .foregroundStyle(Palette.textPrimary).lineLimit(1).layoutPriority(1)
+                    Spacer(minLength: 4)
+                    // Which one is on, or how many there are.
+                    Text(chosen?.tag ?? "\(g.rows.count)")
+                        .font(.caption2.weight(.medium)).monospacedDigit()
+                        .foregroundStyle(chosen != nil ? Palette.textSecondary : Palette.textTertiary).lineLimit(1)
+                    Image(systemName: "chevron.forward").font(.caption2.weight(.bold)).foregroundStyle(Palette.textTertiary)
+                }
+                .padding(.horizontal, 6)
+                .frame(minHeight: PlayerPopoverMetrics.rowHeight)
+                .background {
+                    if chosen != nil {
+                        RoundedRectangle(cornerRadius: PlayerPopoverMetrics.rowRadius, style: .continuous).fill(Palette.wash)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: PlayerPopoverMetrics.rowRadius, style: .continuous))
+            }
+            .buttonStyle(PopoverRowStyle())
+            .accessibilityLabel("\(g.title), \(g.rows.count) tracks" + (chosen.map { ", \($0.tag ?? "on")" } ?? ""))
+            .accessibilityAddTraits(chosen != nil ? .isSelected : [])
+        }
+    }
+
+    /// A language's tracks: picking one turns it on and goes back.
+    private func languagePage(_ g: TrackLanguageGroup) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PlayerPageHeader("\(g.title) Subtitles", onBack: { language = nil })
+            VStack(spacing: 1) {
+                ForEach(g.rows) { r in
+                    PanelPickRow(title: r.detail ?? "Standard", detail: languagePageDetail(r, in: g), selected: r.selected) {
+                        if let s = r.selection { session.selectSubtitle(s) }
+                        language = nil
+                    }
+                }
+            }
+            Text("SDH adds sound cues for the deaf and hard of hearing. Forced shows only foreign-language lines. ASS tracks keep their own look.")
+                .font(.caption).foregroundStyle(Palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+        }
+    }
+
+    /// Under each track: its region or name when that differs, and where it's from.
+    private func languagePageDetail(_ r: TrackRow, in g: TrackLanguageGroup) -> String? {
+        var parts: [String] = []
+        if r.detail != nil, r.title != g.title { parts.append(r.title) }
+        parts.append(r.source == .video ? "In the video" : r.source == .added ? "Added file" : "Subtitle file")
+        return parts.joined(separator: " · ")
+    }
+
+    private func moreToggle(count: Int, expanded: Binding<Bool>) -> some View {
+        Button { withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() } } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right").font(.caption2.weight(.bold))
+                    .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0)).frame(width: 14)
+                Text(expanded.wrappedValue ? "Fewer" : "More Languages (\(count))").font(PlayerPopoverMetrics.rowFont.weight(.medium))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.horizontal, 6)
+            .frame(minHeight: PlayerPopoverMetrics.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PopoverRowStyle())
+    }
+
     private func linkRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
@@ -196,11 +292,13 @@ struct TracksPanel: View {
                     .lineLimit(1)
                     .layoutPriority(1)
                 Spacer(minLength: 4)
-                if let tag = r.sourceLabel ?? r.detail {
+                // Both: two English files are told apart by "SDH" or "2 of 2".
+                if let tag = r.tag {
                     Text(tag)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(Palette.textTertiary)
                         .lineLimit(1)
+                        .help(tag)
                 }
             }
             .padding(.horizontal, 6)

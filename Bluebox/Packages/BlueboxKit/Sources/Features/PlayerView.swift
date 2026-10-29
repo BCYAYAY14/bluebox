@@ -13,6 +13,7 @@ import VLCPlayback
 struct PlayerView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -54,6 +55,8 @@ struct PlayerView: View {
     /// Torrent swarm numbers while the video opens or stalls.
     @State private var swarm: SwarmStats?
     @State private var loadingSince: Date?
+    /// The spinner is up: a stall has lasted a moment (short hiccups don't flash it).
+    @State private var showsWaiting = false
     /// Downloaded parts of a torrent stream, as fractions of the file.
     @State private var available: [ClosedRange<Double>] = []
     /// iPhone: the window didn't turn as asked (a prompt offers to try again).
@@ -146,7 +149,11 @@ struct PlayerView: View {
         }
         #if os(macOS)
         .background(WindowReader { window.attach($0) })
-        .onAppear { window.onEscapeInWindow = { if panel != nil { closePanel() } else { Task { await app.closePlayer() } } } }
+        .onAppear {
+            window.onEscapeInWindow = { if panel != nil { closePanel() } else { Task { await app.closePlayer() } } }
+            window.onEscapeWithCard = { guard panel != nil else { return false }; closePanel(); return true }
+            window.onWindowClose = { Task { await app.closePlayer() } }
+        }
         .onDisappear { window.detach() }
         #else
         // iPhone: landscape while the player is up, portrait again as it closes.
@@ -227,7 +234,10 @@ struct PlayerView: View {
             if let skipFlash { skipIndicator(skipFlash) }
             // Mac: nothing sits over the middle of the picture except the
             // buffering ring while it waits (touch shows it in place of play).
-            if platform == .mac, waiting, !showsCard { bufferingRing(size: 46).allowsHitTesting(false).transition(.opacity) }
+            // Not over an open card (the timeline shows the stall there).
+            if platform == .mac, showsWaiting, !showsCard, panel == nil {
+                bufferingRing(size: 46).allowsHitTesting(false).transition(.opacity)
+            }
             if panel != nil, controlsShown {
                 // Clicking or tapping outside the card closes it, like a menu. Under
                 // the controls, so another bar button switches cards in one click.
@@ -317,7 +327,13 @@ struct PlayerView: View {
         .animation(Motion.standard(reduceMotion), value: showsCard)
         .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: panel)
         .coordinateSpace(.named(Self.stageSpace))
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { stageWidth = $0.width; stageSize = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            stageWidth = size.width; stageSize = size
+            #if os(iOS)
+            // A phone on its side: denser cards (see PanelMetrics.dense).
+            PanelMetrics.dense = size.height < 500
+            #endif
+        }
         #if os(iOS)
         // A paused AVPlayer layer can come back black after the stage changes
         // size (rotation on iPad): ask for the same frame again once it settles.
@@ -361,6 +377,24 @@ struct PlayerView: View {
             await episodes.load(for: session.item?.key, app: app)
         }
         .onChange(of: panel == nil, initial: true) { _, closed in session.holdsSubtitleRestyle = !closed }
+        // The credits countdown only runs while it can be seen and playback runs.
+        .onChange(of: session.snapshot.status != .playing || panel != nil || previewing || locked || showsCard, initial: true) { _, held in
+            skip.holdsCountdown = held
+        }
+        // A card left open under the error or end card would come back after it (and eat the first Esc).
+        .onChange(of: showsCard) { _, card in if card, panel != nil { closePanel() } }
+        // The bar can vanish under the pointer (an error or end card) without a hover-out.
+        .onChange(of: controlsShown) { _, shown in if !shown { hoveringControls = false; previewing = false } }
+        // A 2× hold whose key-up or finger-up never comes (the app lost focus, the item changed) ends here.
+        .onChange(of: scenePhase) { _, phase in if phase != .active { rightArrowDown = nil; endBoost() } }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            rightArrowDown = nil; endBoost()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            rightArrowDown = nil; endBoost()
+        }
+        #endif
         .onChange(of: app.subtitleStyle, initial: true) { old, new in
             session.subtitleStyle = new
             guard old != new else { return }
@@ -375,6 +409,19 @@ struct PlayerView: View {
         // How long it's been loading, for the loading words.
         .onChange(of: session.snapshot.status == .loading || session.snapshot.status == .buffering, initial: true) { _, waiting in
             loadingSince = waiting ? (loadingSince ?? Date()) : nil
+        }
+        // The spinner waits a moment before it shows, so a short stall (a seek,
+        // a card opening while the stream catches up) passes without it. A video
+        // that is still opening shows it straight away.
+        .task(id: waiting) {
+            guard waiting else {
+                if showsWaiting { withAnimation(.easeOut(duration: 0.2)) { showsWaiting = false } }
+                return
+            }
+            let opening = session.snapshot.status == .loading && session.snapshot.duration == nil
+            if !opening { try? await Task.sleep(for: .milliseconds(900)) }
+            guard !Task.isCancelled, waiting else { return }
+            withAnimation(.easeIn(duration: 0.2)) { showsWaiting = true }
         }
         // Torrent streams: swarm numbers for the loading words, and which parts
         // of the file are in for the timeline. Every second while it waits,
@@ -401,6 +448,7 @@ struct PlayerView: View {
             advertiseHandoff(force: true)
         }
         .onChange(of: session.item?.key) {
+            rightArrowDown = nil; endBoost()
             skip.reset()
             thumbnails = nil
             switchingTo = nil
@@ -642,6 +690,7 @@ struct PlayerView: View {
                 if panel != nil { closePanel() } else { Task { await app.closePlayer() } }
             },
             stepSpeed: { steps in
+                boostedFrom = nil  // a speed picked during a 2× hold is the one kept
                 let r = PlaybackSpeed.stepped(session.snapshot.rate, by: steps)
                 session.setRate(r)
                 flash("Speed \(PlaybackSpeed.label(r))")
@@ -981,7 +1030,7 @@ struct PlayerView: View {
             .help("Back \(app.settings.skipBackSeconds) seconds (←)")
             Button { session.togglePlayPause(); poke() } label: {
                 ZStack {
-                    if waiting {
+                    if showsWaiting {
                         bufferingRing(size: short ? 38 : 46)
                     } else {
                         Image(systemName: playing ? "pause.fill" : "play.fill")
@@ -1043,7 +1092,7 @@ struct PlayerView: View {
                          available: available,
                          loop: session.loopStart.map { a in (a / max(duration, 1), session.loopEnd.map { $0 / max(duration, 1) }) },
                          chapterMarks: duration > 0 ? s.chapters.map { $0.start / duration } : [],
-                         stalled: waiting,
+                         stalled: showsWaiting,
                          scrubFraction: $scrubFraction,
                          onScrub: { f in
                              guard let target = timeline.time(at: f) else { return }
@@ -1276,6 +1325,14 @@ struct PlayerView: View {
         if kind == .chapters, session.snapshot.chapters.isEmpty { return }
         panel = panel == kind ? nil : kind
         if panel != nil { poke() }
+        if panel == .episodes {
+            // Opens on the season playing (not the one last browsed), and retries a list that failed to load.
+            let key = session.item?.key
+            Task {
+                await episodes.load(for: key, app: app)
+                if let s = key?.episodeNumbers?.season, episodes.season != s { await episodes.show(season: s, app: app) }
+            }
+        }
     }
 
     private func closePanel() {
@@ -1332,7 +1389,11 @@ struct PlayerView: View {
                         onAddFile: { closePanel(); importingSubtitle = true },
                         onSearch: { closePanel(); searchingSubtitles = true })
         case .speed:
-            SpeedPanel(rate: session.snapshot.rate) { r in session.setRate(r); lastInteraction = Date() }
+            SpeedPanel(rate: session.snapshot.rate,
+                       remaining: session.snapshot.duration.map { max($0 - session.snapshot.position, 0) }) { r in
+                boostedFrom = nil
+                session.setRate(r); lastInteraction = Date()
+            }
         case .tools:
             ToolsPanel(session: session, skip: skip, columns: wide ? 5 : 3, statsShown: statsShown, initialPage: toolsStartPage,
                        onToggleStats: { statsShown.toggle() },

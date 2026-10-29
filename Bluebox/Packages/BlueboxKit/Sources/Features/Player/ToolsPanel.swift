@@ -373,33 +373,13 @@ struct AudioDelayPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PlayerPageHeader("Audio Delay", onBack: onBack) {
-                if session.audioDelay != 0 {
-                    Button("Reset") { session.setAudioDelay(0) }
-                        .font(.caption.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
-                }
-            }
+            PlayerPageHeader("Audio Delay", onBack: onBack)
             if session.supportsAudioDelay {
-                HStack(spacing: Spacing.s) {
-                    step(-0.05)
-                    VStack(spacing: 1) {
-                        Text(ToolsPanel.delayLabel(session.audioDelay))
-                            .font(.title3.weight(.heavy)).monospacedDigit()
-                            .foregroundStyle(session.audioDelay == 0 ? Palette.textPrimary : Palette.brandBright)
-                            .contentTransition(.numericText())
-                        Text("Earlier ← → Later · 50 ms steps").font(.caption2).foregroundStyle(Palette.textTertiary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Audio delay")
-                    .accessibilityValue(ToolsPanel.delayLabel(session.audioDelay))
-                    .accessibilityAdjustableAction { d in session.setAudioDelay(session.audioDelay + (d == .increment ? 0.05 : -0.05)) }
-                    step(0.05)
-                }
-                .padding(6)
-                .background(Palette.elevated, in: RoundedRectangle(cornerRadius: PlayerCardMetrics.tileRadius, style: .continuous))
-                .animation(.snappy(duration: 0.2), value: session.audioDelay)
-                Text("If voices come before lips move, play the sound later.").font(.caption).foregroundStyle(Palette.textTertiary)
+                ValueDial(title: "Audio delay", value: session.audioDelay, range: -2...2, defaultValue: 0,
+                          fine: 0.05, coarse: 0.25, format: ToolsPanel.delayLabel, meaning: Self.meaning,
+                          stepLabel: { String(format: $0 > 0 ? "+%d" : "−%d", Int((abs($0) * 1000).rounded())) }) { session.setAudioDelay($0) }
+                Text("Voices before lips move: play the sound later. Lips before voices: earlier. Steps are in milliseconds.")
+                    .font(.caption).foregroundStyle(Palette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Audio delay works when VLC plays the video (MKV and most torrents). This video plays with AVPlayer.")
@@ -409,17 +389,9 @@ struct AudioDelayPage: View {
         }
     }
 
-    private func step(_ d: Double) -> some View {
-        Button { session.setAudioDelay(session.audioDelay + d) } label: {
-            Image(systemName: d < 0 ? "minus" : "plus")
-                .font(.body.weight(.bold))
-                .frame(width: PanelMetrics.control + 4, height: PanelMetrics.control + 4)
-                .background(Color.white.opacity(0.1), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(PanelPressStyle())
-        .buttonRepeatBehavior(.enabled)
-        .accessibilityLabel(d < 0 ? "Sound earlier" : "Sound later")
+    static func meaning(_ s: Double) -> String {
+        let ms = Int((abs(s) * 1000).rounded())
+        return ms == 0 ? "Sound plays as recorded" : "Sound plays \(ms) ms \(s > 0 ? "later" : "earlier")"
     }
 }
 

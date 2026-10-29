@@ -33,6 +33,10 @@ final class PlayerWindowModel {
     @ObservationIgnored private var keyMonitor: Any?
     /// Esc in a window (not full screen), or ⌘W: close the player.
     @ObservationIgnored var onEscapeInWindow: () -> Void = {}
+    /// Esc with a card open: closes the card (returns true) before full screen is left.
+    @ObservationIgnored var onEscapeWithCard: () -> Bool = { false }
+    /// The window is closing (the red button): the player must stop with it.
+    @ObservationIgnored var onWindowClose: () -> Void = {}
 
     func attach(_ window: NSWindow?) {
         guard let window, window !== self.window else { return }
@@ -53,6 +57,10 @@ final class PlayerWindowModel {
                 MainActor.assumeIsolated { if let self { apply(self) } }
             })
         }
+        // The app stays open without windows: a closed window would otherwise leave the video playing.
+        observers.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.onWindowClose() }
+        })
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let key = KeyInfo(event)
             let handled = MainActor.assumeIsolated { self?.handle(key) ?? false }
@@ -85,6 +93,9 @@ final class PlayerWindowModel {
         }
         guard key.modifiers.isEmpty, !key.isRepeat else { return false }
         if key.keyCode == 53 { escape(); return true }  // Esc
+        // Return: the library under the player is only hidden, and its Play
+        // button's Return shortcut would start a second video.
+        if key.keyCode == 36 || key.keyCode == 76 { return true }
         if key.character == "f" { toggleFullScreen(); return true }
         return false
     }
@@ -120,6 +131,7 @@ final class PlayerWindowModel {
 
     func escape() {
         if isAnimating { return }  // a second Esc mid-animation would bounce back
+        if onEscapeWithCard() { return }  // a card first, then full screen, then the player
         if isFullScreen { toggleFullScreen() } else { onEscapeInWindow() }
     }
 

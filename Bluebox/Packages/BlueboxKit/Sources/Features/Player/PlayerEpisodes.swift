@@ -39,15 +39,24 @@ final class PlayerEpisodes {
         if seriesKey != series { reset() }
         loadedFor = key
         seriesKey = series
-        guard let detail = try? await app.metadata.detail(for: series), loadedFor == key else { return }
+        guard let detail = try? await app.metadata.detail(for: series) else {
+            if loadedFor == key { loadedFor = nil }  // offline or a timeout: try again next time
+            return
+        }
+        guard loadedFor == key else { return }
         seriesName = detail.title.name
         seasons = detail.seasons.filter { $0.episodeCount > 0 }.sorted { ($0.number == 0 ? 1000 : $0.number) < ($1.number == 0 ? 1000 : $1.number) }
         await refreshProgress(app: app)
+        guard loadedFor == key else { return }
         await show(season: s, app: app)
+        guard loadedFor == key else { return }
+        // A newer episode's load may have finished meanwhile: only the current one sets the neighbours.
         let nextNumbers = SeriesCursor.next(after: s, e, seasons: detail.seasons)
         let prevNumbers = Self.previous(before: s, e, seasons: detail.seasons)
-        next = await neighbour(nextNumbers, series: series, app: app)
-        previous = await neighbour(prevNumbers, series: series, app: app)
+        let n = await neighbour(nextNumbers, series: series, app: app)
+        let p = await neighbour(prevNumbers, series: series, app: app)
+        guard loadedFor == key else { return }
+        next = n; previous = p
     }
 
     /// Re-reads watched state (after an episode finishes or the panel opens).
@@ -63,7 +72,7 @@ final class PlayerEpisodes {
         loadingSeason = true
         defer { loadingSeason = false }
         let list = (try? await app.metadata.season(number, of: seriesKey).episodes) ?? []
-        seasonCache[number] = list
+        if !list.isEmpty { seasonCache[number] = list }  // a failed load is tried again
         if season == number { episodes = list }
     }
 

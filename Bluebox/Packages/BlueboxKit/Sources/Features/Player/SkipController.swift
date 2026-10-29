@@ -127,6 +127,10 @@ final class SkipController {
         cancelCountdown()
     }
 
+    /// While true the countdown stands still: playback is paused, or the pill
+    /// is hidden (a card is open), so nobody could see it or press "Watch Credits".
+    @ObservationIgnored var holdsCountdown = false
+
     /// Set by the view: what to do when an automatic countdown reaches zero.
     @ObservationIgnored var onCountdownFinished: (() -> Void)?
 
@@ -136,6 +140,7 @@ final class SkipController {
             while let left = self?.countdown, left > 0 {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let self else { return }
+                if self.holdsCountdown { continue }
                 self.countdown = left - 1
             }
             guard !Task.isCancelled, let self else { return }

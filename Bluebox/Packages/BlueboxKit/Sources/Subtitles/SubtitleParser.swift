@@ -13,17 +13,32 @@ public enum SubtitleParser {
         return SubtitleTimeline(cues: cues)
     }
 
-    /// UTF-8 (with or without BOM), UTF-16 with BOM, then Windows-1252 as a last resort.
+    /// UTF-8 (with or without BOM), UTF-16 with a BOM or without one (told by
+    /// its zero bytes), then Windows-1252 as a last resort.
     static func decode(_ data: Data) -> String? {
         if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
             return String(data: data, encoding: .utf16)
         }
+        if let wide = utf16WithoutBOM(data) { return wide }
         if let s = String(data: data, encoding: .utf8) {
             return s.hasPrefix("\u{FEFF}") ? String(s.dropFirst()) : s
         }
         // Windows-1252 leaves five bytes undefined (0x81, 0x8D, 0x8F, 0x90, 0x9D) and
         // refuses the whole file if one appears; Latin-1 maps every byte.
         return String(data: data, encoding: .windowsCP1252) ?? String(data: data, encoding: .isoLatin1)
+    }
+
+    /// Latin text in UTF-16 has a zero in every other byte: mostly the odd
+    /// ones for little-endian, the even ones for big-endian.
+    static func utf16WithoutBOM(_ data: Data) -> String? {
+        let sample = data.prefix(2000)
+        guard sample.count >= 8 else { return nil }
+        var evenZeros = 0, oddZeros = 0
+        for (i, b) in sample.enumerated() where b == 0 { if i % 2 == 0 { evenZeros += 1 } else { oddZeros += 1 } }
+        let half = sample.count / 2
+        if oddZeros > half * 6 / 10, evenZeros < half / 10 { return String(data: data, encoding: .utf16LittleEndian) }
+        if evenZeros > half * 6 / 10, oddZeros < half / 10 { return String(data: data, encoding: .utf16BigEndian) }
+        return nil
     }
 
     static func blocks(_ text: String) -> [[Substring]] {
@@ -44,12 +59,29 @@ public enum SubtitleParser {
     // MARK: SRT
 
     static func parseSRT(_ text: String) -> [SubtitleCue] {
-        blocks(text).compactMap { lines in
+        blocks(text).flatMap(splitRunTogether).compactMap { lines in
             guard let timingIndex = lines.firstIndex(where: { $0.contains("-->") }),
                   let (start, end) = parseTiming(lines[timingIndex]) else { return nil }
             let body = lines[(timingIndex + 1)...].map { stripTags(String($0)) }.joined(separator: "\n")
             return body.isEmpty ? nil : SubtitleCue(start: start, end: end, text: body)
         }
+    }
+
+    /// Files that leave out the blank line between cues: a block is split at
+    /// every later timing line, and the cue number just above it is dropped.
+    static func splitRunTogether(_ lines: [Substring]) -> [[Substring]] {
+        let timings = lines.indices.filter { lines[$0].contains("-->") }
+        guard timings.count > 1 else { return [lines] }
+        var out: [[Substring]] = []
+        var start = lines.startIndex
+        for t in timings.dropFirst() {
+            var end = t
+            if end - 1 > start, lines[end - 1].trimmingCharacters(in: .whitespaces).allSatisfy(\.isNumber) { end -= 1 }
+            out.append(Array(lines[start..<end]))
+            start = end
+        }
+        out.append(Array(lines[start...]))
+        return out
     }
 
     // MARK: WebVTT
@@ -73,13 +105,15 @@ public enum SubtitleParser {
         var format: [String] = []
         var cues: [SubtitleCue] = []
         var inEvents = false
-        for raw in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n") {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        for raw in normalized.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("[") { inEvents = line.lowercased() == "[events]"; continue }
+            let lower = line.lowercased()
+            if line.hasPrefix("[") { inEvents = lower == "[events]"; continue }
             guard inEvents else { continue }
-            if line.hasPrefix("Format:") {
+            if lower.hasPrefix("format:") {
                 format = line.dropFirst(7).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            } else if line.hasPrefix("Dialogue:"), !format.isEmpty {
+            } else if lower.hasPrefix("dialogue:"), !format.isEmpty {
                 // Text is the last field and may itself contain commas.
                 let fields = line.dropFirst(9).split(separator: ",", maxSplits: format.count - 1, omittingEmptySubsequences: false)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -125,7 +159,7 @@ public enum SubtitleParser {
         let parts = line.components(separatedBy: "-->")
         guard parts.count == 2 else { return nil }
         // VTT cue settings follow the end time after whitespace.
-        let endToken = parts[1].trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init) ?? ""
+        let endToken = parts[1].split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
         guard let s = parseTimestamp(parts[0].trimmingCharacters(in: .whitespaces)),
               let e = parseTimestamp(endToken) else { return nil }
         return (s, e)
@@ -145,7 +179,9 @@ public enum SubtitleParser {
     }
 
     static func stripTags(_ s: String) -> String {
-        s.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+        // Only markup (<i>, </b>, <font …>, VTT's <c.yellow>, <v Bob>, <00:01.000>): "a < b and c > d" stays.
+        s.replacingOccurrences(of: #"</?(?:[ibus]|font|c|v|ruby|rt|lang)(?:[.\s][^<>]*)?>|<\d{1,2}:\d{2}(?::\d{2})?\.\d{3}>"#,
+                               with: "", options: [.regularExpression, .caseInsensitive])
             .replacingOccurrences(of: #"\{\\[^}]*\}"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">").replacingOccurrences(of: "&nbsp;", with: " ")

@@ -162,7 +162,8 @@ import Testing
             .appending(path: "Sources/Features")
         let files = try FileManager.default.contentsOfDirectory(at: features.appending(path: "Settings"), includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "swift" }
-        let source = try files.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        // Settings › About's update row is drawn by the updater itself.
+        let source = try (files + [features.appending(path: "AppUpdater.swift")]).map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         // Account & Sync is its own screen; Switch Profile is the Profiles list itself.
         // Storage's cache rows are tagged "Clear \(title)" by one helper.
         let cacheRows: Set = ["Clear Artwork", "Clear Catalog Data", "Clear Downloaded Subtitles"]

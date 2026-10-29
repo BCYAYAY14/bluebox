@@ -4,6 +4,7 @@ import SwiftUI
 /// Panels that float over the video above the tool row: Audio & Subtitles
 /// and Episodes. A solid surface (the OLED finish has no glass), concentric
 /// row highlights, 44 pt rows on touch and compact rows on the Mac.
+@MainActor
 enum PlayerPopoverMetrics {
     static let radius: CGFloat = 12
     static let inset: CGFloat = 6
@@ -13,8 +14,8 @@ enum PlayerPopoverMetrics {
     static let rowHeight: CGFloat = 28
     static let rowFont = Font.body
     #else
-    static let rowHeight: CGFloat = 44
-    static let rowFont = Font.body
+    static var rowHeight: CGFloat { PanelMetrics.dense ? 36 : 44 }
+    static var rowFont: Font { PanelMetrics.dense ? .subheadline : .body }
     #endif
 }
 

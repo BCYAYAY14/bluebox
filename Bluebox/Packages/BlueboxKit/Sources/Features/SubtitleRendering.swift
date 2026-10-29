@@ -166,6 +166,7 @@ struct SubtitleAppearanceEditor: View {
         Section {
             Picker("Position", selection: $style.anchor) {
                 Text("Bottom").tag(SubtitleStyle.Anchor.bottom)
+                Text("Middle").tag(SubtitleStyle.Anchor.middle)
                 Text("Top").tag(SubtitleStyle.Anchor.top)
             }
             .pickerStyle(.segmented)

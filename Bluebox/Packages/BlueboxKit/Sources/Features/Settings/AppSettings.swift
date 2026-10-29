@@ -393,7 +393,10 @@ extension AppModel {
                     guard let session, session.item?.key == key else { return }
                     let tracks = session.snapshot.audioTracks
                     if tracks.count > 1 {
-                        if let match = tracks.first(where: { $0.languageCode.map { Self.sameLanguage($0, lang) } ?? false }),
+                        // Already in that language: leave it. Else the plain track (not commentary or description).
+                        let current = tracks.first { $0.id == session.snapshot.selectedAudioID }
+                        let inLanguage = current.flatMap(\.languageCode).map { Self.sameLanguage($0, lang) } ?? false
+                        if !inLanguage, let match = TrackChoice(languageCode: lang).best(in: tracks),
                            match.id != session.snapshot.selectedAudioID {
                             session.selectAudio(match.id, remember: false)
                         }

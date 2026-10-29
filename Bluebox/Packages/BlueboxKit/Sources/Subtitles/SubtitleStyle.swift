@@ -23,7 +23,9 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     public enum FontDesign: String, Codable, Sendable, CaseIterable { case system, rounded, serif, monospaced }
     public enum Weight: String, Codable, Sendable, CaseIterable { case regular, medium, semibold, bold, heavy }
     public enum Alignment: String, Codable, Sendable, CaseIterable { case leading, center, trailing }
-    public enum Anchor: String, Codable, Sendable, CaseIterable { case bottom, top }
+    /// Which part of the picture the subtitles hold to. Middle centres them
+    /// vertically (the distance from the edge doesn't apply).
+    public enum Anchor: String, Codable, Sendable, CaseIterable { case bottom, middle, top }
 
     public var design: FontDesign = .system
     /// An installed font family; overrides `design` when set and available.
@@ -75,12 +77,19 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
 
     /// True when the subtitles sit where they start out: bottom centre.
     public var isDefaultPosition: Bool {
-        anchor == .bottom && abs(verticalMargin - Self.defaultMargin) < 0.001 && abs(horizontalOffset) < 0.001
+        anchor == .bottom && alignment == .center && abs(verticalMargin - Self.defaultMargin) < 0.001 && abs(horizontalOffset) < 0.001
     }
 
     /// Back to bottom centre, keeping the look.
     public mutating func resetPosition() {
-        anchor = .bottom; verticalMargin = Self.defaultMargin; horizontalOffset = 0
+        anchor = .bottom; alignment = .center; verticalMargin = Self.defaultMargin; horizontalOffset = 0
+    }
+
+    /// Pins the subtitles to one of nine spots (the anchor grid): the edge
+    /// and side, at the usual distance, with any dragged shift cleared.
+    public mutating func pin(_ anchor: Anchor, _ alignment: Alignment) {
+        self.anchor = anchor; self.alignment = alignment; horizontalOffset = 0
+        if anchor != .middle, verticalMargin > 0.3 { verticalMargin = Self.defaultMargin }
     }
 
     /// Applies where a dragged subtitle block was dropped (see `SubtitlePlacement`).

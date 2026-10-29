@@ -41,7 +41,9 @@ struct SubtitleOverlay: View {
         let restMargin = restingMargin(h: h)
         let offset = blockOffset(w: w, h: h)
 
-        return ZStack(alignment: Alignment(horizontal: horizontal(style.alignment), vertical: style.anchor == .bottom ? .bottom : .top)) {
+        let vertical: VerticalAlignment = switch style.anchor { case .bottom: .bottom; case .middle: .center; case .top: .top }
+        let edgeSign: Double = switch style.anchor { case .bottom: -1; case .middle: 0; case .top: 1 }
+        return ZStack(alignment: Alignment(horizontal: horizontal(style.alignment), vertical: vertical)) {
             Color.clear
             if dragging || pinching { guides(w: w, h: h) }
             if primaryLine != nil || secondary != nil {
@@ -57,8 +59,8 @@ struct SubtitleOverlay: View {
                                 .allowsHitTesting(false)
                         }
                     }
-                    .overlay(alignment: style.anchor == .bottom ? .top : .bottom) {
-                        if showsReset, !dragging, !style.isDefaultPosition { resetButton(above: style.anchor == .bottom) }
+                    .overlay(alignment: style.anchor == .top ? .bottom : .top) {
+                        if showsReset, !dragging, !style.isDefaultPosition { resetButton(above: style.anchor != .top) }
                     }
                     .contentShape(Rectangle().inset(by: -8))
                     .gesture(dragGesture(w: w, h: h), including: editable ? .all : .subviews)
@@ -66,7 +68,7 @@ struct SubtitleOverlay: View {
                     #if os(macOS)
                     .pointerStyle(editable ? (dragging ? .grabActive : .grabIdle) : nil)
                     #endif
-                    .offset(x: offset.width, y: (style.anchor == .bottom ? -restMargin : restMargin) + offset.height)
+                    .offset(x: offset.width, y: edgeSign * restMargin + offset.height)
                     .animation(dragging ? nil : .easeOut(duration: 0.2), value: restMargin)
                     .accessibilityAction(named: "Reset Subtitle Position") { commitReset() }
             }
@@ -81,7 +83,7 @@ struct SubtitleOverlay: View {
     private func block(primary: String?, style: SubtitleStyle, h: Double) -> some View {
         VStack(alignment: horizontal(style.alignment), spacing: style.pointSize(forHeight: h) * 0.25) {
             // Secondary sits on the far side from the edge, so the main line stays where the eye expects it.
-            if style.anchor == .bottom {
+            if style.anchor != .top {
                 if let secondary { SubtitleText(text: secondary, style: style, videoHeight: h, secondary: true) }
                 if let primary { SubtitleText(text: primary, style: style, videoHeight: h) }
             } else {
@@ -96,6 +98,7 @@ struct SubtitleOverlay: View {
     /// Distance from the anchored edge in points. Bottom subtitles near the edge
     /// move up while the controls show; ones placed higher stay put.
     private func restingMargin(h: Double) -> Double {
+        if style.anchor == .middle { return 0 }
         let m = style.verticalMargin * h
         let bump = style.anchor == .bottom && style.avoidControls && controlsVisible ? Double(controlsInset) : 0
         return m < bump ? m + bump : m
@@ -121,7 +124,7 @@ struct SubtitleOverlay: View {
                                                      horizontalMargin: style.horizontalMargin)
         let midX = SubtitlePlacement.restingMidX(blockWidth: bw, alignment: style.alignment, horizontalMargin: style.horizontalMargin) + offset
         let m = restingMargin(h: h) / h
-        let minY = style.anchor == .bottom ? 1 - m - bh : m
+        let minY = switch style.anchor { case .bottom: 1 - m - bh; case .middle: 0.5 - bh / 2; case .top: m }
         return CGRect(x: midX - bw / 2, y: minY, width: bw, height: bh)
     }
 
