@@ -10,7 +10,7 @@
 &nbsp;
 <a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg"><img src="https://img.shields.io/badge/Download_for_Mac-1C1C1E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac"></a>
 
-<sub><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a> · iOS 18 and later · Apple silicon Macs · <a href="LICENSE">MIT licence</a></sub>
+<sub><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a> · iOS 18 and later · Apple silicon Macs · <a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT licence</a></sub>
 
 </div>
 
