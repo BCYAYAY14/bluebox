@@ -80,6 +80,7 @@ extension AppModel {
         DownloadPowerMonitor.shared.start(manager: downloads)
         downloadLifecycle.isPlaying = { [weak self] in self?.activePlayer?.snapshot.status.isActive == true }  // buffering too
         downloadLifecycle.isPlayerOpen = { [weak self] in self?.activePlayer != nil }
+        downloadLifecycle.isServingExternalPlayer = { [weak self] in self?.isServingInfuse == true }
         downloadLifecycle.start(manager: downloads)
         downloadsPresence.liveActivityEnabled = { [weak self] in self?.featureSwitches.liveActivity == true }
         downloadsPresence.currentState = { [manager] in DownloadsActivityState.summary(manager.all(), live: manager.liveStats) }
@@ -349,11 +350,14 @@ extension AppModel {
     }
 
     /// Plays a finished download from the device.
-    public func playDownload(_ r: DownloadRecord) async {
+    public func playDownload(_ r: DownloadRecord, inInfuse: Bool = false) async {
         let key = r.mediaKey ?? MediaKey(rawValue: "url:\(r.id)")
         await play(NowPlayingItem(key: key, title: r.title, subtitle: r.subtitle, artworkURL: r.artworkURL),
-                   variant: DownloadsSource(manager: downloads).variant(r))
+                   variant: DownloadsSource(manager: downloads).variant(r), inInfuse: inInfuse)
     }
+
+    /// Finished downloads offer Open in Infuse when it's installed.
+    public var canOpenDownloadsInInfuse: Bool { Infuse.isInstalled }
 
     // After watching: Smart Downloads (SmartDownloads.swift).
 

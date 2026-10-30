@@ -28,6 +28,8 @@ import UserNotifications
 /// - A torrent finishing in the background posts a notification.
 /// With the setting off, Bluebox asks for iOS's ~30 seconds, downloads for
 /// most of it, then stops torrents until it's open again.
+/// While Infuse streams from Bluebox (a torrent or a download over localhost),
+/// the silent session keeps it running whatever the downloads would decide.
 /// On the Mac the app keeps running, so nothing here applies.
 @MainActor
 final class DownloadLifecycle {
@@ -38,6 +40,8 @@ final class DownloadLifecycle {
     var isPlaying: () -> Bool = { false }
     /// A player is open, so the audio session mustn't be deactivated. Set by AppModel.
     var isPlayerOpen: () -> Bool = { false }
+    /// Infuse is reading a stream from Bluebox (`AppModel+Infuse`): keep running while it does. Set by AppModel.
+    var isServingExternalPlayer: () -> Bool = { false }
 
     static let notificationCategory = "bluebox.downloads"
     static let pausedNotificationID = "bluebox.downloads.paused"
@@ -144,7 +148,12 @@ final class DownloadLifecycle {
     /// Acts on `BackgroundDownloadPolicy` for the state right now. Cheap; called
     /// on every queue change, playback change, audio interruption and every 10 seconds.
     private func evaluate() {
-        guard isInBackground, !dormant, !pausing, let manager else { return }
+        guard isInBackground, let manager else { return }
+        if isServingExternalPlayer(), processing == nil, !pausing {
+            keepServing()
+            return
+        }
+        guard !dormant, !pausing else { return }
         if processing != nil { evaluateProcessing(manager); return }
         switch manager.backgroundDecision(isPlaying: isPlaying()) {
         case .keepAlive:
@@ -180,6 +189,19 @@ final class DownloadLifecycle {
         case .stop(.held):
             stopKeepAlive()
             stopNow(notify: nil)
+        }
+    }
+
+    /// Infuse is streaming from Bluebox: the silent session keeps it running,
+    /// whatever downloads would decide. They're left as they are.
+    private func keepServing() {
+        dormant = false
+        cancelWindDown()
+        if keepAlive.isInterrupted { beginGrace(); return }  // a call: wait for it to end
+        if keepAlive.isRunning || keepAlive.start() {
+            endGrace()
+        } else {
+            beginGrace()
         }
     }
 

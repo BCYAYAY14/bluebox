@@ -53,6 +53,7 @@ enum SettingsSearchIndex {
         .init(title: "Community Intro Timestamps", page: .playback, section: "Community Intro Timestamps", keywords: ["theintrodb", "introdb", "crowd", "wrong time", "ignoring community times"]),
         .init(title: "Dialogue Boost", page: .playback, section: "Audio", keywords: ["speech", "voices", "centre", "center", "clarity"]),
         .init(title: "Night Mode", page: .playback, section: "Audio", keywords: ["loud", "quiet", "compressor", "volume", "late"]),
+        .init(title: "Always Open in Infuse", page: .playback, section: "External Player", keywords: ["infuse", "external", "player", "dolby vision", "atmos"]),
         .init(title: "Preview Thumbnails While Scrubbing", page: .playback, section: "Player", keywords: ["scrub", "seek", "timeline", "frames"]),
         .init(title: "Handoff", page: .playback, section: "Player", keywords: ["continuity", "other devices", "iphone", "ipad", "mac"]),
         .init(title: "Autoplay Previews", page: .playback, section: "Previews", keywords: ["trailer", "hero", "video", "muted"]),

@@ -87,9 +87,6 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     /// True when the engine draws embedded subtitles itself and can delay them
     /// and restyle text tracks (VLC). AVPlayer hands the text to Bluebox instead.
     public var drawsEmbeddedSubtitles = false
-    /// A new subtitle look is waiting for the stream to reopen (VLC text tracks
-    /// while the subtitle card is open); `applySubtitleRestyleNow` does it now.
-    public var subtitleRestylePending = false
     public init() {}
 }
 
@@ -127,13 +124,9 @@ public protocol PlaybackEngine: AnyObject {
     func setAudioEffects(_ effects: AudioEffects)
     /// Delays embedded subtitles the engine draws itself (positive = later).
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval)
-    /// The look for embedded text subtitles the engine draws itself.
+    /// The look for embedded text subtitles the engine draws itself. Applied
+    /// live; never reopens the stream.
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle)
-    /// Holds back a style change that needs the stream reopened (VLC's look,
-    /// apart from size) while the subtitle panel is open.
-    func setSubtitleRestyleHeld(_ held: Bool)
-    /// Applies a held subtitle look now (one reopen), without waiting for the card to close.
-    func applySubtitleRestyleNow()
     /// Output volume, 0…1, and mute. Audio only: never touches the video output.
     func setVolume(_ volume: Float, muted: Bool)
     /// Shifts the sound against the picture (positive plays it later).
@@ -145,8 +138,6 @@ public protocol PlaybackEngine: AnyObject {
 public extension PlaybackEngine {
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {}
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {}
-    func setSubtitleRestyleHeld(_ held: Bool) {}
-    func applySubtitleRestyleNow() {}
     func setVolume(_ volume: Float, muted: Bool) {}
     func setAudioDelay(_ seconds: TimeInterval) {}
     var supportsAudioDelay: Bool { false }

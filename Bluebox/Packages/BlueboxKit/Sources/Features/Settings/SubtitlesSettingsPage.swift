@@ -33,9 +33,9 @@ struct SubtitlesSettingsPage: View {
                 SettingsSlider("Size", value: $app.subtitleStyle.relativeSize, in: 0.02...0.12) {
                     "\(Int(($0 / 0.045 * 100).rounded()))%"
                 }
-                SettingsPicker("Weight", selection: $app.subtitleStyle.weight,
-                               options: SubtitleStyle.Weight.allCases.map { .init($0.rawValue.capitalized, value: $0) })
-                Toggle("Italic", isOn: $app.subtitleStyle.italic)
+                SettingsPicker("Weight", selection: Binding(get: { app.subtitleStyle.isBold ? SubtitleStyle.Weight.bold : .regular },
+                                                            set: { app.subtitleStyle.weight = $0 }),
+                               options: [.init("Regular", value: .regular), .init("Bold", value: .bold)])
                 SettingsColorRow(title: "Colour", color: $app.subtitleStyle.textColor)
                 SettingsSlider("Outline", value: $app.subtitleStyle.outlineWidth, in: 0...6) {
                     $0 < 0.1 ? "Off" : String(format: "%.1f pt", $0)
@@ -53,7 +53,7 @@ struct SubtitlesSettingsPage: View {
             } header: {
                 Text("Appearance")
             } footer: {
-                Text("Sizes follow the picture, so subtitles look the same in a window, full screen or Picture in Picture.")
+                Text("Sizes follow the picture, so subtitles look the same in a window, full screen or Picture in Picture. Subtitles inside a playing video take a new font, weight or shadow from the next video; the rest changes at once.")
             }
 
             Section {

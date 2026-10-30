@@ -117,6 +117,15 @@ struct PlaybackSettingsPage: View {
             }
 
             Section {
+                Toggle("Always Open in Infuse", isOn: $settings.alwaysOpenInInfuse)
+                    .settingsRow("Always Open in Infuse")
+            } header: {
+                Text("External Player")
+            } footer: {
+                Text(infuseFooter)
+            }
+
+            Section {
                 Toggle("Preview Thumbnails While Scrubbing", isOn: $settings.scrubThumbnails)
                     .settingsRow("Preview Thumbnails While Scrubbing")
                 Toggle("Handoff", isOn: $settings.handoff)
@@ -169,6 +178,16 @@ struct PlaybackSettingsPage: View {
         case .avPlayerOnly:
             "Only AVPlayer is used, so MKV, AVI and WebM won't play."
         }
+    }
+
+    private var infuseFooter: String {
+        #if os(macOS)
+        let reach = "Debrid links, direct links, torrents and downloads open in Infuse; Bluebox keeps serving torrents while Infuse plays them."
+        #else
+        let reach = "Debrid links, direct links, torrents and downloads open in Infuse. For torrents and downloads, Bluebox keeps running in the background to serve the video, until Infuse has left it alone for 15 minutes."
+        #endif
+        let missing = Infuse.isInstalled ? "" : " Infuse isn't installed on this device, so everything plays in Bluebox for now."
+        return reach + " Bluebox doesn't see what you watch there, so progress, Up Next and Trakt don't update." + missing
     }
 
     private func speedLabel(_ s: Float) -> String { s == 1 ? "Normal" : String(format: "%g×", s) }

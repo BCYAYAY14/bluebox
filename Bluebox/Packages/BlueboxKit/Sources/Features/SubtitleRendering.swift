@@ -12,27 +12,10 @@ extension RGBA {
 }
 
 extension SubtitleStyle {
+    /// The same family and weight VLC draws the video's own text tracks with
+    /// (see `resolvedFontFamily`), so every subtitle looks the one way.
     func font(size: Double) -> Font {
-        let w: Font.Weight = switch weight {
-        case .regular: .regular
-        case .medium: .medium
-        case .semibold: .semibold
-        case .bold: .bold
-        case .heavy: .heavy
-        }
-        var f: Font
-        if let name = fontName, SubtitleFonts.isInstalled(name) {
-            f = .custom(name, fixedSize: size).weight(w)
-        } else {
-            let d: Font.Design = switch design {
-            case .system: .default
-            case .rounded: .rounded
-            case .serif: .serif
-            case .monospaced: .monospaced
-            }
-            f = .system(size: size, weight: w, design: d)
-        }
-        return italic ? f.italic() : f
+        .custom(resolvedFontFamily, fixedSize: size).weight(isBold ? .bold : .regular)
     }
 
     var textAlignment: TextAlignment {
@@ -141,9 +124,9 @@ struct SubtitleAppearanceEditor: View {
         Section("Text") {
             BlueboxPicker("Font", selection: SubtitleFonts.binding($style), groups: SubtitleFonts.pickerGroups)
             LabeledSlider("Size", value: $style.relativeSize, in: 0.02...0.12, format: { "\(Int(($0 / 0.045 * 100).rounded()))%" })
-            BlueboxPicker("Weight", selection: $style.weight,
-                          options: SubtitleStyle.Weight.allCases.map { BlueboxPickerOption($0.rawValue.capitalized, value: $0) })
-            Toggle("Italic", isOn: $style.italic)
+            BlueboxPicker("Weight", selection: Binding(get: { style.isBold ? SubtitleStyle.Weight.bold : .regular },
+                                                       set: { style.weight = $0 }),
+                          options: [BlueboxPickerOption("Regular", value: .regular), BlueboxPickerOption("Bold", value: .bold)])
             ColorPicker("Color", selection: colorBinding(\.textColor), supportsOpacity: true)
             LabeledSlider("Line Spacing", value: $style.lineSpacing, in: 0...0.6, format: { "\(Int(($0 * 100).rounded()))%" })
         }

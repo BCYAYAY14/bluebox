@@ -110,6 +110,9 @@ public final class AppModel {
     /// Download states last seen, so finishing and failing can be announced.
     @ObservationIgnored var lastDownloadStates: [String: DownloadRecord.State]?
     @ObservationIgnored let downloadLifecycle = DownloadLifecycle()
+    /// What Infuse is reading from Bluebox's stream server (`AppModel+Infuse`).
+    @ObservationIgnored var infuseHandoff: InfuseHandoff?
+    @ObservationIgnored var infuseWatch: Task<Void, Never>?
     /// The Live Activity (iPhone) and Dock badge (Mac) for the queue.
     @ObservationIgnored let downloadsPresence = DownloadsPresence()
     /// Shows "Playing on Mac" (iPhone) or publishes this Mac's player (RemoteControl.swift).
@@ -876,8 +879,11 @@ public final class AppModel {
     /// Resolves a playable variant for `key` and presents the player.
     /// - Parameter startAt: start at this second whatever the saved progress and
     ///   Settings › Playback › Start Playing say (Handoff).
+    /// - Parameter inInfuse: hand the stream to Infuse instead (Open in Infuse).
+    ///   Settings › Player › Always Open in Infuse does the same for every video
+    ///   Infuse can reach; the rest play here.
     public func play(_ item: NowPlayingItem, variant preferred: MediaVariant? = nil, resume: Bool = true,
-                     startAt: TimeInterval? = nil) async {
+                     startAt: TimeInterval? = nil, inInfuse: Bool = false) async {
         // A maturity limit: titles rated above it don't play on this profile.
         if let reason = maturityBlock(for: item.key) {
             alert = AppAlert(title: "Not available on this profile", message: reason)
@@ -914,6 +920,7 @@ public final class AppModel {
         let request = playRequest
         // One video at a time: what's playing ends (and saves its place) before the next opens.
         if activePlayer != nil { await closePlayer() }
+        await endInfuseHandoff()
         guard request == playRequest else { return }
         resolvedNext = nil
         await holdTorrentDownloads(before: variant, key: item.key)
@@ -926,6 +933,23 @@ public final class AppModel {
             await holdTorrentDownloads(streaming: resource.variant)
             rememberSource(variant, for: item.key)
             noteStreaming(resource.variant)  // the mobile data counter
+            if inInfuse || settings.alwaysOpenInInfuse, Infuse.canOpen(resource) {
+                if await openInInfuse(resource, variant: variant) {
+                    // Infuse plays it from here; a torrent or a download keeps being served (`AppModel+Infuse`).
+                    addonStatus = nil
+                    return
+                }
+                if inInfuse {
+                    addonStatus = nil
+                    releaseTorrentDownloadHolds()
+                    if variant.sourceID == addons.id { await addons.stopStreaming() }
+                    alert = AppAlert(title: "Couldn't open Infuse",
+                                     message: Infuse.isInstalled ? "Infuse didn't open “\(item.title)”."
+                                         : "Infuse isn't installed on this device. Get it from the App Store, or play “\(item.title)” in Bluebox.")
+                    return
+                }
+                // Always Open in Infuse, but Infuse isn't here: it plays in Bluebox.
+            }
             activeVariant = variant
             let session = makeSession(for: resource)
             // From the preparing overlay (black, like the player), the player
@@ -1185,9 +1209,17 @@ extension AppModel {
     }
 
     /// Plays one release the user picked.
-    public func play(_ item: NowPlayingItem, release: AddonRelease) async {
+    public func play(_ item: NowPlayingItem, release: AddonRelease, inInfuse: Bool = false) async {
         let variant = await addons.variant(for: release, key: item.key)
-        await play(item, variant: variant)
+        await play(item, variant: variant, inInfuse: inInfuse)
+    }
+
+    /// Whether a release's menu offers Open in Infuse: links, and torrents,
+    /// which Bluebox keeps serving behind Infuse.
+    public func canOpenInInfuse(_ release: AddonRelease) -> Bool {
+        guard Infuse.isInstalled else { return false }
+        if let url = release.url { return Infuse.canOpen(url) }
+        return release.magnet != nil && addonsCanStreamTorrents
     }
 
     #if DEBUG

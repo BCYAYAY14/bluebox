@@ -91,10 +91,10 @@ extension AppModel {
 
     /// Plays a finished download, unless its file has gone missing: then says
     /// so plainly and offers to download it again.
-    func playDownloadChecked(_ r: DownloadRecord) async {
+    func playDownloadChecked(_ r: DownloadRecord, inInfuse: Bool = false) async {
         guard r.state == .completed else { return }
         if let url = downloads.fileURL(r), FileManager.default.fileExists(atPath: url.path) {
-            await playDownload(r)
+            await playDownload(r, inInfuse: inInfuse)
             return
         }
         let name = r.subtitle.map { "\(r.title) · \($0)" } ?? r.title

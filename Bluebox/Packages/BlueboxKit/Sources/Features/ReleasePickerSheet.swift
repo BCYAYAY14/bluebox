@@ -445,6 +445,9 @@ struct ReleasePickerSheet: View {
         facts(r, marks: marks).map { BlueboxMenuEntry.note($0) }
         BlueboxMenuSection {
             BlueboxMenuButton("Play", systemImage: "play.fill") { choose(r) }
+            if app.canOpenInInfuse(r) {
+                BlueboxMenuButton("Open in Infuse", systemImage: "arrow.up.forward.app") { chooseInInfuse(r) }
+            }
             if r.isDebrid || app.addonsCanStreamTorrents {
                 BlueboxMenuButton("Download", systemImage: "arrow.down.circle") {
                     Task { await app.download(r, for: downloadItem) }
@@ -472,6 +475,9 @@ struct ReleasePickerSheet: View {
             ForEach(facts(r, marks: marks), id: \.self) { Text($0) }
         }
         Button { choose(r) } label: { Label("Play", systemImage: "play.fill") }
+        if app.canOpenInInfuse(r) {
+            Button { chooseInInfuse(r) } label: { Label("Open in Infuse", systemImage: "arrow.up.forward.app") }
+        }
         if r.isDebrid || app.addonsCanStreamTorrents {
             Button { Task { await app.download(r, for: downloadItem) } } label: {
                 Label("Download", systemImage: "arrow.down.circle")
@@ -525,6 +531,12 @@ struct ReleasePickerSheet: View {
         menuRelease = nil
         dismiss()
         if let onChoose { onChoose(release) } else { Task { await app.play(item, release: release) } }
+    }
+
+    private func chooseInInfuse(_ release: AddonRelease) {
+        menuRelease = nil
+        dismiss()
+        Task { await app.play(item, release: release, inInfuse: true) }
     }
 }
 

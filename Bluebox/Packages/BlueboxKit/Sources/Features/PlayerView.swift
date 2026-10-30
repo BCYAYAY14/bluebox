@@ -376,7 +376,6 @@ struct PlayerView: View {
             // which for add-on torrents replaces the one playing now.
             await episodes.load(for: session.item?.key, app: app)
         }
-        .onChange(of: panel == nil, initial: true) { _, closed in session.holdsSubtitleRestyle = !closed }
         // The credits countdown only runs while it can be seen and playback runs.
         .onChange(of: session.snapshot.status != .playing || panel != nil || previewing || locked || showsCard, initial: true) { _, held in
             skip.holdsCountdown = held
@@ -1344,9 +1343,7 @@ struct PlayerView: View {
     /// The open card, over the button that opened it.
     private func panelCard(_ kind: PlayerPanelKind) -> some View {
         let compact = stageSize.height < 500
-        let wide = compact && stageSize.width >= 700
         var width = kind.width(compact: compact)
-        if kind == .tools, compact, !wide { width = 340 }
         if kind == .tracks, !compact, session.snapshot.audioTracks.isEmpty { width = 260 }
         let place = PanelPlacement.frame(anchor: anchors[kind], width: width, stage: stageSize,
                                          // Mac: above the whole bar. Phones: the card may cover the timeline.
@@ -1363,7 +1360,7 @@ struct PlayerView: View {
                     .fixedSize(horizontal: false, vertical: true)
             default:
                 ScrollView {
-                    panelContent(kind, innerWidth: inner, wide: wide)
+                    panelContent(kind, innerWidth: inner)
                         .padding(PlayerCardMetrics.padding)
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -1382,7 +1379,7 @@ struct PlayerView: View {
         .id(kind)
     }
 
-    @ViewBuilder private func panelContent(_ kind: PlayerPanelKind, innerWidth: CGFloat, wide: Bool) -> some View {
+    @ViewBuilder private func panelContent(_ kind: PlayerPanelKind, innerWidth: CGFloat) -> some View {
         switch kind {
         case .tracks:
             TracksPanel(session: session, width: innerWidth, canSearch: canSearchSubtitles, initialPage: tracksStartPage,
@@ -1395,7 +1392,7 @@ struct PlayerView: View {
                 session.setRate(r); lastInteraction = Date()
             }
         case .tools:
-            ToolsPanel(session: session, skip: skip, columns: wide ? 5 : 3, statsShown: statsShown, initialPage: toolsStartPage,
+            ToolsPanel(session: session, skip: skip, columns: 3, statsShown: statsShown, initialPage: toolsStartPage,
                        onToggleStats: { statsShown.toggle() },
                        onLoop: cycleLoop,
                        onSnapshot: { Task { await saveSnapshot() } },

@@ -68,6 +68,8 @@ targets:
         NSLocalNetworkUsageDescription: Bluebox connects to media servers on your local network that you add in Settings.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Open in Infuse checks Infuse is installed (Features/Infuse.swift).
+        LSApplicationQueriesSchemes: [infuse]
         # Sign-in links in Supabase emails come back as bluebox://auth-callback.
         CFBundleURLTypes:
           - CFBundleURLName: app.bluebox.auth

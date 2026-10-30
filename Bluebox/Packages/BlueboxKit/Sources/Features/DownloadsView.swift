@@ -634,6 +634,11 @@ enum DownloadActions {
             switch r.state {
             case .completed:
                 BlueboxMenuButton("Play", systemImage: "play.fill") { Task { await app.playDownloadChecked(r) } }
+                if app.canOpenDownloadsInInfuse {
+                    BlueboxMenuButton("Open in Infuse", systemImage: "arrow.up.forward.app") {
+                        Task { await app.playDownloadChecked(r, inInfuse: true) }
+                    }
+                }
             case .downloading, .queued:
                 BlueboxMenuButton("Pause", systemImage: "pause.fill") { app.pauseDownload(r) }
             case .paused:
@@ -666,6 +671,11 @@ enum DownloadActions {
         switch r.state {
         case .completed:
             Button { Task { await app.playDownloadChecked(r) } } label: { Label("Play", systemImage: "play.fill") }
+            if app.canOpenDownloadsInInfuse {
+                Button { Task { await app.playDownloadChecked(r, inInfuse: true) } } label: {
+                    Label("Open in Infuse", systemImage: "arrow.up.forward.app")
+                }
+            }
         case .downloading, .queued:
             Button { app.pauseDownload(r) } label: { Label("Pause", systemImage: "pause") }
         case .paused:

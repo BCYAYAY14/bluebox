@@ -18,7 +18,7 @@ struct ToolsPanel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let session: PlayerSession
     let skip: SkipController
-    /// Tiles per row: five on a wide card (phones in landscape), three otherwise.
+    /// Tiles per row (three: the card stays narrow beside the video).
     let columns: Int
     let statsShown: Bool
     let onToggleStats: () -> Void

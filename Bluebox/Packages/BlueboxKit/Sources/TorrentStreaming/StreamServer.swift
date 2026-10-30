@@ -38,6 +38,8 @@ final class StreamServer: @unchecked Sendable {
     private var boundPort: UInt16 = 0
     private var files: [String: any StreamableFile] = [:]
     private var connections: [ObjectIdentifier: HTTPConnection] = [:]
+    /// When each served file was last read from (`ExternalStreams`).
+    private var lastRead: [String: Date] = [:]
 
     var port: UInt16 { lock.withLock { boundPort } }
 
@@ -107,6 +109,7 @@ final class StreamServer: @unchecked Sendable {
     func unregister(_ url: URL) {
         guard let token = Self.token(in: url) else { return }
         let closing: [HTTPConnection] = lock.withLock {
+            lastRead[token] = nil
             guard let file = files.removeValue(forKey: token) else { return [] }
             return connections.values.filter { $0.serving === file }
         }
@@ -141,6 +144,17 @@ final class StreamServer: @unchecked Sendable {
     }
 
     var openConnections: Int { lock.withLock { connections.count } }
+
+    fileprivate func noteRead(_ token: String) { lock.withLock { lastRead[token] = Date() } }
+
+    /// Whether a client is connected to the file at `url`, and when it last read from it.
+    func activity(for url: URL) -> (connected: Bool, lastRead: Date?)? {
+        guard let token = Self.token(in: url) else { return nil }
+        return lock.withLock {
+            guard let file = files[token] else { return nil }
+            return (connections.values.contains { $0.serving === file }, lastRead[token])
+        }
+    }
 }
 
 /// Resumes a continuation once.
@@ -265,6 +279,7 @@ private final class HTTPConnection: @unchecked Sendable {
             return true
         }
         lock.withLock { _serving = file }
+        server?.noteRead(token)
         let length = file.length
         let type = MediaContentType.forFile(file.fileName)
         var headers: [(String, String)] = [("Content-Type", type), ("Accept-Ranges", "bytes"),
@@ -311,6 +326,7 @@ private final class HTTPConnection: @unchecked Sendable {
             guard await send(data) else { return false }
             offset += Int64(data.count)
             file.readerAdvanced(reader, to: offset)
+            server?.noteRead(token)
         }
         return true
     }

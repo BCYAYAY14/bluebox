@@ -67,6 +67,15 @@ import Testing
         #expect(SubtitleStyle().pointSize(forHeight: 100) == 9)   // never unreadably small
     }
 
+    @Test func presetsChangeOnlyWhatShowsAtOnce() {
+        var s = SubtitleStyle(); s.design = .serif; s.weight = .heavy; s.shadow = false; s.anchor = .top
+        let p = s.applying(.large)
+        #expect(p.design == .serif && p.weight == .heavy && !p.shadow && p.anchor == .top)
+        #expect(p.relativeSize == 0.065 && p.backgroundOpacity == 0.4)
+        #expect(p == p.applying(.large))  // applying twice changes nothing
+        #expect(p.applying(.classic).backgroundOpacity == 0 && p.applying(.classic).relativeSize == SubtitleStyle().relativeSize)
+    }
+
     @Test func presetsKeepLanguages() {
         var s = SubtitleStyle(); s.preferredLanguage = "fr"; s.secondaryLanguage = "en"
         let p = s.applying(.boxed)

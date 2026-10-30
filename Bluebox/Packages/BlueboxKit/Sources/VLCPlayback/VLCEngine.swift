@@ -16,9 +16,9 @@ import AVFoundation
 /// - Embedded subtitles are rendered by VLC inside the picture, so
 ///   `embeddedSubtitleText` stays nil (external subtitles are still drawn by
 ///   Bluebox's overlay from the snapshot time). Text tracks take the user's
-///   subtitle style through VLC's text renderer options (see `styleArguments`),
-///   which libVLC only reads when a video output starts: a style change moves
-///   playback to a player on a matching instance, like Night Mode.
+///   subtitle style through VLC's text renderer variables, set on the player
+///   (see `VLCTextLook`): size, colour, box, outline and position change live,
+///   the font and shadow from the next video. Nothing reopens the stream.
 /// - No PiP/AirPlay, no buffered-range reporting, no automatic stream rebuild
 ///   (VLC reconnects HTTP itself via `:http-reconnect`).
 /// - Sharpness and invert adjustments aren't available through VLC's adjust filter.
@@ -38,19 +38,16 @@ public final class VLCEngine: PlaybackEngine {
     /// snapshot's `outputGeneration` changes with it.
     public private(set) var player: Player
     private var audioEffects = AudioEffects()
-    /// Which libVLC instance `player` runs on (see `instanceKey`).
-    private var playerInstanceKey = 0
-    /// The subtitle style arguments of `player`'s instance.
-    private var playerStyleArguments: [String] = []
-    /// The style arguments wanted (from `setEmbeddedSubtitleStyle`).
-    private var styleArguments: [String] = []
-    /// Subtitle size, VLC's `sub-text-scale` / 100. Set on the player live,
-    /// so resizing never reopens the stream.
+    /// Which libVLC instance `player` runs on (see `instanceKey`); -1 until the
+    /// first load makes one (the player from `init` is never given a video output).
+    private var playerInstanceKey = -1
+    /// The subtitle look wanted (from `setEmbeddedSubtitleStyle`).
+    private var textLook = VLCTextLook(SubtitleStyle())
+    /// What was last set on the native player (`appliedTo` is its handle; SwiftVLC can swap it).
+    private var appliedLook: VLCTextLook?
+    private var appliedTo: UnsafeMutableRawPointer?
+    /// Subtitle size, VLC's `sub-text-scale` / 100. Set on the player live.
     private var subtitleTextScale: Float = 0.9
-    /// While the subtitle panel is open, a new look waits (one reopen when it
-    /// closes, not one per tweak).
-    private var restyleHeld = false
-    private var restyleTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
     /// While a reopen runs: what to come back to. A pause or a track picked
     /// meanwhile updates these, so the reopen doesn't undo it.
@@ -109,13 +106,12 @@ public final class VLCEngine: PlaybackEngine {
 
     public func load(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
         // A new video: a reopen of the old one under way is dropped.
-        restyleTask?.cancel(); restyleTask = nil
         reloadTask?.cancel(); reloadTask = nil
         reopen = nil
         try await loadMedia(resource, startAt: startAt)
     }
 
-    /// Opens `resource` (a new video, or the same one reopened for a new look).
+    /// Opens `resource` (a new video, or the same one reopened for Night Mode).
     private func loadMedia(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
         teardown()
         let container = resource.variant.container ?? resource.url.pathExtension
@@ -130,7 +126,9 @@ public final class VLCEngine: PlaybackEngine {
         snapshot.status = .loading
         self.resource = resource
         intendedPaused = true  // the session calls play() after load when it wants autoplay
-        desiredSubtitleID = nil; desiredAudioID = nil; pendingSeek = nil; ended = false; chaptersLoaded = false
+        // A reopen (Night Mode) comes back on the same tracks; a new video starts on VLC's.
+        if reopen == nil { desiredSubtitleID = nil; desiredAudioID = nil }
+        pendingSeek = nil; ended = false; chaptersLoaded = false
         pendingSeekIsResume = startAt != nil
         resumeLengthDeadline = .now + .seconds(2)
         if let startAt, startAt > 0 { snapshot.position = startAt }
@@ -140,11 +138,11 @@ public final class VLCEngine: PlaybackEngine {
         }
         await Self.activateAudioSession()
         guard self.resource == resource else { throw CancellationError() }
-        let night = Self.instanceKey(for: audioEffects), style = styleArguments
-        if night != playerInstanceKey || style != playerStyleArguments {
+        let night = Self.instanceKey(for: audioEffects)
+        if night != playerInstanceKey {
             // Nothing is playing yet: a player on the right instance costs nothing here.
             // The instance is made off the main thread (libVLC's setup is slow on iOS).
-            let instance = await Self.preparedInstance(night: night, style: style)
+            let instance = await Self.preparedInstance(night: night)
             guard self.resource == resource else { throw CancellationError() }
             // The old player's decoder and video output must be gone before
             // the new one takes the surface: releasing it while they ran
@@ -153,7 +151,7 @@ public final class VLCEngine: PlaybackEngine {
             guard self.resource == resource else { throw CancellationError() }
             player = Player(instance: instance)
             playerInstanceKey = night
-            playerStyleArguments = style
+            appliedTo = nil
             snapshot.outputGeneration &+= 1
         }
 
@@ -180,9 +178,12 @@ public final class VLCEngine: PlaybackEngine {
         for option in Self.mediaOptions(for: resource, startAt: start) { media.addOption(option) }
         applyAdjustments()
         applyEqualizer()
+        // Before the video output and the subtitle decoder start, which read it.
+        applyTextLook()
         do { try player.play(media) } catch {
             throw PlaybackError.decodeFailed(error.localizedDescription)
         }
+        applyTextLook()  // play() can swap SwiftVLC's native player
         if snapshot.rate != 1 { try? player.setPlaybackRate(PlaybackRate(snapshot.rate)) }
         player.setSubtitleScale(SubtitleScale(subtitleTextScale))
         if subtitleDelay != 0 { try? player.setSubtitleDelay(.milliseconds(Int((subtitleDelay * 1000).rounded()))) }
@@ -345,8 +346,10 @@ public final class VLCEngine: PlaybackEngine {
     public func selectAudio(_ trackID: String?) {
         if reopen != nil { reopen?.audio = trackID }
         desiredAudioID = trackID
+        // Tracks not listed yet (just opened): kept, and chosen when they are (see `applyTrackSelection`).
+        guard !player.audioTracks.isEmpty else { snapshot.selectedAudioID = trackID; return }
         let track = trackID.flatMap { id in player.audioTracks.first { $0.id == id } } ?? player.audioTracks.first
-        if let track { player.selectedAudioTrack = track }
+        if let track, !track.isSelected { player.selectedAudioTrack = track }
         snapshot.selectedAudioID = track?.id
     }
 
@@ -354,9 +357,8 @@ public final class VLCEngine: PlaybackEngine {
         // Mid-reopen the track list is empty: keep the id for when it's back.
         if reopen != nil { reopen?.subtitle = trackID; snapshot.selectedEmbeddedSubtitleID = trackID; return }
         desiredSubtitleID = trackID.flatMap { id in player.subtitleTracks.contains { $0.id == id } ? id : nil }
-        applySubtitleSelection()
+        applyTrackSelection()
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
-        scheduleRestyleIfNeeded()
     }
 
     // MARK: Volume and audio delay
@@ -395,123 +397,52 @@ public final class VLCEngine: PlaybackEngine {
         try? player.setSubtitleDelay(.milliseconds(Int((s * 1000).rounded())))
     }
 
-    /// The text renderer's options only take effect when a video output starts,
-    /// and changing them live would touch the output from the main thread
-    /// (which can deadlock with VideoToolbox). So the next load uses them, and
-    /// while a text track shows, playback moves to a restyled player once the
-    /// changes pause for a moment.
+    /// Size, colour, box, outline and position reach the picture at once (VLC's
+    /// text renderer reads them as it draws); the font, weight and shadow from
+    /// the next video. Never reopens the stream.
     public func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {
         let scale = Self.textScale(for: style)
         if scale != subtitleTextScale {
             subtitleTextScale = scale
             if resource != nil { player.setSubtitleScale(SubtitleScale(scale)) }
         }
-        let args = Self.styleArguments(for: style)
-        guard args != styleArguments else { return }
-        styleArguments = args
-        scheduleRestyleIfNeeded()
+        textLook = VLCTextLook(style)
+        if resource != nil { applyTextLook() }
     }
 
-    public func setSubtitleRestyleHeld(_ held: Bool) {
-        guard held != restyleHeld else { return }
-        restyleHeld = held
-        scheduleRestyleIfNeeded()
+    /// The `libvlc_media_player_t` under SwiftVLC's player (it keeps it internal).
+    private var nativePlayer: UnsafeMutableRawPointer? {
+        Mirror(reflecting: player).children.first { $0.label == "pointer" }
+            .flatMap { $0.value as? OpaquePointer }.map(UnsafeMutableRawPointer.init)
     }
 
-    public func applySubtitleRestyleNow() {
-        restyleTask?.cancel()
-        guard resource != nil, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle,
-              snapshot.status != .loading else { return }
-        snapshot.subtitleRestylePending = false
-        replacePlayer()
-    }
-
-    /// True when a text subtitle VLC styles (SRT-like: not pictures, not ASS,
-    /// which libass draws in the file's own look) from the file is showing.
-    private var showsEmbeddedTextSubtitle: Bool {
-        guard let id = desiredSubtitleID else { return false }
-        return snapshot.embeddedSubtitles.first { $0.id == id }.map { !$0.isBitmap && !$0.keepsOwnStyle } ?? false
-    }
-
-    private func updateRestylePending() {
-        let pending = resource != nil && restyleHeld && styleArguments != playerStyleArguments && showsEmbeddedTextSubtitle
-        if pending != snapshot.subtitleRestylePending { snapshot.subtitleRestylePending = pending }
-    }
-
-    private func scheduleRestyleIfNeeded() {
-        updateRestylePending()
-        restyleTask?.cancel()
-        guard resource != nil, !restyleHeld, styleArguments != playerStyleArguments, showsEmbeddedTextSubtitle else { return }
-        restyleTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(900))
-            guard !Task.isCancelled, let self, self.styleArguments != self.playerStyleArguments,
-                  !self.restyleHeld, self.showsEmbeddedTextSubtitle, self.snapshot.status != .loading else { return }
-            self.replacePlayer()
+    /// Sets what changed of the look on the native player (all of it on a new handle).
+    private func applyTextLook() {
+        guard let native = nativePlayer else { return }
+        let old = appliedTo == native ? appliedLook : nil
+        let look = textLook
+        guard look != old else { return }
+        guard look.apply(to: native, changedFrom: old) else {
+            Log.playback.error("VLC subtitle look: the player's variables couldn't be set")
+            return
+        }
+        appliedLook = look; appliedTo = native
+        // Alignment is read when the subtitle decoder starts: restart it on the same track.
+        if let old, old.align != look.align, let id = desiredSubtitleID,
+           let track = player.subtitleTracks.first(where: { $0.id == id }) {
+            player.selectedSubtitleTrack = nil
+            player.selectedSubtitleTrack = track
         }
     }
 
-    /// libVLC text renderer arguments for a subtitle style. Sizes are relative
-    /// to the picture like Bluebox's own: VLC's default text is about 1/20 of
-    /// the video height, scaled by `sub-text-scale`.
+    /// VLC's text size: its default text is about 1/20 of the video height,
+    /// scaled by `sub-text-scale`; Bluebox's size is relative to the picture too.
     static func textScale(for style: SubtitleStyle) -> Float {
         Float(SubtitleStyle.clampSize(style.relativeSize) / 0.05)
     }
 
-    static func styleArguments(for style: SubtitleStyle) -> [String] {
-        func rgb(_ c: RGBA) -> Int { Int(c.r * 255) << 16 | Int(c.g * 255) << 8 | Int(c.b * 255) }
-        func alpha(_ a: Double) -> Int { Int((min(max(a, 0), 1) * 255).rounded()) }
-        let outline: Int = switch style.outlineWidth { case ..<0.1: 0; case ..<1.5: 2; case ..<3.5: 4; default: 6 }
-        let font: String = style.fontName ?? {
-            switch style.design {
-            case .system: "Helvetica Neue"
-            case .rounded: "Arial Rounded MT Bold"
-            case .serif: "Georgia"
-            case .monospaced: "Menlo"
-            }
-        }()
-        var args = [
-            "--freetype-font=\(font)",
-            "--freetype-color=\(rgb(style.textColor))",
-            "--freetype-opacity=\(alpha(style.textColor.a))",
-            style.weight == .regular || style.weight == .medium ? "--no-freetype-bold" : "--freetype-bold",
-            "--freetype-outline-thickness=\(outline)",
-            "--freetype-outline-color=\(rgb(style.outlineColor))",
-            "--freetype-outline-opacity=\(outline == 0 ? 0 : 255)",
-            "--freetype-shadow-opacity=\(style.shadow ? alpha(style.shadowOpacity * 0.8) : 0)",
-            "--freetype-shadow-color=0",
-            "--freetype-shadow-angle=-90",
-            "--freetype-shadow-distance=0.05",
-            "--freetype-background-opacity=\(alpha(style.backgroundOpacity))",
-            "--freetype-background-color=\(rgb(style.backgroundColor))",
-        ]
-        // libass (ASS tracks) finds no system fonts by itself: without a folder,
-        // a track whose video carries no fonts shows nothing at all.
-        if let fonts = SubtitleFontFolder.path { args.append("--ssa-fontsdir=\(fonts)") }
-        // VLC only places text up from the bottom: its margin, beyond VLC's own, in
-        // pixels of a 1080-line picture. Middle and top are reached by raising it
-        // (a typical line's height is allowed for the text: a fixed amount, so a size
-        // change, which VLC takes live, never reopens the stream).
-        let line = 0.06
-        let fromBottom: Double = switch style.anchor {
-        case .bottom: style.verticalMargin
-        case .middle: 0.5 - line / 2
-        case .top: 1 - style.verticalMargin - line
-        }
-        if fromBottom > SubtitleStyle.defaultMargin + 0.005 {
-            args.append("--sub-margin=\(Int((fromBottom - SubtitleStyle.defaultMargin) * 1080))")
-        }
-        // Left and right alignment (VLC's text decoder: 1 left, 2 right; 0 centre).
-        switch style.alignment {
-        case .leading: args.append("--subsdec-align=1")
-        case .trailing: args.append("--subsdec-align=2")
-        case .center: break
-        }
-        return args
-    }
-
-    /// Stops for good: a restyle or Night Mode reopen still waiting can't start it again.
+    /// Stops for good: a Night Mode reopen still waiting can't start it again.
     public func stop() {
-        restyleTask?.cancel(); restyleTask = nil
         reloadTask?.cancel(); reloadTask = nil
         reopen = nil
         teardown()
@@ -606,15 +537,11 @@ public final class VLCEngine: PlaybackEngine {
     /// Arguments libVLC refused (an option this build lacks): not tried again.
     private static var refused: Set<String> = []
 
-    static func arguments(night: Int, style: [String]) -> [String] {
-        (night == 0 ? [] : nightArguments(dialogueBoost: night == 2)) + style
-    }
-
-    /// The instance for Night Mode and a subtitle style: the plain shared
-    /// instance when neither is set, or when libVLC turns the arguments down.
-    private static func instance(night: Int, style: [String]) -> VLCInstance {
-        let extra = arguments(night: night, style: style)
-        guard !extra.isEmpty else { return .shared }
+    /// The instance for Night Mode: the plain shared instance when it's off,
+    /// or when libVLC turns the arguments down.
+    private static func instance(night: Int) -> VLCInstance {
+        guard night != 0 else { return .shared }
+        let extra = nightArguments(dialogueBoost: night == 2)
         let key = extra.joined(separator: " ")
         if let made = instances[key] { return made }
         if !refused.contains(key) {
@@ -627,20 +554,20 @@ public final class VLCEngine: PlaybackEngine {
                 Log.playback.error("VLC instance with \(key, privacy: .public) failed: \(String(describing: error), privacy: .public)")
             }
         }
-        // Night Mode matters more than the subtitle look: keep it without the style.
-        return style.isEmpty ? .shared : instance(night: night, style: [])
+        return .shared
     }
 
-    /// The instance for these arguments, made off the main thread if it's new.
-    private static func preparedInstance(night: Int, style: [String]) async -> VLCInstance {
-        let extra = arguments(night: night, style: style)
+    /// The instance for Night Mode, made off the main thread if it's new.
+    private static func preparedInstance(night: Int) async -> VLCInstance {
+        guard night != 0 else { return .shared }
+        let extra = nightArguments(dialogueBoost: night == 2)
         let key = extra.joined(separator: " ")
-        if extra.isEmpty || instances[key] != nil || refused.contains(key) { return instance(night: night, style: style) }
+        if instances[key] != nil || refused.contains(key) { return instance(night: night) }
         let made = await Task.detached(priority: .userInitiated) {
             try? VLCInstance(arguments: VLCInstance.defaultArguments + extra)
         }.value
         if let made { if instances[key] == nil { instances[key] = made } } else { refused.insert(key) }
-        return instance(night: night, style: style)
+        return instance(night: night)
     }
 
     private func applyEqualizer() {
@@ -680,11 +607,11 @@ public final class VLCEngine: PlaybackEngine {
             let wasPlaying = wanted.playing, subtitle = wanted.subtitle, audio = wanted.audio
             // VLC keeps track ids for the same file: the same tracks come back on.
             // The audio has to be chosen again too, or VLC plays the file's default
-            // track (another language, or the commentary) after a subtitle change.
-            if let audio { self.selectAudio(audio) }
+            // track (another language, or the commentary).
+            self.desiredAudioID = audio
             self.desiredSubtitleID = subtitle
             self.snapshot.selectedEmbeddedSubtitleID = subtitle
-            self.applySubtitleSelection()
+            self.applyTrackSelection()
             if rate != 1 { self.setRate(rate) }
             if wasPlaying { self.play() }
         }
@@ -761,7 +688,7 @@ public final class VLCEngine: PlaybackEngine {
             if state == .stopped, player.didReachEnd { markEnded(); return }
             refresh(reportedState: state)
         case .tracksChanged:
-            applySubtitleSelection()
+            applyTrackSelection()
             refresh()
         default:
             refresh()
@@ -891,17 +818,19 @@ public final class VLCEngine: PlaybackEngine {
         if subs != snapshot.embeddedSubtitles { snapshot.embeddedSubtitles = subs }
         snapshot.selectedAudioID = player.selectedAudioTrack?.id
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
-        updateRestylePending()
     }
 
-    /// VLC picks "default" subtitle tracks itself; Bluebox's session decides.
-    private func applySubtitleSelection() {
-        let current = player.selectedSubtitleTrack?.id
-        guard current != desiredSubtitleID else { return }
-        if let id = desiredSubtitleID {
-            if let track = player.subtitleTracks.first(where: { $0.id == id }) { player.selectedSubtitleTrack = track }
-        } else {
-            player.selectedSubtitleTrack = nil
+    /// VLC picks "default" tracks itself; Bluebox's session decides. The audio
+    /// and the subtitle are each put back on their own: a subtitle already
+    /// right never skips the audio (VLC can fall back to the file's default
+    /// audio, another language, when tracks change).
+    private func applyTrackSelection() {
+        if player.selectedSubtitleTrack?.id != desiredSubtitleID {
+            if let id = desiredSubtitleID {
+                if let track = player.subtitleTracks.first(where: { $0.id == id }) { player.selectedSubtitleTrack = track }
+            } else if player.selectedSubtitleTrack != nil {
+                player.selectedSubtitleTrack = nil
+            }
         }
         if let id = desiredAudioID, player.selectedAudioTrack?.id != id,
            let track = player.audioTracks.first(where: { $0.id == id }) {
@@ -971,38 +900,4 @@ public final class VLCEngine: PlaybackEngine {
         }.value
         #endif
     }
-}
-
-/// A folder of links to the fonts ASS subtitles usually ask for, for libass.
-///
-/// libass in this libVLC build has no system font lookup, only `ssa-fontsdir`,
-/// and it reads every file in that folder each time a subtitle decoder starts
-/// (the whole system font folder costs up to a second). So it gets a small
-/// folder: Helvetica Neue (libass's fallback for any font it can't find), the
-/// common Windows families, and wide-coverage fonts for CJK and other scripts.
-enum SubtitleFontFolder {
-    static let wanted = [
-        "HelveticaNeue.ttc", "Helvetica.ttc", "Arial.ttf", "Arial Bold.ttf", "Arial Italic.ttf", "Arial Bold Italic.ttf",
-        "Arial Unicode.ttf", "Times New Roman.ttf", "Times New Roman Bold.ttf", "Times New Roman Italic.ttf",
-        "Verdana.ttf", "Verdana Bold.ttf", "Trebuchet MS.ttf", "Trebuchet MS Bold.ttf", "Georgia.ttf", "Georgia Bold.ttf",
-        "Tahoma.ttf", "Tahoma Bold.ttf", "Comic Sans MS.ttf", "Comic Sans MS Bold.ttf", "Impact.ttf",
-        "Hiragino Sans GB.ttc", "ヒラギノ角ゴシック W3.ttc", "ヒラギノ角ゴシック W6.ttc", "AppleSDGothicNeo.ttc", "PingFang.ttc",
-    ]
-    static let searched = ["/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/System/Library/Fonts/Core",
-                           "/System/Library/Fonts/CoreAddition", "/System/Library/Fonts/CoreUI", "/Library/Fonts"]
-
-    /// Made once per launch; nil when no font could be linked.
-    static let path: String? = {
-        let fm = FileManager.default
-        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let dir = caches.appending(path: "SubtitleFonts", directoryHint: .isDirectory)
-        try? fm.removeItem(at: dir)  // system fonts move between OS versions: link afresh
-        guard (try? fm.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else { return nil }
-        var linked = 0
-        for name in wanted {
-            guard let source = searched.lazy.map({ "\($0)/\(name)" }).first(where: fm.isReadableFile(atPath:)) else { continue }
-            if (try? fm.createSymbolicLink(atPath: dir.appending(path: name).path, withDestinationPath: source)) != nil { linked += 1 }
-        }
-        return linked > 0 ? dir.path : nil
-    }()
 }

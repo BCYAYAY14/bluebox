@@ -47,21 +47,45 @@ struct TrackLanguageGroup: Identifiable, Equatable {
 
 /// Builds the rows for the picker and the subtitle panel: cleaned names,
 /// duplicates numbered, the languages you use first.
+///
+/// The card asks again on every redraw (the player's state changes several
+/// times a second while it plays) and a video can carry 40 subtitle tracks,
+/// so the last answer is kept until the tracks, the choice or the languages change.
 @MainActor
 enum TrackRows {
+    private struct AudioKey: Equatable { let tracks: [MediaTrack]; let selected: String? }
+    private struct SubtitleKey: Equatable {
+        let embedded: [MediaTrack]; let external: [MediaTrack]; let selection: SubtitleSelection; let preferred: [String]
+    }
+    private static var audioCache: (AudioKey, [TrackRow])?
+    private static var subtitleCache: (SubtitleKey, [TrackRow])?
+    private static var groupCache: ([TrackRow], [TrackLanguageGroup])?
+
     static func audio(_ session: PlayerSession) -> [TrackRow] {
-        let tracks = session.snapshot.audioTracks
+        let key = AudioKey(tracks: session.snapshot.audioTracks, selected: session.snapshot.selectedAudioID)
+        if let (k, rows) = audioCache, k == key { return rows }
+        let tracks = key.tracks
         let labels = TrackLabel.labels(for: tracks)
-        return tracks.map { t in
+        let rows = tracks.map { t in
             let l = labels[t.id] ?? TrackLabel(title: t.label)
             return TrackRow(id: t.id, title: l.title, detail: l.detail, source: .video, isBitmap: false,
-                            languageCode: l.languageCode, selected: session.snapshot.selectedAudioID == t.id, selection: nil)
+                            languageCode: l.languageCode, selected: key.selected == t.id, selection: nil)
         }
+        audioCache = (key, rows)
+        return rows
     }
 
     static func subtitles(_ session: PlayerSession, preferred: [String]) -> [TrackRow] {
-        let embedded = session.snapshot.embeddedSubtitles
-        let external = session.externalSubtitles
+        let key = SubtitleKey(embedded: session.snapshot.embeddedSubtitles, external: session.externalSubtitles,
+                              selection: session.subtitleSelection, preferred: preferred)
+        if let (k, rows) = subtitleCache, k == key { return rows }
+        let rows = makeSubtitles(key)
+        subtitleCache = (key, rows)
+        return rows
+    }
+
+    private static func makeSubtitles(_ key: SubtitleKey) -> [TrackRow] {
+        let embedded = key.embedded, external = key.external, preferred = key.preferred
         let labels = TrackLabel.labels(for: embedded + external)
         let tracks = embedded + external
         let details = distinctDetails(tracks, labels: labels)
@@ -70,7 +94,7 @@ enum TrackRows {
             let selection: SubtitleSelection = t.isExternal ? .external(t.id) : .embedded(t.id)
             let source: TrackRow.Source = !t.isExternal ? .video : t.id.hasPrefix("import-") ? .added : .file
             return TrackRow(id: t.id, title: l.title, detail: details[t.id] ?? nil, source: source, isBitmap: t.isBitmap,
-                            languageCode: l.languageCode, selected: session.subtitleSelection == selection, selection: selection,
+                            languageCode: l.languageCode, selected: key.selection == selection, selection: selection,
                             format: t.format, keepsOwnStyle: t.keepsOwnStyle)
         }
         return ordered(rows, preferred: preferred)
@@ -132,6 +156,13 @@ enum TrackRows {
     /// Subtitle rows by language, in the rows' order (your languages first):
     /// one row per language in the list, its tracks a tap away.
     static func languageGroups(_ rows: [TrackRow], locale: Locale = .current) -> [TrackLanguageGroup] {
+        if locale == .current, let (r, groups) = groupCache, r == rows { return groups }
+        let groups = makeGroups(rows, locale: locale)
+        if locale == .current { groupCache = (rows, groups) }
+        return groups
+    }
+
+    private static func makeGroups(_ rows: [TrackRow], locale: Locale) -> [TrackLanguageGroup] {
         var order: [String] = []
         var byKey: [String: [TrackRow]] = [:]
         for r in rows {

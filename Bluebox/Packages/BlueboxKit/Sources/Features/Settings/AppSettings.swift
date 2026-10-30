@@ -121,6 +121,8 @@ public final class AppSettings {
     public var nightMode: Bool { didSet { save(nightMode, PlayerFeatureKey.nightMode) } }
     /// Offer what's playing to your other devices (Handoff).
     public var handoff: Bool { didSet { save(handoff, PlayerFeatureKey.handoff) } }
+    /// Hand every video Infuse can reach to Infuse (this device only: Infuse may not be on the others).
+    public var alwaysOpenInInfuse: Bool { didSet { save(alwaysOpenInInfuse, PlayerFeatureKey.alwaysOpenInInfuse) } }
 
     @ObservationIgnored private let prefs: PreferencesStore
     @ObservationIgnored private let monitor = NetworkMonitor()
@@ -154,6 +156,7 @@ public final class AppSettings {
         dialogueBoost = prefs.value(Bool.self, for: PlayerFeatureKey.dialogueBoost) ?? false
         nightMode = prefs.value(Bool.self, for: PlayerFeatureKey.nightMode) ?? false
         handoff = prefs.value(Bool.self, for: PlayerFeatureKey.handoff) ?? true
+        alwaysOpenInInfuse = prefs.value(Bool.self, for: PlayerFeatureKey.alwaysOpenInInfuse) ?? false
         var mobile = prefs.value(MobileDataSettings.self, for: PreferenceKey.mobileData) ?? MobileDataSettings()
         if !allowCellular { mobile.streaming = .never }  // turned off before Mobile Data existed
         mobileData = mobile
@@ -188,6 +191,7 @@ public final class AppSettings {
         load(PlayerFeatureKey.dialogueBoost, false, into: \.dialogueBoost)
         load(PlayerFeatureKey.nightMode, false, into: \.nightMode)
         load(PlayerFeatureKey.handoff, true, into: \.handoff)
+        load(PlayerFeatureKey.alwaysOpenInInfuse, false, into: \.alwaysOpenInInfuse)
         load(PreferenceKey.mobileData, MobileDataSettings(), into: \.mobileData)
         load(PreferenceKey.pictureDefaults, PictureDefaults(), into: \.pictureDefaults)
         loadProfile(profileID)
@@ -256,6 +260,7 @@ public final class AppSettings {
         dialogueBoost = false
         nightMode = false
         handoff = true
+        alwaysOpenInInfuse = false
         mobileData = MobileDataSettings()
         pictureDefaults = PictureDefaults()
     }
@@ -367,6 +372,8 @@ public enum PlayerFeatureKey {
     public static let nightMode = "bluebox.audio.nightMode"
     /// Bool: advertise what's playing for Handoff.
     public static let handoff = "bluebox.playback.handoff"
+    /// Bool: hand videos to Infuse. Not synced.
+    public static let alwaysOpenInInfuse = "bluebox.playback.alwaysInfuse"
 }
 
 // MARK: - Applying playback defaults

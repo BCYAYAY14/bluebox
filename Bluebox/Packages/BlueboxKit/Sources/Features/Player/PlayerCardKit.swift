@@ -13,7 +13,7 @@ enum PlayerPanelKind: String, CaseIterable, Identifiable {
         case .tracks: compact ? 400 : 360
         case .episodes: 520
         case .speed: compact ? 320 : 300
-        case .tools: compact ? 580 : 320
+        case .tools: compact ? 360 : 320
         case .chapters: 300
         }
     }

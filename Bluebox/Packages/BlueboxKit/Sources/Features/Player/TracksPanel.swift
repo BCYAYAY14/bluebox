@@ -22,8 +22,6 @@ struct TracksPanel: View {
     @State private var page: TracksPage?
     /// The language whose subtitle tracks are open (a page in the card).
     @State private var language: String?
-    @State private var showsMoreSubtitles = false
-    @State private var showsMoreAudio = false
 
     init(session: PlayerSession, width: CGFloat, canSearch: Bool, initialPage: TracksPage? = nil,
          onAddFile: @escaping () -> Void, onSearch: @escaping () -> Void) {
@@ -108,23 +106,25 @@ struct TracksPanel: View {
 
     // MARK: Columns
 
+    /// Rows a list shows before it scrolls: a phone on its side has little height.
+    private var visibleRows: Int { PanelMetrics.dense ? 4 : 6 }
+
     private func audioColumn(_ rows: [TrackRow], preferred: [String]) -> some View {
-        let parts = TrackRows.split(rows, preferred: preferred)
-        return column("Audio", shortcut: "B") {
-            ForEach(parts.shown) { r in row(r) { session.selectAudio(r.id) } }
-            more(parts.more, expanded: $showsMoreAudio) { r in session.selectAudio(r.id) }
+        column("Audio", shortcut: "B") {
+            scrolling(count: rows.count, selected: rows.first(where: \.selected)?.id) {
+                ForEach(rows) { r in row(r) { session.selectAudio(r.id) }.id(r.id) }
+            }
         }
     }
 
     private func subtitleColumn(_ rows: [TrackRow], preferred: [String]) -> some View {
-        let parts = TrackRows.split(TrackRows.languageGroups(rows), preferred: preferred)
+        let groups = TrackRows.languageGroups(rows)
         return column("Subtitles", shortcut: "V") {
-            row(TrackRow(id: "off", title: "Off", detail: nil, source: .video, isBitmap: false, languageCode: nil,
-                         selected: session.subtitleSelection == .off, selection: .off)) { session.selectSubtitle(.off) }
-            ForEach(parts.shown) { g in groupRow(g) }
-            if !parts.more.isEmpty {
-                moreToggle(count: parts.more.count, expanded: $showsMoreSubtitles)
-                if showsMoreSubtitles { ForEach(parts.more) { g in groupRow(g) } }
+            // Every language, your languages first; a long list scrolls in place.
+            scrolling(count: groups.count + 1, selected: groups.first(where: { $0.selected != nil })?.id) {
+                row(TrackRow(id: "off", title: "Off", detail: nil, source: .video, isBitmap: false, languageCode: nil,
+                             selected: session.subtitleSelection == .off, selection: .off)) { session.selectSubtitle(.off) }
+                ForEach(groups) { g in groupRow(g).id(g.id) }
             }
             if rows.isEmpty {
                 Text("None in this video.")
@@ -153,27 +153,20 @@ struct TracksPanel: View {
         }
     }
 
+    /// The rows as they are, or in a list of `visibleRows` rows that scrolls
+    /// (starting at the chosen one) when there are more.
     @ViewBuilder
-    private func more(_ rows: [TrackRow], expanded: Binding<Bool>, pick: @escaping (TrackRow) -> Void) -> some View {
-        if !rows.isEmpty {
-            Button { withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() } } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
-                        .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
-                        .frame(width: 14)
-                    Text(expanded.wrappedValue ? "Fewer" : "More (\(rows.count))")
-                        .font(PlayerPopoverMetrics.rowFont.weight(.medium))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(Palette.textSecondary)
-                .padding(.horizontal, 6)
-                .frame(minHeight: PlayerPopoverMetrics.rowHeight)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PopoverRowStyle())
-            if expanded.wrappedValue {
-                ForEach(rows) { r in row(r) { pick(r) } }
+    private func scrolling<Rows: View>(count: Int, selected: String?, @ViewBuilder rows: () -> Rows) -> some View {
+        let list = VStack(spacing: 1) { rows() }
+        if count <= visibleRows + 1 {
+            list
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView { list }
+                .scrollIndicators(.automatic)
+                // Half a row shows past the edge, so it's plain the list goes on.
+                .frame(height: (Double(visibleRows) + 0.5) * (PlayerPopoverMetrics.rowHeight + 1))
+                .onAppear { if let selected { proxy.scrollTo(selected, anchor: .center) } }
             }
         }
     }
@@ -244,22 +237,6 @@ struct TracksPanel: View {
         if r.detail != nil, r.title != g.title { parts.append(r.title) }
         parts.append(r.source == .video ? "In the video" : r.source == .added ? "Added file" : "Subtitle file")
         return parts.joined(separator: " · ")
-    }
-
-    private func moreToggle(count: Int, expanded: Binding<Bool>) -> some View {
-        Button { withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() } } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.right").font(.caption2.weight(.bold))
-                    .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0)).frame(width: 14)
-                Text(expanded.wrappedValue ? "Fewer" : "More Languages (\(count))").font(PlayerPopoverMetrics.rowFont.weight(.medium))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(Palette.textSecondary)
-            .padding(.horizontal, 6)
-            .frame(minHeight: PlayerPopoverMetrics.rowHeight)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PopoverRowStyle())
     }
 
     private func linkRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {

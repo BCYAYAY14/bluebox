@@ -106,31 +106,28 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
             switch self {
             case .classic: "Classic"
             case .boxed: "Boxed"
-            case .outlined: "Outlined"
+            case .outlined: "Yellow"
             case .large: "Large"
-            case .cinema: "Cinema"
+            case .cinema: "Soft"
             }
         }
     }
 
-    /// Applies a preset's look, keeping languages and placement preferences.
+    /// Applies a preset: size, colour, background and outline. These are what
+    /// every kind of subtitle (files, and the video's own text tracks) takes
+    /// on at once; the font, weight, shadow, languages and position stay.
     public func applying(_ preset: Preset) -> SubtitleStyle {
-        var s = SubtitleStyle()
-        s.preferredLanguage = preferredLanguage; s.secondaryLanguage = secondaryLanguage
-        s.avoidControls = avoidControls
-        // A preset changes the look; where the user dragged the text stays.
-        s.anchor = anchor; s.verticalMargin = verticalMargin; s.horizontalOffset = horizontalOffset
+        let base = SubtitleStyle()
+        var s = self
+        s.relativeSize = base.relativeSize; s.textColor = base.textColor
+        s.outlineWidth = base.outlineWidth; s.outlineColor = base.outlineColor
+        s.backgroundColor = base.backgroundColor; s.backgroundOpacity = base.backgroundOpacity
         switch preset {
         case .classic: break
-        case .boxed:
-            s.shadow = false; s.backgroundOpacity = 0.75; s.weight = .medium
-        case .outlined:
-            s.textColor = .yellow; s.outlineWidth = 2.5; s.shadow = false; s.weight = .bold
-        case .large:
-            s.relativeSize = 0.065; s.weight = .bold; s.outlineWidth = 2; s.backgroundOpacity = 0.4
-        case .cinema:
-            s.design = .serif; s.weight = .regular; s.italic = false; s.relativeSize = 0.05; s.verticalMargin = 0.035
-            s.textColor = RGBA(0.96, 0.95, 0.9)
+        case .boxed: s.outlineWidth = 0; s.backgroundOpacity = 0.75
+        case .outlined: s.textColor = .yellow; s.outlineWidth = 2.5
+        case .large: s.relativeSize = 0.065; s.outlineWidth = 2.5; s.backgroundOpacity = 0.4
+        case .cinema: s.textColor = RGBA(0.96, 0.95, 0.9); s.relativeSize = 0.05; s.outlineWidth = 0; s.backgroundOpacity = 0.4
         }
         return s
     }

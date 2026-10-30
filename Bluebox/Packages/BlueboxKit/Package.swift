@@ -39,8 +39,10 @@ let package = Package(
         .target(name: "Addons", dependencies: ["Domain", "TorrentStreaming"]),
         .target(
             name: "VLCPlayback",
-            dependencies: ["Domain", "Playback", "Subtitles", .product(name: "SwiftVLC", package: "SwiftVLC")]
+            dependencies: ["Domain", "Playback", "Subtitles", "VLCVariables", .product(name: "SwiftVLC", package: "SwiftVLC")]
         ),
+        // libvlccore's variable API (in SwiftVLC's static libVLC): live subtitle looks.
+        .target(name: "VLCVariables"),
         .target(name: "DesignSystem", dependencies: ["Domain"]),
         .target(name: "Metadata", dependencies: ["Domain"]),
         // Skip Intro/Recap/Credits: chapter titles, Jellyfin segments, TheIntroDB and IntroDB.
