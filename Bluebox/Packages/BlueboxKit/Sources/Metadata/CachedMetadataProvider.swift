@@ -27,6 +27,29 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
         self.store = Store(capacity: capacity, now: now)
     }
 
+    // MARK: The other catalog's keys
+
+    /// Translates keys saved under the other catalog (`CatalogKeyBridge`).
+    /// Nil leaves them as they are (the sample catalog, tests).
+    public var keyBridge: CatalogKeyBridge? {
+        get { filterLock.withLock { bridgeValue } }
+        set { filterLock.withLock { bridgeValue = newValue } }
+    }
+    private var bridgeValue: CatalogKeyBridge?
+
+    /// True when `base` keys titles by TMDB ID, false for IMDb (Cinemeta), nil for neither.
+    private var usesTMDBKeys: Bool? {
+        if base is TMDBService { return true }
+        if base is CinemetaMetadataProvider { return false }
+        return nil
+    }
+
+    /// `key` in `base`'s catalog when it was saved under the other one.
+    private func nativeKey(for key: MediaKey) async -> MediaKey? {
+        guard let bridge = keyBridge, let tmdb = usesTMDBKeys else { return nil }
+        return await bridge.key(for: key, toTMDB: tmdb)
+    }
+
     // MARK: Maturity
 
     private let filterLock = NSLock()
@@ -97,6 +120,11 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
     }
 
     public func detail(for key: MediaKey) async throws -> TitleDetail {
+        if let native = await nativeKey(for: key) {
+            // Saved under the other catalog: this catalog's page, under the saved key,
+            // so progress, downloads and My List stay with it.
+            return try await detail(for: native).rekeyed(to: key)
+        }
         let detail: TitleDetail = try await store.value("detail:\(key.rawValue)", lifetime: lifetimes.detail) { [base] in
             try await base.detail(for: key)
         }
@@ -121,7 +149,10 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
     }
 
     public func season(_ number: Int, of seriesKey: MediaKey) async throws -> Season {
-        try await store.value("season:\(seriesKey.rawValue):\(number)", lifetime: lifetimes.detail) { [base] in
+        if let native = await nativeKey(for: seriesKey) {
+            return try await season(number, of: native).rekeyed(to: seriesKey)
+        }
+        return try await store.value("season:\(seriesKey.rawValue):\(number)", lifetime: lifetimes.detail) { [base] in
             try await base.season(number, of: seriesKey)
         }
     }
@@ -234,6 +265,7 @@ extension CachedMetadataProvider: MetadataExtras {
 
     public func videos(for key: MediaKey, season: Int?) async throws -> [TitleVideo] {
         guard let extras else { throw MetadataError.notFound }
+        if let native = await nativeKey(for: key) { return try await videos(for: native, season: season) }
         return try await store.value("videos:\(key.rawValue):\(season.map(String.init) ?? "-")", lifetime: Self.videosLifetime) {
             try await extras.videos(for: key, season: season)
         }
@@ -241,6 +273,7 @@ extension CachedMetadataProvider: MetadataExtras {
 
     public func airing(for seriesKey: MediaKey) async throws -> AiringInfo {
         guard let extras else { throw MetadataError.notFound }
+        if let native = await nativeKey(for: seriesKey) { return try await airing(for: native).rekeyed(to: seriesKey) }
         return try await store.value("airing:\(seriesKey.rawValue)", lifetime: Self.airingLifetime) {
             try await extras.airing(for: seriesKey)
         }
@@ -249,6 +282,7 @@ extension CachedMetadataProvider: MetadataExtras {
     /// Asks the service again (the new-episode check), keeping the old answer if that fails.
     public func freshAiring(for seriesKey: MediaKey) async throws -> AiringInfo {
         guard let extras else { throw MetadataError.notFound }
+        if let native = await nativeKey(for: seriesKey) { return try await freshAiring(for: native).rekeyed(to: seriesKey) }
         let info = try await extras.airing(for: seriesKey)
         await store.put("airing:\(seriesKey.rawValue)", info)
         return info
@@ -263,6 +297,7 @@ extension CachedMetadataProvider: MetadataExtras {
 
     public func credits(for key: MediaKey) async throws -> TitleCredits {
         guard let extras else { throw MetadataError.notFound }
+        if let native = await nativeKey(for: key) { return try await credits(for: native) }
         return try await store.value("credits:\(key.rawValue)", lifetime: lifetimes.detail) {
             try await extras.credits(for: key)
         }
@@ -289,5 +324,40 @@ extension CachedMetadataProvider: MetadataExtras {
         return try await store.value("filmography:\(personID)", lifetime: Self.peopleLifetime) {
             try await extras.filmography(personID: personID)
         }
+    }
+}
+
+extension TitleDetail {
+    /// The same page under `key` (a key saved under the other catalog).
+    func rekeyed(to key: MediaKey) -> TitleDetail {
+        let t = title
+        let renamed = Title(key: key, kind: t.kind, name: t.name, overview: t.overview, releaseDate: t.releaseDate,
+                            genreIDs: t.genreIDs, voteAverage: t.voteAverage, poster: t.poster, backdrop: t.backdrop)
+        return TitleDetail(title: renamed, tagline: tagline, runtimeMinutes: runtimeMinutes, genres: genres, cast: cast,
+                           crew: crew, logo: logo, seasons: seasons, related: related, certification: certification,
+                           imdbID: imdbID ?? key.imdbID)
+    }
+}
+
+extension Episode {
+    /// The same episode under `seriesKey`.
+    func rekeyed(to seriesKey: MediaKey) -> Episode {
+        Episode(key: seriesKey.episode(season: seasonNumber, episode: number) ?? key, seasonNumber: seasonNumber,
+                number: number, name: name, overview: overview, airDate: airDate, runtimeMinutes: runtimeMinutes, still: still)
+    }
+}
+
+extension AiringInfo {
+    func rekeyed(to seriesKey: MediaKey) -> AiringInfo {
+        AiringInfo(seriesKey: seriesKey, status: status, lastEpisode: lastEpisode?.rekeyed(to: seriesKey),
+                   nextEpisode: nextEpisode?.rekeyed(to: seriesKey))
+    }
+}
+
+extension Season {
+    /// The same season with its episodes under `seriesKey` (a key saved under the other catalog).
+    func rekeyed(to seriesKey: MediaKey) -> Season {
+        Season(seriesKey: seriesKey, number: number, name: name, overview: overview,
+               episodes: episodes.map { $0.rekeyed(to: seriesKey) })
     }
 }

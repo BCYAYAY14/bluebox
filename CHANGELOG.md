@@ -2,8 +2,25 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
-## Unreleased
+## 1.0.13 (30 October 2026)
 
+### Player
+- Picking a subtitle track or changing how subtitles look never reopens the video, so there's no rebuffer. Colour, background, outline, size and position show from the next line; font, weight and shadow take effect from the next video.
+- Picking a subtitle no longer switches the audio to the file's default track.
+- Opening the subtitle card no longer stutters: the track list isn't rebuilt several times a second, and ASS subtitles no longer load about 140 MB of Chinese, Japanese and Korean fonts each time they start.
+- A simpler Subtitle Style card: presets, then Size, Colour, Background, Outline and Position.
+- Every subtitle language is in one list that scrolls inside the card.
+- Tools is three columns on a phone.
+- Subtitles from files and subtitles in the video use the same font.
+- Infuse as an external player: Open in Infuse on each release and finished download, and Settings › Player › Always Open in Infuse (this device only).
+
+### Downloads
+- A show's page has one ↓ button beside the season, with a menu: Download Season, Unwatched Only, As One Season Pack, and Download Rules…. While the season downloads, one thin progress line sits under the picker, with Pause and Cancel.
+- Download Rules has no Use Defaults / Custom switch. Changing anything gives the show its own rules, and Reset to Settings goes back. Keep Next, Quality and Audio open a list instead of a pop-up.
+
+### Fixed
+- Torrents that reached "ready" but wouldn't play after the app had been in the background. iOS could close the stream server's socket while the app was suspended; the server now checks itself before each stream and listens again on the same port.
+- Titles saved while using one catalog (TMDB or Cinemeta) still open, with their progress, downloads and My List, after switching to the other.
 - A changelog, on the front page of the public repository.
 
 ## 1.0.12 (29 October 2026)

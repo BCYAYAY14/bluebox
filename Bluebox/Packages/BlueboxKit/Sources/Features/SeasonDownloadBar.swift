@@ -2,18 +2,115 @@ import DesignSystem
 import Domain
 import SwiftUI
 
-/// The season's download line, under "Season 2 ▾" on a show's page:
+/// The season's download button, beside "Season 2 ▾" on a show's page. It
+/// opens one menu: Download Season ("8 episodes · about 9.6 GB"), Unwatched
+/// Only when some are watched, As One Season Pack when an add-on has the
+/// season as one healthy torrent, and Download Rules…. While the season
+/// downloads the arrow becomes a ring, and `SeasonDownloadBar` shows one
+/// thin progress line under the picker.
+struct SeasonDownloadButton: View {
+    @Environment(AppModel.self) private var app
+    let seasonName: String
+    let status: SeasonDownloadStatus
+    /// Every episode not downloaded yet; nil when none can be.
+    let all: SeasonDownloadBar.Offer?
+    /// Unwatched episodes not downloaded yet, when that's fewer than `all`.
+    let unwatched: SeasonDownloadBar.Offer?
+    /// What to look a season pack up for.
+    let pack: SeasonPackRequest?
+    /// The show's rules in one line, under Download Rules….
+    let rulesSummary: String
+    let downloadAll: () -> Void
+    let downloadUnwatched: () -> Void
+    let editRules: () -> Void
+    @State private var open = false
+    @State private var offer: SeasonPackOffer?
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            icon
+                .foregroundStyle(Palette.textPrimary)
+                .frame(width: 36, height: 36)
+                .background(Palette.elevated, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .blueboxMenu(isPresented: $open, title: "Download \(seasonName)") { entries }
+        .fixedSize()
+        .help("Download \(seasonName)")
+        .accessibilityLabel("Download \(seasonName)")
+        .accessibilityValue(status.inProgress ? status.detail : status.isComplete && all == nil ? "Downloaded" : "")
+        .accessibilityIdentifier("downloadSeason")
+        #if DEBUG
+        // Screenshots: `-open-season-download` opens the menu once the page settles.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-open-season-download") else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            open = true
+        }
+        #endif
+        .task(id: pack?.id) {
+            offer = nil
+            guard let pack else { return }
+            offer = await app.seasonPackOffer(series: pack.series, season: pack.season, episodes: pack.episodes,
+                                              separateBytes: pack.separateBytes)
+        }
+    }
+
+    @ViewBuilder private var icon: some View {
+        if status.inProgress {
+            ProgressRing(fraction: status.preparing == status.total ? 0 : status.fraction, tint: Palette.brand)
+                .frame(width: 18, height: 18)
+        } else if status.isComplete && all == nil {
+            Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.brandBright)
+        } else {
+            Image(systemName: "arrow.down").font(.system(size: 15, weight: .bold))
+        }
+    }
+
+    @BlueboxMenuBuilder private var entries: [BlueboxMenuEntry] {
+        BlueboxMenuSection {
+            if let all {
+                BlueboxMenuButton(status.completed > 0 ? "Download Rest of Season" : "Download \(seasonName)",
+                                  systemImage: "arrow.down.circle", subtitle: "\(episodes(all.count)) · \(all.sizeLabel)") {
+                    downloadAll()
+                }
+            }
+            if let unwatched {
+                BlueboxMenuButton("Unwatched Only", systemImage: "eye.slash",
+                                  subtitle: "\(episodes(unwatched.count)) · \(unwatched.sizeLabel)") { downloadUnwatched() }
+            }
+            if let offer, let pack {
+                BlueboxMenuButton("As One Season Pack", systemImage: "shippingbox", subtitle: offer.menuSubtitle) {
+                    Task { await app.downloadSeasonPack(offer, seriesKey: pack.series, seriesName: pack.seriesName) }
+                }
+            }
+        }
+        BlueboxMenuSection {
+            BlueboxMenuButton("Download Rules…", systemImage: "arrow.triangle.2.circlepath", subtitle: rulesSummary) { editRules() }
+        }
+    }
+
+    private func episodes(_ n: Int) -> String { n == 1 ? "1 episode" : "\(n) episodes" }
+}
+
+private extension SeasonPackOffer {
+    /// "1080p · BluRay · 184 seeders · about 34 GB".
+    var menuSubtitle: String {
+        ([release.resolution, release.info.source?.title, release.seeders.map { "\($0) seeders" }].compactMap { $0 }
+         + [packBytes.map { SeasonActionPlan.sizeLabel($0) }].compactMap { $0 }).joined(separator: " · ")
+    }
+}
+
+/// The season's download line under "Season 2 ▾", only while there's
+/// something to show:
 ///
-/// - nothing saved yet: **Download Season** · "8 episodes · about 9.6 GB",
-///   and **Unwatched** when some are already watched;
-/// - downloading: a bar filling with the season ("3 of 8 · 41%") with Pause
-///   and Cancel;
+/// - downloading: "Downloading Season 2 · 3 of 8 · 41%" over a thin bar,
+///   with Pause and Cancel;
 /// - all saved: "Season 2 downloaded · 9.4 GB".
 ///
-/// Downloading a season lives here only; the ⋯ beside the picker marks it
-/// watched, and the show's Download Rules card holds Smart Downloads. When
-/// an add-on has the season as one torrent, a season pack is offered under
-/// the buttons with both sizes.
+/// Starting a download is the ↓ button's menu (`SeasonDownloadButton`).
 struct SeasonDownloadBar: View {
     struct Offer: Equatable {
         let count: Int
@@ -22,14 +119,8 @@ struct SeasonDownloadBar: View {
 
     let seasonName: String
     let status: SeasonDownloadStatus
-    /// Every episode not downloaded yet; nil when none can be.
-    let all: Offer?
-    /// Unwatched episodes not downloaded yet, when that's fewer than `all`.
-    let unwatched: Offer?
-    /// What to look a season pack up for, beside Download Season.
-    var pack: SeasonPackRequest? = nil
-    let downloadAll: () -> Void
-    let downloadUnwatched: () -> Void
+    /// True when every episode there is to get is saved.
+    let allSaved: Bool
     let pause: () -> Void
     let resume: () -> Void
     let cancel: () -> Void
@@ -39,10 +130,8 @@ struct SeasonDownloadBar: View {
     var body: some View {
         Group {
             if status.inProgress || status.isStopped {
-                progressCard.transition(.opacity)
-            } else if let all {
-                offers(all).transition(.opacity)
-            } else if status.isComplete {
+                progressLine.transition(.opacity)
+            } else if status.isComplete && allSaved {
                 doneLine.transition(.opacity)
             }
         }
@@ -52,89 +141,31 @@ struct SeasonDownloadBar: View {
         .accessibilityIdentifier("seasonDownloadBar")
     }
 
-    // MARK: Not started
-
-    /// Side by side when both fit untruncated (iPad, Mac), else stacked (iPhone).
-    private func offers(_ all: Offer) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Spacing.s) { offerButtons(all, stretch: false) }
-                VStack(alignment: .leading, spacing: Spacing.s) { offerButtons(all, stretch: true) }
-            }
-            if let pack { SeasonPackOfferRow(request: pack) }
-        }
-        .foregroundStyle(Palette.textPrimary)
-    }
-
-    @ViewBuilder private func offerButtons(_ all: Offer, stretch: Bool) -> some View {
-        Group {
-            Button(action: downloadAll) {
-                HStack(spacing: Spacing.s) {
-                    Image(systemName: "arrow.down.circle").font(.body.weight(.semibold))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(status.completed > 0 ? "Download Rest of Season" : "Download \(seasonName)")
-                            .font(.subheadline.weight(.semibold))
-                        Text("\(episodes(all.count)) · \(all.sizeLabel)")
-                            .font(.caption).foregroundStyle(Palette.textSecondary)
-                    }
-                    .lineLimit(1)
-                    .fixedSize()
-                    if stretch { Spacer(minLength: 0) }
-                }
-                .padding(.horizontal, Spacing.m)
-                .frame(maxWidth: stretch ? .infinity : nil, minHeight: 48)
-                .background(Palette.glassFill, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-            }
-            .buttonStyle(PressableStyle(haptic: true))
-            .accessibilityLabel("Download \(seasonName), \(episodes(all.count)), \(all.sizeLabel)")
-            .accessibilityIdentifier("downloadSeason")
-            if let unwatched {
-                Button(action: downloadUnwatched) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Unwatched Only").font(.subheadline.weight(.semibold))
-                        Text("\(episodes(unwatched.count)) · \(unwatched.sizeLabel)")
-                            .font(.caption).foregroundStyle(Palette.textSecondary)
-                    }
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, Spacing.m)
-                    .frame(maxWidth: stretch ? .infinity : nil, minHeight: 48, alignment: .leading)
-                    .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1))
-                    .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-                }
-                .buttonStyle(PressableStyle(haptic: true))
-                .accessibilityLabel("Download unwatched episodes, \(episodes(unwatched.count)), \(unwatched.sizeLabel)")
-                .accessibilityIdentifier("downloadRemaining")
-            }
-        }
-    }
-
     // MARK: Downloading
 
-    private var progressCard: some View {
+    private var progressLine: some View {
         let title = status.inProgress ? "Downloading \(seasonName)" : status.failed > 0 && status.paused == 0
             ? "\(seasonName) stopped" : "\(seasonName) paused"
-        return HStack(spacing: Spacing.m) {
-            ProgressRing(fraction: status.preparing == status.total ? 0 : status.fraction,
-                         tint: status.inProgress ? Palette.brand : Palette.textSecondary)
-                .frame(width: 26, height: 26)
-                .overlay {
-                    if status.preparing == status.total {
-                        // Releases are being found: a turning arc, not a bar stuck at 0.
-                        SpinningArc().frame(width: 26, height: 26)
+        return HStack(spacing: Spacing.xs) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(title).font(.footnote.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                    Text(status.detail)
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(Palette.textSecondary)
+                        .contentTransition(.numericText())
+                }
+                .lineLimit(1)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Palette.elevated)
+                        Capsule().fill(status.inProgress ? Palette.brand : Palette.textTertiary)
+                            .frame(width: max(geo.size.width * status.fraction, status.fraction > 0 ? 3 : 0))
+                            .animation(.easeOut(duration: 0.4), value: status.fraction)
                     }
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(status.detail)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(Palette.textSecondary)
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
+                .frame(height: 3)
             }
-            Spacer(minLength: Spacing.s)
             if status.inProgress {
                 iconButton("pause.fill", label: "Pause \(seasonName) downloads", id: "pauseSeason", action: pause)
                     .disabled(status.downloading + status.queued == 0)
@@ -143,21 +174,6 @@ struct SeasonDownloadBar: View {
             }
             iconButton("xmark", label: "Cancel \(seasonName) downloads", id: "cancelSeason", action: cancel)
         }
-        .padding(.leading, Spacing.m)
-        .padding(.trailing, Spacing.xs)
-        .frame(minHeight: 52)
-        .background(alignment: .leading) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Palette.surface
-                    (status.inProgress ? Palette.brand.opacity(0.18) : Color.white.opacity(0.06))
-                        .frame(width: geo.size.width * status.fraction)
-                        .animation(.easeOut(duration: 0.4), value: status.fraction)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-        }
-        .foregroundStyle(Palette.textPrimary)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(title), \(status.detail)")
     }
@@ -165,8 +181,9 @@ struct SeasonDownloadBar: View {
     private func iconButton(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .bold))
-                .frame(width: 44, height: 44)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
                 .contentTransition(.symbolEffect(.replace))
         }
@@ -180,10 +197,10 @@ struct SeasonDownloadBar: View {
 
     private var doneLine: some View {
         HStack(spacing: Spacing.s) {
-            CheckDot(size: 18)
-            Text("\(seasonName) downloaded").font(.subheadline.weight(.semibold))
+            CheckDot(size: 16)
+            Text("\(seasonName) downloaded").font(.footnote.weight(.semibold))
             Text("· " + episodes(status.total) + (status.knownBytes > 0 ? " · \(Formatters.bytes(status.knownBytes))" : ""))
-                .font(.subheadline).foregroundStyle(Palette.textSecondary)
+                .font(.footnote).foregroundStyle(Palette.textSecondary)
         }
         .lineLimit(1)
         .foregroundStyle(Palette.textPrimary)
@@ -221,53 +238,4 @@ struct SeasonPackRequest: Equatable {
     let separateBytes: Int64
     /// Looked up again when the season or what's left of it changes.
     var id: String { "\(series.rawValue)#\(season)#\(episodes.count)" }
-}
-
-/// "Download as a Season Pack": one torrent for the season, with its size
-/// against downloading the episodes one by one. Shown only when an add-on
-/// has a healthy pack; the lookup is the add-ons' cached answer for the
-/// season's first episode.
-struct SeasonPackOfferRow: View {
-    @Environment(AppModel.self) private var app
-    let request: SeasonPackRequest
-    @State private var offer: SeasonPackOffer?
-
-    var body: some View {
-        Group {
-            if let offer {
-                Button {
-                    Task { await app.downloadSeasonPack(offer, seriesKey: request.series, seriesName: request.seriesName) }
-                } label: {
-                    HStack(spacing: Spacing.s) {
-                        Image(systemName: "shippingbox").font(.body.weight(.semibold))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Download as a Season Pack").font(.subheadline.weight(.semibold))
-                            Text(offer.label).font(.caption).foregroundStyle(Palette.textSecondary)
-                            Text(offer.comparison).font(.caption).foregroundStyle(Palette.textTertiary)
-                        }
-                        .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, Spacing.m)
-                    .padding(.vertical, Spacing.s)
-                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                    .overlay(RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1))
-                    .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-                }
-                .buttonStyle(PressableStyle(haptic: true))
-                .accessibilityLabel("Download as a season pack, \(offer.label), \(offer.comparison)")
-                .accessibilityIdentifier("downloadSeasonPack")
-                .padding(.top, Spacing.s)
-                .transition(.opacity)
-            } else {
-                // An empty Group has no view to hang `.task` on.
-                Color.clear.frame(width: 0, height: 0)
-            }
-        }
-        .task(id: request.id) {
-            offer = await app.seasonPackOffer(series: request.series, season: request.season, episodes: request.episodes,
-                                              separateBytes: request.separateBytes)
-        }
-    }
 }

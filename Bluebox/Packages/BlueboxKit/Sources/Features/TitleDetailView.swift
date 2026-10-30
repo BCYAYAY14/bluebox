@@ -132,6 +132,10 @@ final class TitleDetailModel {
                     if canDownload { downloadable.insert(k) }
                 }
             }
+            #if DEBUG
+            // Screenshots: `-demo-downloadable` treats every episode as downloadable (the season's ↓ menu shows).
+            if ProcessInfo.processInfo.arguments.contains("-demo-downloadable") { downloadable = Set(keys) }
+            #endif
             playableEpisodes = playable
             downloadableEpisodes = downloadable
             await estimateSizes(for: s, app)
@@ -182,6 +186,8 @@ struct TitleDetailView: View {
     @State private var overviewExpanded = false
     @State private var showingSeasons = false
     @State private var seasonMenuOpen = false
+    /// The show's Download Rules sheet, from the season's ↓ menu.
+    @State private var editingRules = false
     /// Delete Season Downloads asks first (it's many files at once).
     @State private var confirmSeasonDelete: Season?
     /// Download Season waiting on "Download on mobile data?" or a big size.
@@ -259,6 +265,9 @@ struct TitleDetailView: View {
         .reloadsWhenBackOnline(model.error != nil && model.detail == nil) { await model.load(app) }
         .onChange(of: app.libraryRevision) { Task { await model.refreshProgress(app) } }
         .sheet(item: $releaseItem) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true) }
+        .sheet(isPresented: $editingRules) {
+            ShowDownloadRulesSheet(series: model.title.key, showName: model.display.name).environment(app)
+        }
         #if DEBUG
         .task {
             // Screenshots: `-title-tab "Cast & Crew"` opens on that tab.
@@ -285,6 +294,7 @@ struct TitleDetailView: View {
             try? await Task.sleep(for: .milliseconds(900))
             if args.contains("-open-seasons"), !showingSeasons { openSeasons() }
             if args.contains("-open-season-menu"), !seasonMenuOpen { seasonMenuOpen = true }
+            if args.contains("-open-download-rules") { editingRules = true }
         }
         #endif
         .successHaptic(model.onList)
@@ -985,10 +995,6 @@ struct TitleDetailView: View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             seasonHeader(seasons: seasons, wide: width >= 600)
             if let season = model.season { ObservationScope { seasonDownloadBar(season) }.frame(maxWidth: 640, alignment: .leading) }
-            // The show's Smart Downloads rules, for the whole show (the bar above is this season's).
-            if !model.downloadableEpisodes.isEmpty {
-                ShowDownloadRulesCard(series: model.title.key, showName: model.display.name).frame(maxWidth: 640, alignment: .leading)
-            }
             if let season = model.season {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.m, alignment: .top), count: columns),
                           alignment: .leading, spacing: width < 600 ? Spacing.s : Spacing.xs) {
@@ -1044,7 +1050,10 @@ struct TitleDetailView: View {
                 SeasonPickerButton(title: current.map { $0.number == 0 ? "Specials" : $0.name } ?? "Season",
                                    enabled: seasons.count > 1) { openSeasons() }
             }
-            if let season = model.season { seasonMenu(season) }
+            if let season = model.season {
+                if !model.downloadableEpisodes.isEmpty { ObservationScope { seasonDownloadButton(season) } }
+                seasonMenu(season)
+            }
             Spacer(minLength: 0)
             if wide, let season = model.season {
                 let watched = season.episodes.filter { model.seriesProgress[$0.key]?.isCompleted == true }.count
@@ -1101,14 +1110,13 @@ struct TitleDetailView: View {
                    uniquingKeysWith: { a, _ in a })
     }
 
-    /// The season's download line: offers, progress with Pause and Cancel, or done.
-    @ViewBuilder private func seasonDownloadBar(_ season: Season) -> some View {
+    /// What the season's ↓ menu offers: every episode not downloaded yet,
+    /// the unwatched ones when that's fewer, and a season pack once there are
+    /// a few episodes to get. Episodes already preparing aren't offered again.
+    private func seasonOffers(_ season: Season) -> (all: SeasonDownloadBar.Offer?, unwatched: SeasonDownloadBar.Offer?,
+                                                    pack: SeasonPackRequest?, notDownloaded: [Episode], remaining: [Episode]) {
         let plan = seasonPlan(season)
-        let series = model.title.key
-        let records = app.seasonDownloads(series, season: season.number)
-        let status = SeasonDownloadStatus(records: records, preparing: app.preparingCount(series, season: season.number))
         let estimate = model.sizeEstimate
-        // Episodes already preparing aren't offered again.
         let notDownloaded = plan.notDownloaded.filter { !app.preparingDownloads.contains($0.key) }
         let remaining = plan.remaining.filter { !app.preparingDownloads.contains($0.key) }
         let all = notDownloaded.isEmpty ? nil
@@ -1117,17 +1125,42 @@ struct TitleDetailView: View {
         let unwatched = remaining.isEmpty || remaining.count == notDownloaded.count ? nil
             : SeasonDownloadBar.Offer(count: remaining.count,
                                       sizeLabel: SeasonActionPlan.sizeLabel(estimate.bytes(for: remaining, knownSizes: [:])))
-        let name = seasonName(season)
-        // A season pack is worth a look once there are a few episodes to get.
         let pack = notDownloaded.count >= 2
-            ? SeasonPackRequest(series: series, season: season.number, episodes: notDownloaded, seriesName: model.display.name,
+            ? SeasonPackRequest(series: model.title.key, season: season.number, episodes: notDownloaded, seriesName: model.display.name,
                                 separateBytes: estimate.bytes(for: notDownloaded, knownSizes: [:]))
             : nil
-        if all != nil || !status.isEmpty {
+        return (all, unwatched, pack, notDownloaded, remaining)
+    }
+
+    private func seasonStatus(_ season: Season) -> SeasonDownloadStatus {
+        let series = model.title.key
+        return SeasonDownloadStatus(records: app.seasonDownloads(series, season: season.number),
+                                    preparing: app.preparingCount(series, season: season.number))
+    }
+
+    /// The ↓ beside the season: its menu downloads the season, or opens the show's rules.
+    private func seasonDownloadButton(_ season: Season) -> some View {
+        let offers = seasonOffers(season)
+        let series = model.title.key
+        let settings = app.downloadSettings
+        return SeasonDownloadButton(
+            seasonName: seasonName(season), status: seasonStatus(season), all: offers.all, unwatched: offers.unwatched,
+            pack: offers.pack,
+            rulesSummary: DownloadRuleSummary.text(settings.rule(for: series), window: settings.window,
+                                                   newEpisodes: app.autoDownloadsNewEpisodes(series)),
+            downloadAll: { requestSeasonDownload(season, episodes: offers.notDownloaded) },
+            downloadUnwatched: { requestSeasonDownload(season, episodes: offers.remaining) },
+            editRules: { editingRules = true })
+    }
+
+    /// The season's download line under the picker: progress with Pause and Cancel, or done.
+    @ViewBuilder private func seasonDownloadBar(_ season: Season) -> some View {
+        let series = model.title.key
+        let status = seasonStatus(season)
+        let name = seasonName(season)
+        if !status.isEmpty {
             SeasonDownloadBar(
-                seasonName: name, status: status, all: all, unwatched: unwatched, pack: pack,
-                downloadAll: { requestSeasonDownload(season, episodes: notDownloaded) },
-                downloadUnwatched: { requestSeasonDownload(season, episodes: remaining) },
+                seasonName: name, status: status, allSaved: seasonOffers(season).all == nil,
                 pause: { app.pauseSeasonDownload(series, season: season.number) },
                 resume: { app.resumeSeasonDownload(series, season: season.number) },
                 cancel: { app.cancelSeasonDownload(series, season: season.number, seasonName: name) })

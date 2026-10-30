@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TorrentStreaming
 
-@Suite struct ExternalStreamsTests {
+@Suite(.serialized) struct ExternalStreamsTests {
     @Test func servesAFileWithRangesAndStops() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -24,5 +24,31 @@ import Testing
 
         ExternalStreams.stopServing(url)
         #expect(!ExternalStreams.lastUse(of: url).served)
+    }
+
+    /// iOS can take a suspended app's listening socket away while the listener
+    /// still reads "ready": the next stream must find that out and listen
+    /// again on the same port, so a URL handed out before still works.
+    @Test func listensAgainWhenTheSocketWasTakenAway() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("Episode.mkv")
+        let bytes = Data((0..<50_000).map { UInt8($0 % 241) })
+        try bytes.write(to: file)
+
+        let url = try await ExternalStreams.serve(fileAt: file)
+        defer { ExternalStreams.stopServing(url) }
+        let port = try #require(url.port.map(UInt16.init))
+        #expect(await StreamServer.answers(port: port))
+
+        StreamServer.shared.dropListeningSocketSilently()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await StreamServer.answers(port: port) == false)
+
+        #expect(try await StreamServer.shared.start(preferredPort: 0) == port)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        #expect(data == bytes)
     }
 }

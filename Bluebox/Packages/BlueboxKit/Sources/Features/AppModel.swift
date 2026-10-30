@@ -112,6 +112,7 @@ public final class AppModel {
     @ObservationIgnored let downloadLifecycle = DownloadLifecycle()
     /// What Infuse is reading from Bluebox's stream server (`AppModel+Infuse`).
     @ObservationIgnored var infuseHandoff: InfuseHandoff?
+    @ObservationIgnored var madeKeyBridge: CatalogKeyBridge?
     @ObservationIgnored var infuseWatch: Task<Void, Never>?
     /// The Live Activity (iPhone) and Dock badge (Mac) for the queue.
     @ObservationIgnored let downloadsPresence = DownloadsPresence()
@@ -541,6 +542,17 @@ public final class AppModel {
     /// Hands the current profile's maturity limit to the catalogue.
     func applyContentFilter() {
         (metadata as? CachedMetadataProvider)?.contentFilter = currentProfile.contentFilter
+        (metadata as? CachedMetadataProvider)?.keyBridge = catalogMode == .sample ? nil : keyBridge
+    }
+
+    /// Titles saved under the other catalog (TMDB or Cinemeta) still open (`CatalogKeyBridge`).
+    private var keyBridge: CatalogKeyBridge {
+        if let made = madeKeyBridge { return made }
+        let bridge = CatalogKeyBridge(http: http)
+        let store = store
+        bridge.savedTitle = { key in try? await store.title(for: key) }
+        madeKeyBridge = bridge
+        return bridge
     }
 
     /// Whether the current profile may open a title with this certification.

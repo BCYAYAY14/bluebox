@@ -45,9 +45,24 @@ final class StreamServer: @unchecked Sendable {
 
     /// Starts listening (once) on 127.0.0.1, on `preferredPort` if it's free,
     /// else on any port. Returns the port.
+    ///
+    /// Called before every stream. iOS can take a suspended app's listening
+    /// socket away without the listener ever reporting it: it stays "ready"
+    /// while every connection to it is refused, and the player fails at once
+    /// with the stream ready. So a running listener is checked with a
+    /// connection to itself first, and replaced on the same port (keeping
+    /// the URLs already handed out) when nothing answers.
     @discardableResult
     func start(preferredPort: UInt16) async throws -> UInt16 {
-        if let port = lock.withLock({ listener != nil ? boundPort : nil }) { return port }
+        if let (running, port) = lock.withLock({ listener.map { ($0, boundPort) } }) {
+            if await Self.answers(port: port) { return port }
+            torrentLog.notice("stream server: 127.0.0.1:\(port) stopped answering; listening again")
+            StreamMetrics.shared.event("server-relisten", ["port": Int(port)])
+            lock.withLock { if listener === running { listener = nil } }
+            running.cancel()
+            if let again = try? await listen(on: port) { return again }
+            return try await listen(on: 0)
+        }
         do {
             return try await listen(on: preferredPort)
         } catch {
@@ -68,7 +83,8 @@ final class StreamServer: @unchecked Sendable {
                 switch state {
                 case .ready:
                     if once.claim() { continuation.resume(returning: listener.port?.rawValue ?? port) }
-                case .failed(let error):
+                case .failed(let error), .waiting(let error):
+                    // Waiting is a listener that can't take connections (the socket was taken away).
                     if once.claim() { continuation.resume(throwing: error) } else { self?.listenerFailed(listener) }
                 case .cancelled:
                     if once.claim() { continuation.resume(throwing: CancellationError()) }
@@ -84,6 +100,35 @@ final class StreamServer: @unchecked Sendable {
         }
         torrentLog.notice("stream server: listening on 127.0.0.1:\(ready)")
         return ready
+    }
+
+    /// Whether something accepts a connection on 127.0.0.1:`port` within a second.
+    static func answers(port: UInt16) async -> Bool {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else { return false }
+        let probe = NWConnection(host: "127.0.0.1", port: nwPort, using: .tcp)
+        let queue = DispatchQueue(label: "app.bluebox.stream-server.probe")
+        let ok: Bool = await withCheckedContinuation { continuation in
+            let once = Once()
+            probe.stateUpdateHandler = { state in
+                switch state {
+                case .ready: if once.claim() { continuation.resume(returning: true) }
+                case .failed, .waiting, .cancelled: if once.claim() { continuation.resume(returning: false) }
+                default: break
+                }
+            }
+            probe.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + 1) { if once.claim() { continuation.resume(returning: false) } }
+        }
+        probe.cancel()
+        return ok
+    }
+
+    /// Tests: closes the listening socket the way a suspension can, without
+    /// the server finding out.
+    func dropListeningSocketSilently() {
+        let running = lock.withLock { listener }
+        running?.stateUpdateHandler = nil
+        running?.cancel()
     }
 
     private func listenerFailed(_ failed: NWListener) {

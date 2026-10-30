@@ -372,6 +372,65 @@ struct SettingsLink<Destination: View>: View {
     }
 }
 
+/// A row that picks one value from a short list on its own page: the title,
+/// the current value in grey and a chevron, like iOS Settings. Use it inside a
+/// navigation stack, where a ⇅ pop-up menu would be cramped.
+struct SettingsChoiceLink<Value: Hashable>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [BlueboxPickerOption<Value>]
+    var footer: String?
+
+    init(_ title: String, selection: Binding<Value>, options: [BlueboxPickerOption<Value>], footer: String? = nil) {
+        self.title = title; _selection = selection; self.options = options; self.footer = footer
+    }
+
+    var body: some View {
+        SettingsLink(title, value: options.first { $0.value == selection }?.title) {
+            SettingsChoicePage(title: title, selection: $selection, options: options, footer: footer)
+        }
+        .accessibilityValue(options.first { $0.value == selection }?.title ?? "")
+    }
+}
+
+/// The list a `SettingsChoiceLink` opens: a check by the current value; a tap picks and goes back.
+struct SettingsChoicePage<Value: Hashable>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [BlueboxPickerOption<Value>]
+    let footer: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        SettingsForm(title: title) {
+            Section {
+                ForEach(options.indices, id: \.self) { i in
+                    let option = options[i]
+                    Button {
+                        selection = option.value
+                        dismiss()
+                    } label: {
+                        HStack(spacing: Spacing.l) {
+                            Text(option.title).foregroundStyle(Palette.textPrimary)
+                            Spacer(minLength: 0)
+                            Image(systemName: "checkmark")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Palette.brandBright)
+                                .opacity(option.value == selection ? 1 : 0)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SettingsRowPressStyle())
+                    .accessibilityAddTraits(option.value == selection ? .isSelected : [])
+                }
+            } footer: {
+                if let footer { Text(footer) }
+            }
+        }
+    }
+}
+
 struct SettingsChevron: View {
     var symbol = "chevron.right"
     var body: some View {

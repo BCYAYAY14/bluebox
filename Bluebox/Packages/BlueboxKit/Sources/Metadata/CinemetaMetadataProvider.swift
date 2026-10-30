@@ -121,7 +121,7 @@ public struct CinemetaMetadataProvider: MetadataProvider, MetadataExtras {
 
     // MARK: Requests
 
-    private func catalog(_ type: String, _ id: String, extra: [String: String] = [:], page: Int) async throws -> Page<Title> {
+    func catalog(_ type: String, _ id: String, extra: [String: String] = [:], page: Int) async throws -> Page<Title> {
         let page = max(1, page)
         guard page <= Self.maxPages else { return Page(items: [], page: page, totalPages: page) }
         var extra = extra
@@ -142,7 +142,7 @@ public struct CinemetaMetadataProvider: MetadataProvider, MetadataExtras {
         return extras.isEmpty ? "/catalog/\(type)/\(id).json" : "/catalog/\(type)/\(id)/\(extras).json"
     }
 
-    private func meta(for key: MediaKey, maxAge: TimeInterval = 300) async throws -> CinemetaMeta {
+    func meta(for key: MediaKey, maxAge: TimeInterval = 300) async throws -> CinemetaMeta {
         guard let imdb = (key.seriesKey ?? key).imdbID else { throw MetadataError.notFound }
         let type = key.isMovie ? "movie" : "series"
         let cacheKey = "\(type)/\(imdb)"
@@ -254,8 +254,11 @@ struct CinemetaMeta: Decodable, Sendable {
     let trailers: [Trailer]?
     let trailerStreams: [TrailerStream]?
     let videos: [Lenient<Video>]?
+    /// The TMDB ID Cinemeta knows for it (`CatalogKeyBridge`).
+    let moviedbID: Int?
 
     enum CodingKeys: String, CodingKey {
+        case moviedbID = "moviedb_id"
         case id, imdbID = "imdb_id", type, name, description, releaseInfo, released, year, runtime, genres, genre
         case imdbRating, poster, background, logo, cast, director, writer, status, trailers, trailerStreams, videos
     }
@@ -279,6 +282,7 @@ struct CinemetaMeta: Decodable, Sendable {
         trailers = try? c.decodeIfPresent([Trailer].self, forKey: .trailers)
         trailerStreams = try? c.decodeIfPresent([TrailerStream].self, forKey: .trailerStreams)
         videos = try? c.decodeIfPresent([Lenient<Video>].self, forKey: .videos)
+        moviedbID = string(.moviedbID).flatMap(Double.init).map { Int($0) }
     }
 }
 

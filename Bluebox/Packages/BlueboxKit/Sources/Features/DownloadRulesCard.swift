@@ -80,9 +80,10 @@ struct ShowDownloadRulesCard: View {
     }
 }
 
-/// Editing one show's rules: Use Defaults or Custom, then keep next,
-/// quality, audio language, delete after watching and download new
-/// episodes. Changing any of them makes the show Custom.
+/// Editing one show's rules: Smart Downloads (with keep next, quality, audio
+/// language and delete after watching under it) and download new episodes.
+/// They start as Settings' rules; changing any of them gives the show its
+/// own, and Reset to Settings goes back.
 struct ShowDownloadRulesSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -96,39 +97,48 @@ struct ShowDownloadRulesSheet: View {
     }
 
     var body: some View {
+        let current = settings.rule(for: series)
         NavigationStack {
             SettingsForm(title: "Download Rules") {
                 Section {
-                    Picker("Rules", selection: Binding(get: { isCustom }, set: { setCustom($0) })) {
-                        Text("Use Defaults").tag(false)
-                        Text("Custom").tag(true)
+                    Toggle("Smart Downloads", isOn: rule(\.smartDownloads, current.smartDownloads))
+                    if current.smartDownloads {
+                        SettingsChoiceLink("Keep Next", selection: rule(\.keepNext, current.keepNext),
+                                           options: DownloadSettings.keepNextChoices.map { .init($0 == 1 ? "1 episode" : "\($0) episodes", value: $0) },
+                                           footer: "How many unwatched episodes stay downloaded ahead of where you are.")
+                        SettingsChoiceLink("Quality", selection: rule(\.quality, current.quality),
+                                           options: DownloadQuality.allCases.map { .init($0.title, value: $0) })
+                        SettingsChoiceLink("Audio", selection: audio,
+                                           options: [.init("Profile's Language", value: nil)] + SettingsLanguages.options)
+                        Toggle("Delete After Watching", isOn: rule(\.deleteAfterWatching, current.deleteAfterWatching))
+                            .disabled(!settings.allowsDeleting)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
                 } header: {
-                    Text(showName)
+                    Text(isCustom ? "\(showName) · its own rules" : "\(showName) · same as Settings")
                 } footer: {
-                    Text(isCustom ? "\(showName) has its own rules. Use Defaults to follow Settings › Downloads again."
-                                  : "\(showName) follows Settings › Downloads. Change anything here to give it its own rules.")
+                    Text(!current.smartDownloads
+                         ? "Smart Downloads keeps the next episodes downloaded on Wi‑Fi."
+                         : settings.allowsDeleting
+                         ? "Keeps the next episodes downloaded on Wi‑Fi and, if you like, deletes the ones you've watched."
+                         : "Nothing is deleted: Settings › Downloads › Smart Downloads Can Delete Watched Downloads is off.")
                 }
 
                 Section {
-                    Toggle("Smart Downloads", isOn: rule(\.smartDownloads, settings.rule(for: series).smartDownloads))
-                    SettingsPicker("Keep Next Episodes", selection: rule(\.keepNext, settings.rule(for: series).keepNext),
-                                   options: DownloadSettings.keepNextChoices.map { .init("\($0)", value: $0) })
-                    SettingsPicker("Quality", selection: rule(\.quality, settings.rule(for: series).quality),
-                                   options: DownloadQuality.allCases.map { .init($0.title, value: $0) })
-                    SettingsPicker("Audio", selection: audio,
-                                   options: [.init("Profile's Language", value: nil)] + SettingsLanguages.options)
-                    Toggle("Delete After Watching", isOn: rule(\.deleteAfterWatching, settings.rule(for: series).deleteAfterWatching))
-                        .disabled(!settings.allowsDeleting)
                     Toggle("Download New Episodes", isOn: Binding(get: { app.autoDownloadsNewEpisodes(series) }, set: {
                         app.setAutoDownloadNewEpisodes($0, for: series)
                     }))
                 } footer: {
-                    Text(settings.allowsDeleting
-                         ? "Smart Downloads keeps the next episodes downloaded on Wi‑Fi and, if you like, deletes the ones you've watched. New episodes download on Wi‑Fi as they come out."
-                         : "Smart Downloads can't delete anything: Settings › Downloads › Smart Downloads Can Delete Watched Downloads is off.")
+                    Text(isCustom ? "New episodes download on Wi‑Fi as they come out."
+                                  : "New episodes download on Wi‑Fi as they come out. Everything here follows Settings › Downloads until you change it.")
+                }
+
+                if isCustom {
+                    Section {
+                        Button("Reset to Settings") { resetToSettings() }
+                            .buttonStyle(SettingsActionStyle())
+                    } footer: {
+                        Text("\(showName) has its own rules. Reset to follow Settings › Downloads again.")
+                    }
                 }
             }
             .toolbar {
@@ -173,13 +183,8 @@ struct ShowDownloadRulesSheet: View {
                                 deleteAfterWatching: settings.allowsDeleting ? r.deleteAfterWatching : settings.deleteWatchedEpisodes)
     }
 
-    private func setCustom(_ custom: Bool) {
-        if custom {
-            guard !isCustom else { return }
-            app.setShowDownloadRule(snapshot(), for: series)
-        } else {
-            app.setShowDownloadRule(nil, for: series)
-            app.setAutoDownloadNewEpisodes(nil, for: series)
-        }
+    private func resetToSettings() {
+        app.setShowDownloadRule(nil, for: series)
+        app.setAutoDownloadNewEpisodes(nil, for: series)
     }
 }
