@@ -82,8 +82,10 @@ extension View {
     /// tap and keeps the hold from also opening it.
     ///
     /// - Parameter tapToOpen: a plain tap opens it too (a ⋯ button).
-    func quickActions(_ subject: QuickActionSubject, opened: QuickActionGate? = nil, tapToOpen: Bool = false) -> some View {
-        modifier(QuickActionsMenu(subject: subject, gate: opened, tapToOpen: tapToOpen))
+    /// - Parameter onOpenChange: told when the menu opens and closes.
+    func quickActions(_ subject: QuickActionSubject, opened: QuickActionGate? = nil, tapToOpen: Bool = false,
+                      onOpenChange: (@MainActor (Bool) -> Void)? = nil) -> some View {
+        modifier(QuickActionsMenu(subject: subject, gate: opened, tapToOpen: tapToOpen, onOpenChange: onOpenChange))
     }
 }
 
@@ -176,11 +178,16 @@ private struct QuickActionsMenu: ViewModifier {
     let subject: QuickActionSubject
     let gate: QuickActionGate?
     var tapToOpen = false
+    var onOpenChange: (@MainActor (Bool) -> Void)?
     @State private var open = false
     // A reference, so the menu (built when it opens, outside this body) reads the current entries.
     @State private var holder = QuickActionsHolder()
 
     func body(content: Content) -> some View {
+        menu(content).onChange(of: open) { _, isOpen in onOpenChange?(isOpen) }
+    }
+
+    @ViewBuilder private func menu(_ content: Content) -> some View {
         if tapToOpen {
             content
                 .contentShape(Rectangle())
@@ -308,6 +315,38 @@ private struct QuickActionsMenu: ViewModifier {
         case .removeFromRow:
             return BlueboxMenuButton("Remove from Row", systemImage: "minus.circle", role: .destructive) { subject.remove?() }
         }
+    }
+}
+
+/// A Bluebox menu on touch and hold (iOS) or right-click (Mac): the house
+/// stand-in for SwiftUI's `.contextMenu`, which draws the system menu.
+private struct BlueboxContextMenu: ViewModifier {
+    let title: String
+    let gate: QuickActionGate?
+    let content: @MainActor () -> [BlueboxMenuEntry]
+    @State private var open = false
+
+    func body(content view: Content) -> some View {
+        view
+            .blueboxMenu(isPresented: $open, title: title, content: content)
+            #if os(iOS)
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                gate?.held()
+                open = true
+            })
+            #else
+            .overlay { SecondaryClickCatcher { open = true } }
+            #endif
+            .accessibilityAction(named: "More Actions") { open = true }
+    }
+}
+
+extension View {
+    /// A Bluebox menu on hold or right-click. Pass a `gate` when the view is a
+    /// button, and check `consumeHold()` in its action, so the hold doesn't also tap it.
+    func blueboxContextMenu(_ title: String, gate: QuickActionGate? = nil,
+                            @BlueboxMenuBuilder content: @escaping @MainActor () -> [BlueboxMenuEntry]) -> some View {
+        modifier(BlueboxContextMenu(title: title, gate: gate, content: content))
     }
 }
 

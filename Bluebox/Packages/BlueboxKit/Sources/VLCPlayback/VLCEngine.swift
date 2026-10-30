@@ -114,6 +114,13 @@ public final class VLCEngine: PlaybackEngine {
     // Stall detection: VLC can report `.playing` while the clock is frozen waiting for data.
     private var lastClock: TimeInterval = -1
     private var frozenSince: ContinuousClock.Instant?
+    /// Frozen picture: the clock and the sound run on but VLC shows no new
+    /// frames (seen resuming mid-episode, after the start seek). Sampled once
+    /// a second from VLC's displayed-picture count; a seek to the current
+    /// point restarts the video, and twice in vain the media is reopened there.
+    private var videoWatchdog = PlaybackWatchdog()
+    private var lastVideoSample: ContinuousClock.Instant?
+    private var lastDisplayedPictures: UInt64?
 
     /// The libVLC instance players are made on: the app's shared one, or one
     /// with its own arguments (tests capture the sound with `--aout=afile`).
@@ -150,6 +157,7 @@ public final class VLCEngine: PlaybackEngine {
         desiredSubtitleID = nil; desiredAudioID = nil; desiredSecondaryID = nil
         prepareTextFeed(for: resource)
         pendingSeek = nil; ended = false; chaptersLoaded = false
+        videoWatchdog.reset(); lastVideoSample = nil; lastDisplayedPictures = nil
         pendingSeekIsResume = startAt != nil
         resumeLengthDeadline = .now + .seconds(2)
         if let startAt, startAt > 0 { snapshot.position = startAt }
@@ -490,6 +498,7 @@ public final class VLCEngine: PlaybackEngine {
         pendingSeekIsResume = false
         snapshot.position = seconds
         snapshot.status = intendedPaused ? .paused : .buffering
+        lastDisplayedPictures = nil  // a new media's counts start over
         do { try open(resource, startAt: seconds) } catch let e as PlaybackError { fail(e) } catch {}
     }
 
@@ -763,6 +772,7 @@ public final class VLCEngine: PlaybackEngine {
             break
         }
         if state != .playing { lastClock = -1; frozenSince = nil }
+        watchVideo(state)
         if state == .playing || state == .paused, snapshot.bufferFill != nil { snapshot.bufferFill = nil }
     }
 
@@ -778,6 +788,7 @@ public final class VLCEngine: PlaybackEngine {
         if let length { target = min(target, max(length - 0.5, 0)) }
         pendingSeek = nil
         pendingSeekIsResume = false
+        videoWatchdog.noteSeek()
         do {
             try player.seek(to: .milliseconds(Int64(target * 1000)))
             snapshot.position = target
@@ -789,6 +800,37 @@ public final class VLCEngine: PlaybackEngine {
         if heldForStartSeek {
             heldForStartSeek = false
             if !intendedPaused { player.resume() }
+        }
+    }
+
+    /// Feeds the frozen-picture watchdog (see `videoWatchdog`), once a second.
+    private func watchVideo(_ state: PlayerState) {
+        let now = ContinuousClock.now
+        if let last = lastVideoSample, now - last < .seconds(1) { return }
+        lastVideoSample = now
+        guard let resource else { return }
+        let stats = player.statistics
+        let displayed = stats?.displayedPictures
+        let newFrame = displayed.map { d in lastDisplayedPictures.map { d > $0 } ?? true } ?? true
+        lastDisplayedPictures = displayed
+        // Only once VLC's counts are known to move: a build without them would look frozen.
+        let counts = stats.map { $0.displayedPictures > 0 || $0.decodedVideo > 0 } ?? false
+        let running = state == .playing && !intendedPaused && snapshot.status == .playing
+            && pendingSeek == nil && scrubPending == nil
+        let position = Self.seconds(player.currentTime)
+        let action = videoWatchdog.observe(.init(
+            state: running ? .playing : .paused, position: position, newFrame: newFrame,
+            watchesVideo: counts && player.videoSize != nil, now: ProcessInfo.processInfo.systemUptime))
+        switch action {
+        case .nudgeVideo:
+            Log.playback.notice("VLC picture froze at \(position, privacy: .public)s: seeking to restart it")
+            videoWatchdog.noteSeek()
+            try? player.seek(to: .milliseconds(Int64(position * 1000)))
+        case .reload:
+            Log.playback.notice("VLC picture still frozen at \(position, privacy: .public)s: reopening there")
+            restart(resource, at: position)
+        case .none, .giveUp:
+            break
         }
     }
 

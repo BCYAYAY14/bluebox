@@ -762,6 +762,9 @@ struct ContinueWatchingActions: ViewModifier {
     let remove: @MainActor () -> Void
     var gate: QuickActionGate?
     @State private var hovering = false
+    /// The ⋯'s menu is open. The ⋯ stays while it is: the menu's backdrop
+    /// ends the card's hover, and taking the ⋯ away closed its menu at once.
+    @State private var menuOpen = false
 
     private var offersNext: Bool { entry.next == nil && entry.progress.key.episodeNumbers != nil && entry.progress.isNearlyFinished }
     private var subject: QuickActionSubject { QuickActionSubject(title: entry.title, entry: entry.menuEntry, remove: remove) }
@@ -770,12 +773,11 @@ struct ContinueWatchingActions: ViewModifier {
         content
             .quickActions(subject, opened: gate)
             .overlay(alignment: .topTrailing) {
-                if hovering {
-                    QuickActionsMoreButton(subject: subject, size: 28)
-                        .padding(Spacing.s)
-                        .transition(.opacity)
-                        .accessibilityHidden(true)  // the same actions are in the rotor
-                }
+                QuickActionsMoreButton(subject: subject, size: 28) { menuOpen = $0 }
+                    .padding(Spacing.s)
+                    .opacity(hovering || menuOpen ? 1 : 0)
+                    .allowsHitTesting(hovering || menuOpen)
+                    .accessibilityHidden(true)  // the same actions are in the rotor
             }
             .onHover { hovering = $0 }
             .animation(Motion.hover, value: hovering)
@@ -794,6 +796,7 @@ struct QuickActionsMoreButton: View {
     let subject: QuickActionSubject
     var size: CGFloat = 28
     var filled = true
+    var onOpenChange: (@MainActor (Bool) -> Void)?
 
     var body: some View {
         Image(systemName: "ellipsis")
@@ -804,7 +807,7 @@ struct QuickActionsMoreButton: View {
             .overlay { if filled { Circle().strokeBorder(Palette.edge) } }
             .frame(width: filled ? size : 44, height: filled ? size : 44)
             .contentShape(Rectangle())
-            .quickActions(subject, tapToOpen: true)
+            .quickActions(subject, tapToOpen: true, onOpenChange: onOpenChange)
             .accessibilityLabel("More for \(subject.title.name)")
             .accessibilityAddTraits(.isButton)
     }

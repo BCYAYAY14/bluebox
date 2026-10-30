@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.1.1",
+          "buildVersion": "19",
+          "date": "2026-10-30T09:57:43Z",
+          "localizedDescription": "Playback\n• A frozen picture fixes itself.\n• VLC playback is updated, with fixes for seeking, pausing and recovering H.264 video.\n\nMenus\n• Right-click (or touch and hold) on an episode opens Bluebox's own menu, like every poster, instead of the system one.\n• The ⋯ on a Continue Watching card no longer closes its menu the moment it opens.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.1.1/Bluebox-1.1.1.ipa",
+          "size": 30822357,
+          "sha256": "e467af340d8b316755a131585c981230f46b21a4ffcf65dbbc1dfa7cfa964e4b",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.1.0",
           "buildVersion": "18",
           "date": "2026-10-30T09:21:47Z",
@@ -113,11 +123,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.1.0",
-      "versionDate": "2026-10-30T09:21:47Z",
-      "versionDescription": "Subtitles\n• Subtitles stay where you drop them.\n• Drag subtitles into the black bar under a letterboxed picture, or the one above it, to keep them off the picture.\n• With a letterboxed video, subtitles move up only as far as the controls actually cover the picture, not as if the black bar were part of it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.1.0/Bluebox-1.1.0.ipa",
-      "size": 30049522
+      "version": "1.1.1",
+      "versionDate": "2026-10-30T09:57:43Z",
+      "versionDescription": "Playback\n• A frozen picture fixes itself.\n• VLC playback is updated, with fixes for seeking, pausing and recovering H.264 video.\n\nMenus\n• Right-click (or touch and hold) on an episode opens Bluebox's own menu, like every poster, instead of the system one.\n• The ⋯ on a Continue Watching card no longer closes its menu the moment it opens.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.1.1/Bluebox-1.1.1.ipa",
+      "size": 30822357
     }
   ],
   "news": []

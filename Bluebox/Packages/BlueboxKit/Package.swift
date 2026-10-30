@@ -21,7 +21,7 @@ let package = Package(
     ],
     dependencies: [
         // VLC plays the containers AVFoundation can't (MKV, AVI, WebM…), which is most torrent releases.
-        .package(url: "https://github.com/harflabs/SwiftVLC.git", revision: "f0da22b7944deddf855882e1cbb627f8f486f683"),
+        .package(url: "https://github.com/harflabs/SwiftVLC.git", revision: "6e8ad130a40730cb0d3b8ddc96e19b4be02c341b"),
     ],
     targets: [
         .target(name: "Domain"),

@@ -38,6 +38,7 @@ struct EpisodeRow: View {
     @State private var hovering = false
     /// Show was pressed: this row's still and synopsis are visible until it leaves the screen.
     @State private var revealed = false
+    @State private var gate = QuickActionGate()
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -57,7 +58,10 @@ struct EpisodeRow: View {
     private var large: Bool { thumbnailWidth >= 160 }
 
     var body: some View {
-        Button(action: actions.play) {
+        Button {
+            guard !gate.consumeHold() else { return }
+            actions.play()
+        } label: {
             VStack(alignment: .leading, spacing: large ? Spacing.s + 2 : Spacing.s) {
                 HStack(alignment: .center, spacing: Spacing.m) {
                     thumbnail
@@ -116,7 +120,7 @@ struct EpisodeRow: View {
         .onHover { hovering = $0 }
         .animation(Motion.hover, value: hovering)
         .opacity(isPlayable || download?.state == .completed ? 1 : 0.55)
-        .contextMenu { contextMenu }
+        .blueboxContextMenu("\(episode.number). \(episode.name)", gate: gate) { menu }
     }
 
     private var background: some View {
@@ -171,35 +175,47 @@ struct EpisodeRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
 
-    @ViewBuilder private var contextMenu: some View {
-        if isPlayable {
-            Button(action: actions.play) {
-                Label(progress.map { !$0.isCompleted && $0.position > 0 } == true ? "Resume" : "Play", systemImage: "play.fill")
+    /// The row's menu, on hold or right-click: Bluebox's own, like every poster's.
+    @BlueboxMenuBuilder private var menu: [BlueboxMenuEntry] {
+        BlueboxMenuTitle("\(episode.number). \(episode.name)", subtitle: menuSubtitle)
+        BlueboxMenuSection {
+            if isPlayable {
+                BlueboxMenuButton(progress.map { !$0.isCompleted && $0.position > 0 } == true ? "Resume" : "Play",
+                                  systemImage: "play.fill") { actions.play() }
+                if progress.map({ $0.position > 0 }) == true {
+                    BlueboxMenuButton("Play from Start", systemImage: "arrow.counterclockwise") { actions.playFromStart() }
+                }
             }
-            if progress.map({ $0.position > 0 }) == true {
-                Button(action: actions.playFromStart) { Label("Play from Start", systemImage: "arrow.counterclockwise") }
+            if guarded {
+                BlueboxMenuButton("Show Spoilers", systemImage: "eye") { revealed = true }
             }
-        }
-        if guarded {
-            Button { revealed = true } label: { Label("Show Spoilers", systemImage: "eye") }
-        }
-        if isWatched {
-            Button { actions.setWatched(false) } label: { Label("Mark as Unwatched", systemImage: "eye.slash") }
-        } else {
-            Button { actions.setWatched(true) } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
+            if isWatched {
+                BlueboxMenuButton("Mark as Unwatched", systemImage: "eye.slash") { actions.setWatched(false) }
+            } else {
+                BlueboxMenuButton("Mark as Watched", systemImage: "checkmark.circle") { actions.setWatched(true) }
+            }
         }
         if let choose = actions.chooseRelease {
-            Divider()
-            Button(action: choose) { Label("Choose Release…", systemImage: "list.bullet.rectangle") }
+            BlueboxMenuSection {
+                BlueboxMenuButton("Choose Release…", systemImage: "list.bullet.rectangle") { choose() }
+            }
         }
-        Divider()
         if let download {
-            Button(role: .destructive) { actions.deleteDownload(download) } label: {
-                Label(download.state == .completed ? "Delete Download" : "Cancel Download", systemImage: "trash")
+            BlueboxMenuSection {
+                BlueboxMenuButton(download.state == .completed ? "Delete Download" : "Cancel Download",
+                                  systemImage: "trash", role: .destructive) { actions.deleteDownload(download) }
             }
         } else if canDownload && isPlayable {
-            Button(action: actions.download) { Label("Download", systemImage: "arrow.down.circle") }
+            BlueboxMenuSection {
+                BlueboxMenuButton("Download", systemImage: "arrow.down.circle") { actions.download() }
+            }
         }
+    }
+
+    private var menuSubtitle: String {
+        var parts = ["S\(episode.seasonNumber)·E\(episode.number)"]
+        if let r = episode.runtimeMinutes { parts.append(Formatters.runtime(minutes: r)) }
+        return parts.joined(separator: " · ")
     }
 
     private var accessibilityLabel: String {

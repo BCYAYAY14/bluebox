@@ -2,6 +2,16 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.1.1 (30 October 2026)
+
+### Playback
+- A frozen picture fixes itself. Resuming something partway through could leave the picture stuck while the sound played on; Bluebox now notices within a few seconds and restarts the picture where you are.
+- VLC playback is updated, with fixes for seeking, pausing and recovering H.264 video.
+
+### Menus
+- Right-click (or touch and hold) on an episode opens Bluebox's own menu, like every poster, instead of the system one.
+- The ⋯ on a Continue Watching card no longer closes its menu the moment it opens.
+
 ## 1.1.0 (30 October 2026)
 
 ### Subtitles
