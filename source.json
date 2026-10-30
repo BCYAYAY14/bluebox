@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.1.0",
+          "buildVersion": "18",
+          "date": "2026-10-30T09:21:47Z",
+          "localizedDescription": "Subtitles\n• Subtitles stay where you drop them.\n• Drag subtitles into the black bar under a letterboxed picture, or the one above it, to keep them off the picture.\n• With a letterboxed video, subtitles move up only as far as the controls actually cover the picture, not as if the black bar were part of it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.1.0/Bluebox-1.1.0.ipa",
+          "size": 30049522,
+          "sha256": "45dd39a693ce4bf80ea1f31204997c150dc560bd75d7229165388e35d5de88b2",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.0.16",
           "buildVersion": "17",
           "date": "2026-10-30T08:51:11Z",
@@ -103,11 +113,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.0.16",
-      "versionDate": "2026-10-30T08:51:11Z",
-      "versionDescription": "Subtitles\n• Subtitle Style opens as a panel beside the video, and the picture moves over to make room, so every change shows on the real video.\n• New presets: Standard, Cinema, Boxed, Bold Outline and Large Print.\n• Choose the font in the player, from a list that shows each font in itself.\n• Position: drag the subtitles on a small picture (or on the video) and they snap to Top, Middle or Bottom.\n• While the controls show, subtitles move up just far enough to clear them, the video's own tracks included, and never jump.\n• Settings › Subtitles uses the same presets, fonts and position picture as the player.\n\nPlayer\n• An equaliser in Tools › Sound: ten bands you drag, presets (Voice, Bass Boost, Treble, Cinema, Music, Headphones), and Preamp.\n• Night Mode works with VLC (MKV and most torrents).\n• Picture has Frame and Colour tabs.\n• On the Mac the switches in the player's cards are switches, not checkboxes.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.16/Bluebox-1.0.16.ipa",
-      "size": 30051718
+      "version": "1.1.0",
+      "versionDate": "2026-10-30T09:21:47Z",
+      "versionDescription": "Subtitles\n• Subtitles stay where you drop them.\n• Drag subtitles into the black bar under a letterboxed picture, or the one above it, to keep them off the picture.\n• With a letterboxed video, subtitles move up only as far as the controls actually cover the picture, not as if the black bar were part of it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.1.0/Bluebox-1.1.0.ipa",
+      "size": 30049522
     }
   ],
   "news": []

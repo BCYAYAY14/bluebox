@@ -45,7 +45,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -70,14 +70,14 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Bluebox listens to the film&apos;s soundtrack on this device to line subtitles up with the speech (Sync to the Audio).</string>
+	<string>Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio).</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>app.bluebox.watch</string>

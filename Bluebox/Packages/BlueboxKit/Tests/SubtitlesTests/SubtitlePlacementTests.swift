@@ -55,4 +55,23 @@ import Testing
         let old = try JSONDecoder().decode(SubtitleStyle.self, from: Data(#"{"anchor":"top"}"#.utf8))
         #expect(old.horizontalOffset == 0 && old.anchor == .top)
     }
+
+    @Test func droppingIntoTheBlackBars() {
+        // A letterboxed picture with bars 0.2 of its height above and below.
+        let bounds = -0.2...1.2
+        let block = CGRect(x: 0.3, y: 1.05, width: 0.4, height: 0.08)
+        let under = SubtitlePlacement.dropping(block: block, alignment: .center, horizontalMargin: 0.08, verticalBounds: bounds)
+        #expect(under.anchor == .bottom && abs(under.verticalMargin - -0.13) < 0.0001)
+        // No further than the stage's edge.
+        let far = SubtitlePlacement.dropping(block: block.offsetBy(dx: 0, dy: 1), alignment: .center, horizontalMargin: 0.08, verticalBounds: bounds)
+        #expect(abs(far.verticalMargin - -0.2) < 0.0001)
+        let over = SubtitlePlacement.dropping(block: CGRect(x: 0.3, y: -0.15, width: 0.4, height: 0.08), alignment: .center,
+                                              horizontalMargin: 0.08, verticalBounds: bounds)
+        #expect(over.anchor == .top && abs(over.verticalMargin - -0.15) < 0.0001)
+        // Not lifted when nothing covers it; clear of the controls when they reach past it.
+        var s = SubtitleStyle(); s.place(under)
+        #expect(s.restingMargin(coveredBottom: -.infinity) == s.verticalMargin)
+        #expect(s.restingMargin(coveredBottom: -0.18) == s.verticalMargin)
+        #expect(s.restingMargin(coveredBottom: 0.05) == 0.05)
+    }
 }

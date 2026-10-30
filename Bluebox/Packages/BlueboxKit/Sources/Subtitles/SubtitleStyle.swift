@@ -46,6 +46,8 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     public var alignment: Alignment = .center
     public var anchor: Anchor = .bottom
     /// Distance from the anchored edge, as a fraction of the video height.
+    /// Negative past the edge, in the black bar of a letterboxed picture (only
+    /// Bluebox's overlay goes there; text drawn into the picture stops at the edge).
     public var verticalMargin: Double = 0.06
     /// Side margins, as a fraction of the video width.
     public var horizontalMargin: Double = 0.08

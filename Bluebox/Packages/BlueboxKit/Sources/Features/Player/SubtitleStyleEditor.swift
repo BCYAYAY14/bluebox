@@ -258,12 +258,14 @@ struct SubtitlePositionPad: View {
         }
     }
 
-    /// The bar's centre at rest, as a fraction of the height.
+    /// The bar's centre at rest, as a fraction of the height (on the pad's
+    /// edge for subtitles dragged into a black bar, past the picture).
     private var restingMidY: Double {
-        switch style.anchor {
+        let half = Self.barHeight / 2
+        return switch style.anchor {
         case .middle: 0.5
-        case .bottom: 1 - style.verticalMargin - Self.barHeight / 2
-        case .top: style.verticalMargin + Self.barHeight / 2
+        case .bottom: 1 - max(style.verticalMargin, 0) - half
+        case .top: max(style.verticalMargin, 0) + half
         }
     }
 
@@ -293,6 +295,8 @@ struct SubtitlePositionPad: View {
     private var positionDescription: String {
         switch style.anchor {
         case .middle: "Middle"
+        case .bottom where style.verticalMargin < 0: "Below the picture"
+        case .top where style.verticalMargin < 0: "Above the picture"
         case .bottom: abs(style.verticalMargin - SubtitleStyle.defaultMargin) < 0.001 ? "Bottom" : "\(Int((style.verticalMargin * 100).rounded()))% from the bottom"
         case .top: abs(style.verticalMargin - SubtitleStyle.defaultMargin) < 0.001 ? "Top" : "\(Int((style.verticalMargin * 100).rounded()))% from the top"
         }

@@ -2,6 +2,13 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.1.0 (30 October 2026)
+
+### Subtitles
+- Subtitles stay where you drop them. Before, letting go while the controls showed lifted them straight back up, so a move looked like it had been undone.
+- Drag subtitles into the black bar under a letterboxed picture, or the one above it, to keep them off the picture. This works for subtitle files and the lines Bluebox draws; text VLC draws into the picture stays on it.
+- With a letterboxed video, subtitles move up only as far as the controls actually cover the picture, not as if the black bar were part of it.
+
 ## 1.0.16 (30 October 2026)
 
 ### Subtitles

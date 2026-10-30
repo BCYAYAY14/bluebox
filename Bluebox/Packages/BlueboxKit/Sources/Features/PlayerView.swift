@@ -222,6 +222,8 @@ struct PlayerView: View {
                     SubtitleOverlay(primary: inPicture ? nil : session.subtitleText, secondary: inPicture ? nil : session.secondarySubtitleText,
                                     style: Bindable(app).subtitleStyle,
                                     videoRect: layout.visibleRect.isEmpty ? CGRect(origin: .zero, size: geo.size) : layout.visibleRect,
+                                    // Down into the black bar under a letterboxed picture, or up into the one above.
+                                    stageRect: CGRect(origin: .zero, size: geo.size),
                                     // Above the timeline whenever it shows, the tools' sample line too.
                                     controlsVisible: controlsShown,
                                     controlsInset: subtitleControlsInset(height: geo.size.height),

@@ -21,11 +21,17 @@ public struct SubtitlePlacement: Equatable, Sendable {
     /// - Parameters:
     ///   - block: the block's frame after the drag, in unit coordinates.
     ///   - alignment/horizontalMargin: the style's, which define the block's resting x.
-    public static func dropping(block: CGRect, alignment: SubtitleStyle.Alignment, horizontalMargin: Double) -> SubtitlePlacement {
-        let w = min(max(Double(block.width), 0), 1), h = min(max(Double(block.height), 0), 1)
-        // Keep the whole block on the picture.
+    ///   - verticalBounds: where the block may go up and down, in the same units:
+    ///     the picture (0…1), or further into the black bars above and below it.
+    ///     A block dropped in a bar gets a negative margin (past the picture's edge).
+    public static func dropping(block: CGRect, alignment: SubtitleStyle.Alignment, horizontalMargin: Double,
+                                verticalBounds: ClosedRange<Double> = 0...1) -> SubtitlePlacement {
+        let w = min(max(Double(block.width), 0), 1)
+        let top = min(verticalBounds.lowerBound, 0), bottom = max(verticalBounds.upperBound, 1)
+        let h = min(max(Double(block.height), 0), bottom - top)
+        // Keep the whole block on the picture sideways, and inside the bounds up and down.
         let midX = min(max(Double(block.midX), w / 2), 1 - w / 2)
-        let minY = min(max(Double(block.minY), 0), 1 - h)
+        let minY = min(max(Double(block.minY), top), bottom - h)
         let maxY = minY + h
 
         let midY = (minY + maxY) / 2
@@ -38,7 +44,7 @@ public struct SubtitlePlacement: Equatable, Sendable {
         } else if abs(margin - SubtitleStyle.defaultMargin) < snapDistance {
             margin = SubtitleStyle.defaultMargin; snappedY = true
         }
-        margin = min(max(margin, 0), 0.85)
+        margin = min(max(margin, anchor == .bottom ? 1 - bottom : top), 0.85)
 
         var x = midX
         var snappedX = false

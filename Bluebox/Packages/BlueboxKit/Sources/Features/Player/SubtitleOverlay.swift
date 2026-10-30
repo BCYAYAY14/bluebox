@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Places primary (and optional secondary) subtitles over the visible video.
 ///
-/// The text can be moved anywhere on the picture by dragging it (finger or
-/// mouse); it snaps to the centre line and to the usual distance from the top
+/// The text can be moved anywhere on the picture, or into the black bars
+/// above and below it, by dragging it (finger or mouse); it snaps to the centre line and to the usual distance from the top
 /// or bottom. Pinching it resizes. Both are saved in the subtitle style when
 /// the gesture ends, so the overlay doesn't write preferences every frame.
 struct SubtitleOverlay: View {
@@ -14,10 +14,13 @@ struct SubtitleOverlay: View {
     @Binding var style: SubtitleStyle
     /// The visible picture, in the overlay's coordinates.
     let videoRect: CGRect
+    /// The whole stage, picture and black bars, in the same coordinates: the
+    /// text can be dragged anywhere up and down it. Nil for the picture alone.
+    var stageRect: CGRect? = nil
     let controlsVisible: Bool
-    /// How much of the picture's bottom the controls cover while they show.
+    /// How far up from the stage's bottom the controls reach while they show.
     var controlsInset: CGFloat = 100
-    /// How much of its top they cover (the title row).
+    /// How far down from its top they reach (the title row).
     var controlsTopInset: CGFloat = 0
     /// False for previews: no gestures.
     var editable = true
@@ -33,6 +36,9 @@ struct SubtitleOverlay: View {
     @State private var candidate: SubtitlePlacement?
     @State private var showsReset = false
     @State private var resetTask: Task<Void, Never>?
+    /// Dropped while the controls showed: the text stays where it was let go
+    /// (not lifted clear of them) until they next hide.
+    @State private var holdsDrop = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -80,6 +86,7 @@ struct SubtitleOverlay: View {
         .position(x: videoRect.midX, y: videoRect.midY)
         .selectionHaptic(candidate?.snappedX == true)
         .selectionHaptic(candidate?.snappedY == true)
+        .onChange(of: controlsVisible) { _, visible in if !visible { holdsDrop = false } }
     }
 
     private func block(primary: String?, style: SubtitleStyle, h: Double) -> some View {
@@ -98,11 +105,22 @@ struct SubtitleOverlay: View {
     // MARK: Geometry
 
     /// Distance from the anchored edge in points: the style's, or just clear of
-    /// the controls while they cover it (`SubtitleStyle.restingMargin`).
+    /// the controls while they cover it (`SubtitleStyle.restingMargin`). The
+    /// controls are measured from the stage's edges, so the black bars they
+    /// sit over don't count (they cover less of a letterboxed picture), and a
+    /// line dropped in a bar under them stays there.
     private func restingMargin(h: Double) -> Double {
-        let bottom = controlsVisible ? Double(controlsInset) / h : 0
-        let top = controlsVisible ? Double(controlsTopInset) / h : 0
-        return style.restingMargin(coveredBottom: bottom, coveredTop: top) * h
+        guard controlsVisible, !holdsDrop else { return style.restingMargin(coveredBottom: -.infinity, coveredTop: -.infinity) * h }
+        let stage = stageRect ?? videoRect
+        let below = Double(stage.maxY - videoRect.maxY), above = Double(videoRect.minY - stage.minY)
+        return style.restingMargin(coveredBottom: (Double(controlsInset) - below) / h,
+                                   coveredTop: (Double(controlsTopInset) - above) / h) * h
+    }
+
+    /// How far up and down the text can go, in unit coordinates of the picture.
+    private func verticalBounds(h: Double) -> ClosedRange<Double> {
+        let stage = stageRect ?? videoRect
+        return Double(stage.minY - videoRect.minY) / h...Double(stage.maxY - videoRect.minY) / h
     }
 
     /// The block's offset from its aligned spot: the saved sideways shift
@@ -148,7 +166,8 @@ struct SubtitleOverlay: View {
                 if !dragging { begin(); dragging = true }
                 let rest = restingRect(w: w, h: h)
                 let moved = rest.offsetBy(dx: v.translation.width / w, dy: v.translation.height / h)
-                candidate = SubtitlePlacement.dropping(block: moved, alignment: style.alignment, horizontalMargin: style.horizontalMargin)
+                candidate = SubtitlePlacement.dropping(block: moved, alignment: style.alignment, horizontalMargin: style.horizontalMargin,
+                                                       verticalBounds: verticalBounds(h: h))
             }
             .onEnded { _ in
                 var t = Transaction(); t.disablesAnimations = true
@@ -156,6 +175,7 @@ struct SubtitleOverlay: View {
                     if let candidate { style.place(candidate) }
                     candidate = nil
                     dragging = false
+                    holdsDrop = controlsVisible
                 }
                 end()
                 flashReset()
@@ -201,6 +221,7 @@ struct SubtitleOverlay: View {
     }
 
     private func commitReset() {
+        holdsDrop = false
         withAnimation(Motion.standard(reduceMotion)) { style.resetPosition() }
         showsReset = false
     }
