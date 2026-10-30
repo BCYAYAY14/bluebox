@@ -15,8 +15,10 @@ struct SubtitleOverlay: View {
     /// The visible picture, in the overlay's coordinates.
     let videoRect: CGRect
     let controlsVisible: Bool
-    /// How far bottom subtitles move up while the controls show.
+    /// How much of the picture's bottom the controls cover while they show.
     var controlsInset: CGFloat = 100
+    /// How much of its top they cover (the title row).
+    var controlsTopInset: CGFloat = 0
     /// False for previews: no gestures.
     var editable = true
     /// Drawn when there's no line on screen, so style changes show live.
@@ -95,13 +97,12 @@ struct SubtitleOverlay: View {
 
     // MARK: Geometry
 
-    /// Distance from the anchored edge in points. Bottom subtitles near the edge
-    /// move up while the controls show; ones placed higher stay put.
+    /// Distance from the anchored edge in points: the style's, or just clear of
+    /// the controls while they cover it (`SubtitleStyle.restingMargin`).
     private func restingMargin(h: Double) -> Double {
-        if style.anchor == .middle { return 0 }
-        let m = style.verticalMargin * h
-        let bump = style.anchor == .bottom && style.avoidControls && controlsVisible ? Double(controlsInset) : 0
-        return m < bump ? m + bump : m
+        let bottom = controlsVisible ? Double(controlsInset) / h : 0
+        let top = controlsVisible ? Double(controlsTopInset) / h : 0
+        return style.restingMargin(coveredBottom: bottom, coveredTop: top) * h
     }
 
     /// The block's offset from its aligned spot: the saved sideways shift
@@ -133,7 +134,7 @@ struct SubtitleOverlay: View {
     private func rect(for p: SubtitlePlacement, w: Double, h: Double) -> CGRect {
         let bw = Double(blockSize.width) / w, bh = Double(blockSize.height) / h
         let midX = SubtitlePlacement.restingMidX(blockWidth: bw, alignment: style.alignment, horizontalMargin: style.horizontalMargin) + p.horizontalOffset
-        let minY = p.anchor == .bottom ? 1 - p.verticalMargin - bh : p.verticalMargin
+        let minY = switch p.anchor { case .bottom: 1 - p.verticalMargin - bh; case .middle: 0.5 - bh / 2; case .top: p.verticalMargin }
         return CGRect(x: midX - bw / 2, y: minY, width: bw, height: bh)
     }
 
@@ -219,7 +220,7 @@ struct SubtitleOverlay: View {
         .transition(.opacity)
     }
 
-    /// Snap lines: the centre line and the usual distance from the edge.
+    /// Snap lines: the centre lines and the usual distance from the edge.
     private func guides(w: Double, h: Double) -> some View {
         let snapX = candidate?.snappedX == true, snapY = candidate?.snappedY == true
         let edgeY = candidate?.anchor == .top ? SubtitleStyle.defaultMargin * h : h - SubtitleStyle.defaultMargin * h
@@ -228,7 +229,9 @@ struct SubtitleOverlay: View {
             var edge = Path(); edge.move(to: CGPoint(x: 0, y: edgeY)); edge.addLine(to: CGPoint(x: w, y: edgeY))
             let dash = StrokeStyle(lineWidth: 1, dash: [6, 6])
             ctx.stroke(centre, with: .color(snapX ? Palette.brandBright : .white.opacity(0.25)), style: dash)
-            ctx.stroke(edge, with: .color(snapY ? Palette.brandBright : .white.opacity(0.25)), style: dash)
+            ctx.stroke(edge, with: .color(snapY && candidate?.anchor != .middle ? Palette.brandBright : .white.opacity(0.25)), style: dash)
+            var middle = Path(); middle.move(to: CGPoint(x: 0, y: h / 2)); middle.addLine(to: CGPoint(x: w, y: h / 2))
+            ctx.stroke(middle, with: .color(candidate?.anchor == .middle ? Palette.brandBright : .white.opacity(0.18)), style: dash)
         }
         .frame(width: w, height: h)
         .padding(.horizontal, -style.horizontalMargin * w)

@@ -27,6 +27,8 @@ extern int var_SetChecked(void *object, const char *name, int type, bluebox_vlc_
 extern void *vlc_object_parent(void *object);
 extern void **vlc_player_vout_HoldAll(void *player, size_t *count);
 extern void vout_Release(void *vout);
+extern void *vlc_player_aout_Hold(void *player);
+extern void aout_Release(void *aout);
 
 /// libVLC 4's `libvlc_media_player_t` starts with its `vlc_object_t`; the
 /// `vlc_player_t *` follows the object (24 bytes) and the reference count.
@@ -89,4 +91,20 @@ int bluebox_vlc_set_vout_integer(void *media_player, const char *name, int64_t v
     }
     free(vouts);
     return set_count;
+}
+
+int bluebox_vlc_set_aout_string(void *media_player, const char *name, const char *value) {
+    void *player = player_of(media_player);
+    if (player == NULL) return 0;
+    void *aout = vlc_player_aout_Hold(player);
+    if (aout == NULL) return 0;
+    int ok = 0;
+    // The output made the variable (with the callback that rebuilds its
+    // filters); one of another type means another layout: leave it.
+    if ((var_Type(aout, name) & 0xff) == VAR_STRING) {
+        bluebox_vlc_value_t v = { .psz_string = (char *)value };
+        ok = var_SetChecked(aout, name, VAR_STRING, v) == 0;
+    }
+    aout_Release(aout);
+    return ok;
 }

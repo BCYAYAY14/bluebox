@@ -43,6 +43,10 @@ public final class AppModel {
     public var subtitleStyle: SubtitleStyle {
         didSet { prefs.set(subtitleStyle, for: ProfileSettingKey.subtitleStyle(currentProfileID)) }
     }
+    /// The current profile's equaliser, for every video (`ProfileSettingKey.equalizer`).
+    public var equalizer = EqualizerSettings() {
+        didSet { prefs.set(equalizer, for: ProfileSettingKey.equalizer(currentProfileID)) }
+    }
     public var defaultSpeed: Float { didSet { prefs.set(defaultSpeed, for: PreferenceKey.playbackSpeed) } }
     /// Playback, subtitle, network and advanced settings (Settings › …).
     public let settings: AppSettings
@@ -166,6 +170,8 @@ public final class AppModel {
                 http: any HTTPClient = URLSessionHTTPClient(), forceSample: Bool = false, supabase: SupabaseConfig? = nil,
                 trakt traktConfig: TraktConfig? = nil, torrentDirectory: URL? = nil, downloadsDirectory: URL? = nil,
                 libraryDirectory: URL? = nil) {
+        // The subtitle fonts Bluebox brings, before anything draws a subtitle.
+        SubtitleFontCatalog.prepare()
         // API keys, add-ons and settings follow the account (not in previews and tests' sample mode).
         let settingsSync = forceSample ? nil : SettingsSync(prefs: prefs, secrets: secrets, preferenceKeys: Self.syncedPreferenceKeys,
                                                             profileKeySuffixes: Self.syncedProfileKeySuffixes,
@@ -232,6 +238,7 @@ public final class AppModel {
         // AppSettings first: it copies the shared settings into each profile once.
         settings = AppSettings(prefs: prefs)
         subtitleStyle = prefs.value(SubtitleStyle.self, for: ProfileSettingKey.subtitleStyle(Profile.defaultID)) ?? SubtitleStyle()
+        equalizer = prefs.value(EqualizerSettings.self, for: ProfileSettingKey.equalizer(Profile.defaultID)) ?? EqualizerSettings()
         defaultSpeed = prefs.value(Float.self, for: PreferenceKey.playbackSpeed) ?? 1
         features = FeatureServices(prefs: prefs, debridLibrary: DebridLibrarySource(api: nil, matcher: nil))
         featureSwitches = FeatureSwitches(prefs: prefs)
@@ -581,6 +588,8 @@ public final class AppModel {
         insights.profileChanged()
         let style = prefs.value(SubtitleStyle.self, for: ProfileSettingKey.subtitleStyle(id)) ?? SubtitleStyle()
         if style != subtitleStyle { subtitleStyle = style }
+        let eq = prefs.value(EqualizerSettings.self, for: ProfileSettingKey.equalizer(id)) ?? EqualizerSettings()
+        if eq != equalizer { equalizer = eq }
     }
 
     /// Hands the current profile's maturity limit to the catalogue.
@@ -1143,7 +1152,7 @@ public final class AppModel {
         session.autoplayNext = settings.autoplayNextEpisode
         session.onProgressSaved = { [weak self] playing in self?.account.progressSaved(playing: playing) }
         session.subtitleStyle = subtitleStyle
-        session.setAudioEffects(AudioEffects(dialogueBoost: settings.dialogueBoost, nightMode: settings.nightMode))
+        session.setAudioEffects(AudioEffects(dialogueBoost: settings.dialogueBoost, nightMode: settings.nightMode, equalizer: equalizer))
         // Defaults for every item the session starts, Up Next and Next Episode included.
         session.onItemStarted = { [weak self, weak session] _ in
             guard let self, let session else { return }
@@ -1493,7 +1502,7 @@ extension AppModel {
     ]).union(FeatureSwitches.syncedKeys)
     /// Each profile's audio language, autoplay, subtitle style, shows it always
     /// skips (`ProfileSettingKey`) and its Privacy & Features switches.
-    static let syncedProfileKeySuffixes = [".audioLanguage", ".autoplayNext", ".subtitleStyle", ".showSkipRules"]
+    static let syncedProfileKeySuffixes = [".audioLanguage", ".autoplayNext", ".subtitleStyle", ".showSkipRules", ".equalizer"]
         + FeatureSwitches.syncedProfileSuffixes
     /// API keys, with Sync API Keys on (add-on links too, by prefix). Sign-ins
     /// that refresh themselves (Supabase, Trakt, OpenSubtitles) stay per device.
@@ -1513,6 +1522,8 @@ extension AppModel {
             if speed != defaultSpeed { defaultSpeed = speed }
             let style = prefs.value(SubtitleStyle.self, for: ProfileSettingKey.subtitleStyle(currentProfileID)) ?? SubtitleStyle()
             if style != subtitleStyle { subtitleStyle = style }
+            let eq = prefs.value(EqualizerSettings.self, for: ProfileSettingKey.equalizer(currentProfileID)) ?? EqualizerSettings()
+            if eq != equalizer { equalizer = eq }
             if changed.contains(PreferenceKey.downloadSettings) {
                 setDownloadSettings(prefs.value(DownloadSettings.self, for: PreferenceKey.downloadSettings) ?? DownloadSettings())
             }

@@ -117,6 +117,16 @@ struct PlaybackSettingsPage: View {
             }
 
             Section {
+                EqualizerEditor(settings: Binding(get: { app.equalizer }, set: { app.equalizer = $0 }), onCommit: {})
+                    .padding(.vertical, 6)
+                    .settingsRow("Equaliser")
+            } header: {
+                Text("Equaliser · \(app.currentProfile.name)")
+            } footer: {
+                Text("Plays with every video \(app.currentProfile.name) watches, and syncs. Change it while watching in Tools › Sound. HLS streams play without it.")
+            }
+
+            Section {
                 Toggle("Always Open in Infuse", isOn: $settings.alwaysOpenInInfuse)
                     .settingsRow("Always Open in Infuse")
             } header: {

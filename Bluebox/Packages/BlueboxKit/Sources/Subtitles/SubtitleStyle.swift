@@ -64,6 +64,8 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     /// Hide Sound Cues: [bracketed] and (parenthesised) cues, ♪ lyrics and
     /// "NAME:" labels left out of the lines Bluebox draws (see `SoundCues`).
     public var hidesSoundCues = false
+    /// Looks saved with "Save Current", shown after the presets.
+    public var savedLooks: [SavedLook] = []
 
     public init() {}
 
@@ -100,39 +102,105 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         anchor = p.anchor; verticalMargin = p.verticalMargin; horizontalOffset = p.horizontalOffset
     }
 
-    // MARK: Presets
-
-    public enum Preset: String, CaseIterable, Sendable {
-        case classic, boxed, outlined, large, cinema
-
-        public var title: String {
-            switch self {
-            case .classic: "Classic"
-            case .boxed: "Boxed"
-            case .outlined: "Yellow"
-            case .large: "Large"
-            case .cinema: "Soft"
-            }
+    /// How far (a fraction of the picture's height) the edge of bottom subtitles
+    /// sits from the bottom while something covers `covered` of it there (the
+    /// player's bar): its own distance when that already clears it, else just
+    /// above. Top subtitles likewise under `coveredTop`. Middle never moves. One
+    /// rule for every renderer, so nothing jumps as a margin crosses a threshold.
+    public func restingMargin(coveredBottom: Double, coveredTop: Double = 0) -> Double {
+        switch anchor {
+        case .middle: 0
+        case .bottom: avoidControls ? max(verticalMargin, coveredBottom) : verticalMargin
+        case .top: avoidControls ? max(verticalMargin, coveredTop) : verticalMargin
         }
     }
 
-    /// Applies a preset: size, colour, background and outline. These are what
-    /// every kind of subtitle (files, and the video's own text tracks) takes
-    /// on at once; the font, weight, shadow, languages and position stay.
-    public func applying(_ preset: Preset) -> SubtitleStyle {
-        let base = SubtitleStyle()
-        var s = self
-        s.relativeSize = base.relativeSize; s.textColor = base.textColor
-        s.outlineWidth = base.outlineWidth; s.outlineColor = base.outlineColor
-        s.backgroundColor = base.backgroundColor; s.backgroundOpacity = base.backgroundOpacity
-        switch preset {
-        case .classic: break
-        case .boxed: s.outlineWidth = 0; s.backgroundOpacity = 0.75
-        case .outlined: s.textColor = .yellow; s.outlineWidth = 2.5
-        case .large: s.relativeSize = 0.065; s.outlineWidth = 2.5; s.backgroundOpacity = 0.4
-        case .cinema: s.textColor = RGBA(0.96, 0.95, 0.9); s.relativeSize = 0.05; s.outlineWidth = 0; s.backgroundOpacity = 0.4
+    // MARK: Looks and presets
+
+    /// What a preset sets: the type and how it stands off the picture. Position,
+    /// languages and Hide Sound Cues are left alone.
+    public struct Look: Hashable, Codable, Sendable {
+        public var design: FontDesign = .system
+        public var fontName: String?
+        public var relativeSize: Double = 0.045
+        public var weight: Weight = .semibold
+        public var textColor: RGBA = .white
+        public var outlineWidth: Double = 1
+        public var shadow = true
+        public var backgroundOpacity: Double = 0
+        public init() {}
+    }
+
+    public var look: Look {
+        get {
+            var l = Look()
+            l.design = design; l.fontName = fontName; l.relativeSize = relativeSize; l.weight = weight
+            l.textColor = textColor; l.outlineWidth = outlineWidth; l.shadow = shadow; l.backgroundOpacity = backgroundOpacity
+            return l
         }
-        return s
+        set {
+            design = newValue.design; fontName = newValue.fontName; relativeSize = Self.clampSize(newValue.relativeSize)
+            weight = newValue.weight; italic = false; textColor = newValue.textColor
+            outlineWidth = newValue.outlineWidth; outlineColor = .black
+            shadow = newValue.shadow; shadowOpacity = 0.9
+            backgroundColor = .black; backgroundOpacity = newValue.backgroundOpacity
+        }
+    }
+
+    /// Bluebox's looks. Standard is the default style.
+    public enum Preset: String, CaseIterable, Sendable {
+        case standard, cinema, boxed, boldOutline, largePrint
+
+        public var title: String {
+            switch self {
+            case .standard: "Standard"
+            case .cinema: "Cinema"
+            case .boxed: "Boxed"
+            case .boldOutline: "Bold Outline"
+            case .largePrint: "Large Print"
+            }
+        }
+
+        public var look: Look {
+            var l = Look()
+            switch self {
+            case .standard: break
+            case .cinema:
+                l.design = .serif; l.weight = .medium; l.relativeSize = 0.047
+                l.textColor = RGBA(0.96, 0.95, 0.9); l.outlineWidth = 0
+            case .boxed:
+                l.weight = .medium; l.outlineWidth = 0; l.shadow = false; l.backgroundOpacity = 0.75
+            case .boldOutline:
+                l.weight = .bold; l.relativeSize = 0.048; l.outlineWidth = 2.5
+            case .largePrint:
+                l.fontName = "Atkinson Hyperlegible"; l.weight = .bold; l.relativeSize = 0.062
+                l.outlineWidth = 0; l.shadow = false; l.backgroundOpacity = 0.55
+            }
+            return l
+        }
+    }
+
+    /// A look the user saved ("Save Current"), kept with the profile's style so it syncs.
+    public struct SavedLook: Hashable, Codable, Sendable, Identifiable {
+        public var id: UUID
+        public var name: String
+        public var look: Look
+        public init(id: UUID = UUID(), name: String, look: Look) { self.id = id; self.name = name; self.look = look }
+    }
+
+    /// Applies a preset's look; the position, languages and saved looks stay.
+    public func applying(_ preset: Preset) -> SubtitleStyle {
+        var s = self; s.look = preset.look; return s
+    }
+
+    /// True when the type and box are exactly the preset's.
+    public func matches(_ preset: Preset) -> Bool { look == preset.look }
+
+    /// The current look saved under the next free "My Look n" name.
+    public mutating func saveCurrentLook() {
+        let taken = Set(savedLooks.map(\.name))
+        let name = (1...).lazy.map { "My Look \($0)" }.first { !taken.contains($0) }!
+        savedLooks.append(SavedLook(name: name, look: look))
     }
 
     // MARK: Codable (older saved styles had size/color/background/position presets)
@@ -140,7 +208,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case design, fontName, relativeSize, weight, italic, textColor, outlineWidth, outlineColor, shadow, shadowOpacity
         case backgroundColor, backgroundOpacity, alignment, anchor, verticalMargin, horizontalMargin, horizontalOffset, lineSpacing
-        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage, hidesSoundCues
+        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage, hidesSoundCues, savedLooks
         case size, color, background, position
     }
 
@@ -161,6 +229,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         secondaryColor = v(.secondaryColor, base.secondaryColor)
         preferredLanguage = v(.preferredLanguage, base.preferredLanguage); secondaryLanguage = v(.secondaryLanguage, base.secondaryLanguage)
         hidesSoundCues = v(.hidesSoundCues, base.hidesSoundCues)
+        savedLooks = v(.savedLooks, base.savedLooks)
         // Legacy presets.
         if let size: String = v(.size, nil) {
             relativeSize = ["small": 0.035, "medium": 0.045, "large": 0.055, "extraLarge": 0.07][size] ?? relativeSize
@@ -192,6 +261,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         try c.encode(secondaryColor, forKey: .secondaryColor)
         try c.encodeIfPresent(preferredLanguage, forKey: .preferredLanguage); try c.encodeIfPresent(secondaryLanguage, forKey: .secondaryLanguage)
         try c.encode(hidesSoundCues, forKey: .hidesSoundCues)
+        if !savedLooks.isEmpty { try c.encode(savedLooks, forKey: .savedLooks) }
     }
 }
 

@@ -28,10 +28,16 @@ public struct SubtitlePlacement: Equatable, Sendable {
         let minY = min(max(Double(block.minY), 0), 1 - h)
         let maxY = minY + h
 
-        let anchor: SubtitleStyle.Anchor = (minY + maxY) / 2 >= 0.5 ? .bottom : .top
+        let midY = (minY + maxY) / 2
+        var anchor: SubtitleStyle.Anchor = midY >= 0.5 ? .bottom : .top
         var margin = anchor == .bottom ? 1 - maxY : minY
         var snappedY = false
-        if abs(margin - SubtitleStyle.defaultMargin) < snapDistance { margin = SubtitleStyle.defaultMargin; snappedY = true }
+        if abs(midY - 0.5) < snapDistance {
+            // Centred on the picture: Middle, which stays centred whatever the line count.
+            anchor = .middle; margin = SubtitleStyle.defaultMargin; snappedY = true
+        } else if abs(margin - SubtitleStyle.defaultMargin) < snapDistance {
+            margin = SubtitleStyle.defaultMargin; snappedY = true
+        }
         margin = min(max(margin, 0), 0.85)
 
         var x = midX

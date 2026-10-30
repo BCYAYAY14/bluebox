@@ -255,3 +255,7 @@ SOFTWARE.
 ## libVLC (VLC media player engine)
 
 Bluebox plays some formats with libVLC 4, through SwiftVLC. libVLC is copyright the VideoLAN team and its contributors, and is licensed under the GNU Lesser General Public License, version 2.1 or later. Its source code is available from https://code.videolan.org/videolan/vlc. You may replace or relink the libVLC library used by Bluebox under the terms of that licence; the full licence text is at https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+
+## Atkinson Hyperlegible and Inter (subtitle fonts)
+
+Bluebox includes two fonts for subtitles. Atkinson Hyperlegible is copyright 2020 Braille Institute of America, Inc.; Inter is copyright 2020 The Inter Project Authors (https://github.com/rsms/inter). Both are licensed under the SIL Open Font License, version 1.1; the full licence texts are in Packages/BlueboxKit/Sources/Subtitles/Fonts (OFL-Atkinson.txt, OFL-Inter.txt) and at https://openfontlicense.org.

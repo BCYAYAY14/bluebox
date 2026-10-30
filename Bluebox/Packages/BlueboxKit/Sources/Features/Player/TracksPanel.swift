@@ -4,7 +4,7 @@ import Subtitles
 import SwiftUI
 
 /// A page inside the Audio & Subtitles card.
-enum TracksPage: String, CaseIterable { case style, timing, secondLine, lines }
+enum TracksPage: String, CaseIterable { case timing, secondLine, lines }
 
 /// Audio & Subtitles: audio and subtitle columns side by side (stacked when
 /// the card is narrow), the chosen tracks checked, Add File and Search Online
@@ -19,14 +19,16 @@ struct TracksPanel: View {
     let canSearch: Bool
     let onAddFile: () -> Void
     let onSearch: () -> Void
+    /// Opens Subtitle Style beside the video (it isn't a page in this card).
+    let onStyle: () -> Void
     @State private var page: TracksPage?
     /// The language whose subtitle tracks are open (a page in the card).
     @State private var language: String?
 
     init(session: PlayerSession, width: CGFloat, canSearch: Bool, initialPage: TracksPage? = nil,
-         onAddFile: @escaping () -> Void, onSearch: @escaping () -> Void) {
+         onAddFile: @escaping () -> Void, onSearch: @escaping () -> Void, onStyle: @escaping () -> Void) {
         self.session = session; self.width = width; self.canSearch = canSearch
-        self.onAddFile = onAddFile; self.onSearch = onSearch
+        self.onAddFile = onAddFile; self.onSearch = onSearch; self.onStyle = onStyle
         _page = State(initialValue: initialPage)
     }
 
@@ -41,9 +43,6 @@ struct TracksPanel: View {
                 languagePage(group).transition(pageTransition)
             } else {
             switch page {
-            case .style:
-                SubtitleStylePage(style: $app.subtitleStyle, session: session, onBack: { page = nil })
-                    .transition(pageTransition)
             case .timing:
                 SubtitleTimingPage(session: session, onBack: { page = nil })
                     .transition(pageTransition)
@@ -92,7 +91,7 @@ struct TracksPanel: View {
             }
             Rectangle().fill(Palette.separator).frame(height: 1).padding(.horizontal, 4)
             FlowLayout(spacing: 6) {
-                PlayerPageChip(title: "Style", symbol: "textformat") { page = .style }
+                PlayerPageChip(title: "Style", symbol: "textformat", action: onStyle)
                     .accessibilityIdentifier("tracks.style")
                 PlayerPageChip(title: "Timing", value: session.subtitleOffset.isDefault ? nil : session.subtitleOffset.label) { page = .timing }
                     .accessibilityIdentifier("tracks.timing")

@@ -36,6 +36,8 @@ extension View {
             .clipShape(shape)
             .shadow(color: .black.opacity(0.5), radius: 16, y: 12)
             .environment(\.colorScheme, .dark)
+            // Switches everywhere in the cards (the Mac's default is a checkbox).
+            .toggleStyle(.switch)
     }
 }
 

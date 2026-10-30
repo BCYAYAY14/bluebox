@@ -7,11 +7,10 @@ import SwiftUI
 @MainActor
 enum PanelMetrics {
     #if os(iOS)
-    /// A phone on its side: the cards are short, so their controls are
-    /// tighter (34 pt, still easy to hit) and their type a step smaller.
-    /// Set by the player from its stage height.
+    /// A phone on its side: the cards are short, so their type is a step
+    /// smaller; targets stay 44 pt. Set by the player from its stage height.
     static var dense = false
-    static var control: CGFloat { dense ? 34 : 44 }
+    static let control: CGFloat = 44
     static var chipFont: Font { dense ? .footnote.weight(.semibold) : .subheadline.weight(.semibold) }
     /// The big number in a dial (speed, delays).
     static var valueFont: Font { dense ? .title3.weight(.bold) : .title2.weight(.bold) }
@@ -55,42 +54,57 @@ struct PanelSection<Content: View, Accessory: View>: View {
     }
 }
 
-/// One choice in a short list (speed, aspect, crop…): a capsule, filled blue when selected.
-struct PanelChip: View {
-    let title: String
-    let selected: Bool
-    let action: () -> Void
-    @State private var hovering = false
+/// A segmented control whose last segment is a "More" menu for the rarer
+/// choices: Aspect and Crop's ten ratios, the sleep timer's minutes. When the
+/// choice is one of the rarer ones, More shows it, selected.
+struct PanelSegmentsWithMore<Value: Hashable>: View {
+    @Binding var selection: Value
+    let shown: [(String, Value)]
+    let more: [(String, Value)]
 
     var body: some View {
+        let picked = more.first { $0.1 == selection }
+        HStack(spacing: 2) {
+            ForEach(shown, id: \.1) { title, value in
+                segment(title, on: value == selection) { selection = value }
+            }
+            Menu {
+                ForEach(more, id: \.1) { title, value in
+                    Button { selection = value } label: {
+                        if value == selection { Label(title, systemImage: "checkmark") } else { Text(title) }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(picked?.0 ?? "More")
+                    Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+                }
+                .font(PanelMetrics.chipFont)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: PanelMetrics.control - 4)
+                .foregroundStyle(picked != nil ? AnyShapeStyle(.background) : AnyShapeStyle(.primary))
+                .background(picked != nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .accessibilityLabel(picked.map { "\($0.0), more choices" } ?? "More choices")
+        }
+        .padding(2)
+        .background(.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func segment(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(PanelMetrics.chipFont)
-                .monospacedDigit()
-                .lineLimit(1)
-                .padding(.horizontal, PanelMetrics.dense ? 10 : 12)
-                .frame(minWidth: PanelMetrics.control, minHeight: PanelMetrics.control)
-                .foregroundStyle(selected ? Color.black : Palette.textPrimary)
-                .background(selected ? Color.white : Color.white.opacity(hovering ? 0.1 : 0), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(selected ? 0 : 0.22)))
-                .contentShape(Capsule())
+                .font(PanelMetrics.chipFont).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: PanelMetrics.control - 4)
+                .foregroundStyle(on ? AnyShapeStyle(.background) : AnyShapeStyle(.primary))
+                .background(on ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(Rectangle())
         }
         .buttonStyle(PanelPressStyle())
-        .onHover { hovering = $0 }
-        .animation(Motion.hover, value: hovering)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// Chips that wrap onto as many lines as they need.
-struct ChipFlow<Item: Hashable, Chip: View>: View {
-    let items: [Item]
-    @ViewBuilder let chip: (Item) -> Chip
-
-    var body: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(items, id: \.self) { chip($0) }
-        }
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 

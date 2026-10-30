@@ -22,58 +22,45 @@ struct SubtitlesSettingsPage: View {
             }
 
             Section {
-                SettingsPicker("Preset", selection: presetBinding,
-                               options: [.init("Custom", value: nil)] + SubtitleStyle.Preset.allCases.map { .init($0.title, value: $0) })
+                SubtitlePresetGrid(style: $app.subtitleStyle, columns: 3)
+                    .padding(.vertical, 4)
                     .settingsRow("Subtitle Style")
-                SettingsPicker("Font", selection: fontBinding, groups: [
-                    [.init("System", value: "design:system"), .init("Rounded", value: "design:rounded"),
-                     .init("Serif", value: "design:serif"), .init("Monospaced", value: "design:monospaced")],
-                    SubtitleFonts.available.map { .init($0, value: $0) },
-                ])
-                SettingsSlider("Size", value: $app.subtitleStyle.relativeSize, in: 0.02...0.12) {
-                    "\(Int(($0 / 0.045 * 100).rounded()))%"
-                }
-                SettingsPicker("Weight", selection: Binding(get: { app.subtitleStyle.isBold ? SubtitleStyle.Weight.bold : .regular },
-                                                            set: { app.subtitleStyle.weight = $0 }),
-                               options: [.init("Regular", value: .regular), .init("Bold", value: .bold)])
-                SettingsColorRow(title: "Colour", color: $app.subtitleStyle.textColor)
-                SettingsSlider("Outline", value: $app.subtitleStyle.outlineWidth, in: 0...6) {
-                    $0 < 0.1 ? "Off" : String(format: "%.1f pt", $0)
-                }
-                Toggle("Shadow", isOn: $app.subtitleStyle.shadow)
-                SettingsSlider("Background Box", value: $app.subtitleStyle.backgroundOpacity, in: 0...1) {
-                    $0 < 0.01 ? "Off" : "\(Int(($0 * 100).rounded()))%"
-                }
+            } header: {
+                Text("Presets")
+            } footer: {
+                Text("A preset sets the font, size, colour, outline and box. Save Current keeps your own look; right-click or long-press it to rename or delete it.")
+            }
+
+            Section("Font") {
+                SubtitleFontList(style: $app.subtitleStyle)
+                    .padding(.vertical, 4)
+                SubtitleWeightPicker(style: $app.subtitleStyle)
+            }
+
+            Section {
+                SubtitleLookRows(style: $app.subtitleStyle)
+                    .padding(.vertical, 4)
+                Toggle("Hide Sound Cues", isOn: $app.subtitleStyle.hidesSoundCues)
+            } header: {
+                Text("Look")
+            } footer: {
+                Text("Sizes follow the picture, so subtitles look the same in a window, full screen or Picture in Picture. Hide Sound Cues leaves out [sounds], (sighs), ♪ lyrics and “NAME:” labels.")
+            }
+
+            Section {
+                SubtitlePositionPad(style: $app.subtitleStyle)
+                    .padding(.vertical, 4)
+                Toggle("Move Up for Player Controls", isOn: $app.subtitleStyle.avoidControls)
                 Button("Reset Style", role: .destructive) { confirmReset = true }
                     .confirmationDialog("Reset subtitle style?", isPresented: $confirmReset, titleVisibility: .visible) {
                         Button("Reset Style", role: .destructive) { resetStyle() }
                     } message: {
-                        Text("Font, size, colours and position go back to the defaults. Your languages stay.")
+                        Text("Font, size, colours and position go back to the defaults. Your languages and saved looks stay.")
                     }
             } header: {
-                Text("Appearance")
+                Text("Position")
             } footer: {
-                Text("Sizes follow the picture, so subtitles look the same in a window, full screen or Picture in Picture. Subtitles inside a playing video take a new font, weight or shadow from the next video; the rest changes at once.")
-            }
-
-            Section {
-                SettingsPicker("Position", selection: $app.subtitleStyle.anchor,
-                               options: [.init("Bottom", value: .bottom), .init("Middle", value: .middle), .init("Top", value: .top)])
-                SettingsPicker("Alignment", selection: $app.subtitleStyle.alignment, options: [
-                    .init("Left", value: .leading, systemImage: "text.alignleft"),
-                    .init("Centre", value: .center, systemImage: "text.aligncenter"),
-                    .init("Right", value: .trailing, systemImage: "text.alignright"),
-                ])
-                SettingsSlider("Distance from Edge", value: $app.subtitleStyle.verticalMargin, in: 0...0.5) {
-                    "\(Int(($0 * 100).rounded()))%"
-                }
-                Toggle("Move Up for Player Controls", isOn: $app.subtitleStyle.avoidControls)
-                Button("Reset Position") { app.subtitleStyle.resetPosition() }
-                    .disabled(app.subtitleStyle.isDefaultPosition)
-            } header: {
-                Text("Placement")
-            } footer: {
-                Text("Or drag the subtitles on the preview, or on the video while it plays.")
+                Text("Drag the bar, the subtitles on the preview, or the subtitles on the video while it plays. While the controls show, subtitles under them move up just enough to clear them.")
             }
 
             if app.subtitleStyle.secondaryLanguage != nil {
@@ -117,31 +104,11 @@ struct SubtitlesSettingsPage: View {
         }
     }
 
-    private var presetBinding: Binding<SubtitleStyle.Preset?> {
-        Binding {
-            SubtitleStyle.Preset.allCases.first { app.subtitleStyle.applying($0) == app.subtitleStyle }
-        } set: { preset in
-            if let preset { app.subtitleStyle = app.subtitleStyle.applying(preset) }
-        }
-    }
-
-    private var fontBinding: Binding<String> {
-        Binding {
-            app.subtitleStyle.fontName ?? "design:\(app.subtitleStyle.design.rawValue)"
-        } set: { v in
-            if v.hasPrefix("design:") {
-                app.subtitleStyle.fontName = nil
-                app.subtitleStyle.design = .init(rawValue: String(v.dropFirst(7))) ?? .system
-            } else {
-                app.subtitleStyle.fontName = v
-            }
-        }
-    }
-
     private func resetStyle() {
         var fresh = SubtitleStyle()
         fresh.preferredLanguage = app.subtitleStyle.preferredLanguage
         fresh.secondaryLanguage = app.subtitleStyle.secondaryLanguage
+        fresh.savedLooks = app.subtitleStyle.savedLooks
         app.subtitleStyle = fresh
     }
 

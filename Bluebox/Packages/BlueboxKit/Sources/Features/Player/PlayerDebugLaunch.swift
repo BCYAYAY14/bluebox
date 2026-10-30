@@ -100,12 +100,12 @@ extension AppModel {
         }
         if let first = subs.first { await check("back-to-first") { session.selectSubtitle(.embedded(first.id)) } }
         let base = subtitleStyle
-        await check("yellow") { subtitleStyle = base.applying(.outlined) }
+        await check("bold-outline") { subtitleStyle = base.applying(.boldOutline) }
         await check("boxed") { subtitleStyle = base.applying(.boxed) }
-        await check("large") { subtitleStyle = base.applying(.large) }
-        await check("top") { var s = subtitleStyle; s.positionChoice = .top; subtitleStyle = s }
-        await check("higher") { var s = subtitleStyle; s.positionChoice = .higher; subtitleStyle = s }
-        await check("classic") { var s = base.applying(.classic); s.positionChoice = .bottom; subtitleStyle = s }
+        await check("large-print") { subtitleStyle = base.applying(.largePrint) }
+        await check("top") { var s = subtitleStyle; s.pin(.top, .center); subtitleStyle = s }
+        await check("middle") { var s = subtitleStyle; s.pin(.middle, .center); subtitleStyle = s }
+        await check("standard") { var s = base.applying(.standard); s.resetPosition(); subtitleStyle = s }
         await check("off") { session.selectSubtitle(.off) }
         Log.playback.notice("subtitle check done")
     }

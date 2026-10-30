@@ -36,6 +36,8 @@ struct PlayerView: View {
     /// The page a card opens on (debug launch arguments).
     @State private var toolsStartPage: ToolsPage?
     @State private var tracksStartPage: TracksPage?
+    /// Subtitle Style is open beside the video.
+    @State private var styleOpen = false
     /// Tools › Stats: engine numbers over the top-left of the video.
     @State private var statsShown = false
     /// The speed before a hold (→ on the Mac, a long press on iPhone) took it to 2×.
@@ -127,7 +129,14 @@ struct PlayerView: View {
     }
 
     var body: some View {
-        stage
+        HStack(spacing: 0) {
+            stage
+            if styleOpen {
+                SubtitleStyleInspector(style: Bindable(app).subtitleStyle, session: session, onClose: closeStyle)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+            }
+        }
+        .animation(Motion.snappy(reduceMotion), value: styleOpen)
         .background(Color.black.ignoresSafeArea())
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
@@ -150,8 +159,14 @@ struct PlayerView: View {
         #if os(macOS)
         .background(WindowReader { window.attach($0) })
         .onAppear {
-            window.onEscapeInWindow = { if panel != nil { closePanel() } else { Task { await app.closePlayer() } } }
-            window.onEscapeWithCard = { guard panel != nil else { return false }; closePanel(); return true }
+            window.onEscapeInWindow = {
+                if panel != nil { closePanel() } else if styleOpen { closeStyle() } else { Task { await app.closePlayer() } }
+            }
+            window.onEscapeWithCard = {
+                if panel != nil { closePanel(); return true }
+                if styleOpen { closeStyle(); return true }
+                return false
+            }
             window.onWindowClose = { Task { await app.closePlayer() } }
         }
         .onDisappear { window.detach() }
@@ -169,9 +184,11 @@ struct PlayerView: View {
     private var canSearchSubtitles: Bool { app.canSearchSubtitlesOnline(for: session.item?.key) }
 
     /// Controls draw over the video unless a message card (error, end of
-    /// film) asks what to do next. They stay while a panel card is open.
+    /// film) asks what to do next. They stay while a panel card is open, and
+    /// while the video opens or stalls; playing or paused they fade when idle.
     private var controlsShown: Bool {
-        !showsCard && (controlsVisible || panel != nil || session.snapshot.status != .playing)
+        let status = session.snapshot.status
+        return !showsCard && (controlsVisible || panel != nil || (status != .playing && status != .paused))
     }
 
     /// The video is opening or stalled (not while scrubbing, which pauses on purpose).
@@ -208,8 +225,9 @@ struct PlayerView: View {
                                     // Above the timeline whenever it shows, the tools' sample line too.
                                     controlsVisible: controlsShown,
                                     controlsInset: subtitleControlsInset(height: geo.size.height),
-                                    // Only while the look is being changed, and only where no real line is.
-                                    placeholder: showsStylePreview && panel == .tracks && !vlcDrawsSubtitles ? "Subtitles look like this." : nil,
+                                    controlsTopInset: subtitleControlsTopInset,
+                                    // While the look is being changed, and only where no real line is.
+                                    placeholder: (styleOpen || (showsStylePreview && panel == .tracks)) && !vlcDrawsSubtitles ? "Subtitles look like this." : nil,
                                     onEditingChanged: { editing in
                                         subtitleEditing = editing
                                         lastInteraction = Date()
@@ -374,7 +392,16 @@ struct PlayerView: View {
         // Picture in Picture can't show the overlay: the lines go into the picture.
         .onChange(of: pipActive, initial: true) { _, active in session.drawsSubtitlesInPicture = active }
         .modifier(PlayerKeys(actions: keyActions))
-        .task(id: session.snapshot.status == .playing) { await autoHide() }
+        .task(id: session.snapshot.status == .playing || session.snapshot.status == .paused) { await autoHide() }
+        // Pausing shows the controls (they fade again after a while, so a paused frame reads as it played).
+        .onChange(of: session.snapshot.status == .paused) { _, paused in if paused { poke() } }
+        // The profile's equaliser changed elsewhere (Settings, another device): hear it now.
+        .onChange(of: app.equalizer) { _, eq in
+            guard session.audioEffects.equalizer != eq else { return }
+            var n = session.audioEffects; n.equalizer = eq; session.setAudioEffects(n)
+        }
+        // VLC draws the video's own text tracks in the picture: they move clear of the controls the same way.
+        .onChange(of: engineSubtitleStyle, initial: true) { _, style in session.subtitleStyle = style }
         .task(id: session.item?.key) {
             // Metadata only: resolving the next episode here would start its stream,
             // which for add-on torrents replaces the one playing now.
@@ -399,7 +426,6 @@ struct PlayerView: View {
         }
         #endif
         .onChange(of: app.subtitleStyle, initial: true) { old, new in
-            session.subtitleStyle = new
             guard old != new else { return }
             showsStylePreview = true
             stylePreviewTask?.cancel()
@@ -500,7 +526,7 @@ struct PlayerView: View {
                     try? await Task.sleep(for: .seconds(4))
                     if let r = AppModel.debugValue("-player-rate").flatMap(Float.init) { session.setRate(r) }
                     if (ProcessInfo.processInfo.arguments + AppModel.environmentDebugArguments).contains("-player-stats") { statsShown = true }
-                    panel = which
+                    if which == .tracks, page == "style" { openStyle() } else { panel = which }
                 }
             }
             if ProcessInfo.processInfo.arguments.contains("-player-mobile-banner") {
@@ -1379,12 +1405,12 @@ struct PlayerView: View {
     /// The open card, over the button that opened it.
     private func panelCard(_ kind: PlayerPanelKind) -> some View {
         let compact = stageSize.height < 500
-        var width = kind.width(compact: compact)
-        if kind == .tracks, !compact, session.snapshot.audioTracks.isEmpty { width = 260 }
+        let width = kind.width(compact: compact)
         let place = PanelPlacement.frame(anchor: anchors[kind], width: width, stage: stageSize,
                                          // Mac: above the whole bar. Phones: the card may cover the timeline.
                                          barTop: platform == .mac ? barTop : nil,
-                                         topInset: compact ? Spacing.s : 44)
+                                         // Clear of the title row, which stays readable.
+                                         topInset: compact ? subtitleControlsTopInset : 44)
         let inner = min(width, stageSize.width - 24) - PlayerCardMetrics.padding * 2
         return Group {
             switch kind {
@@ -1420,7 +1446,8 @@ struct PlayerView: View {
         case .tracks:
             TracksPanel(session: session, width: innerWidth, canSearch: canSearchSubtitles, initialPage: tracksStartPage,
                         onAddFile: { closePanel(); importingSubtitle = true },
-                        onSearch: { closePanel(); searchingSubtitles = true })
+                        onSearch: { closePanel(); searchingSubtitles = true },
+                        onStyle: openStyle)
         case .speed:
             SpeedPanel(rate: session.snapshot.rate,
                        remaining: session.snapshot.duration.map { max($0 - session.snapshot.position, 0) }) { r in
@@ -1454,6 +1481,34 @@ struct PlayerView: View {
     }
 
     /// How far subtitles move up while the controls show: clear of the timeline and tool row.
+    /// The title row at the top while the controls show (top subtitles stay under it).
+    private var subtitleControlsTopInset: CGFloat { stageSize.height < 500 ? 56 : 64 }
+
+    /// The style the engine draws with: the user's, with bottom (or top) subtitles
+    /// that VLC draws in the picture moved clear of the controls while they show,
+    /// by the same rule as Bluebox's overlay. Never saved.
+    private var engineSubtitleStyle: SubtitleStyle {
+        var s = app.subtitleStyle
+        guard vlcDrawsSubtitles, controlsShown, stageSize.height > 0 else { return s }
+        let h = Double(stageSize.height)
+        let m = s.restingMargin(coveredBottom: Double(subtitleControlsInset(height: stageSize.height)) / h,
+                                coveredTop: Double(subtitleControlsTopInset) / h)
+        if s.anchor != .middle { s.verticalMargin = m }
+        return s
+    }
+
+    private func openStyle() {
+        panel = nil
+        styleOpen = true
+        poke()
+    }
+
+    private func closeStyle() {
+        styleOpen = false
+        focused = true
+        poke()
+    }
+
     private func subtitleControlsInset(height: CGFloat) -> CGFloat {
         barTop > 0 ? max(height - barTop, 0) + Spacing.s : (height < 500 ? 96 : 130)
     }
@@ -1631,10 +1686,10 @@ struct PlayerView: View {
     }
 
     /// Controls fade 3 s after the last touch, click or pointer move while
-    /// playing; never mid-scrub, with the tools open, while the pointer rests on
+    /// playing or paused; never mid-scrub, with the tools open, while the pointer rests on
     /// them or while subtitles are being moved. On the Mac the pointer hides too.
     private func autoHide() async {
-        while !Task.isCancelled, session.snapshot.status == .playing {
+        while !Task.isCancelled, session.snapshot.status == .playing || session.snapshot.status == .paused {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             let idle = Date().timeIntervalSince(lastInteraction) > 3

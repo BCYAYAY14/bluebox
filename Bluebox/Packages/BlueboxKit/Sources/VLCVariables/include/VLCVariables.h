@@ -19,4 +19,10 @@ bool bluebox_vlc_set_string(void *media_player, const char *name, const char *va
 /// Returns how many outputs took it.
 int bluebox_vlc_set_vout_integer(void *media_player, const char *name, int64_t value);
 
+/// Sets a string variable on the player's audio output, which acts on it at
+/// once: `audio-filter` rebuilds the output's filter chain live (the
+/// compressor and the equalizer run there). Returns 1 when the output took
+/// it, 0 when there's no output yet or the variable isn't a string there.
+int bluebox_vlc_set_aout_string(void *media_player, const char *name, const char *value);
+
 #endif

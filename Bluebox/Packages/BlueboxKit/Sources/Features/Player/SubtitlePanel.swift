@@ -321,11 +321,6 @@ struct SubtitleTimingPage: View {
     }
 }
 
-extension SubtitleStyle {
-    /// True when this is exactly the preset's look (so its chip shows as chosen).
-    func matches(_ preset: Preset) -> Bool { applying(preset) == self }
-}
-
 enum SubtitleSyncFrameRates {
     static let all: [(String, Double)] = [("23.976", 24000.0 / 1001), ("24", 24), ("25", 25), ("29.97", 30000.0 / 1001), ("30", 30)]
     static var options: [BlueboxPickerOption<Double>] { all.map { BlueboxPickerOption("\($0.0) fps", value: $0.1) } }
@@ -333,73 +328,85 @@ enum SubtitleSyncFrameRates {
 
 // MARK: - Style
 
-/// Subtitle look: a sample line, presets, then size, colour, background,
-/// outline and position, one row each. Every one shows on the video at once,
-/// for the video's own text tracks too. Font and weight are in Settings ›
-/// Subtitles (the video's own tracks take them from the next video).
-struct SubtitleStylePage: View {
+/// Subtitle Style: a panel beside the video (the picture moves left to make
+/// room), so every change shows on the real video, which can keep playing.
+/// Presets, font, look and position in one scroll; the same pieces as
+/// Settings › Subtitles.
+struct SubtitleStyleInspector: View {
     @Binding var style: SubtitleStyle
     let session: PlayerSession
-    let onBack: () -> Void
-    #if os(iOS)
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    /// A phone on its side: the card is short, so the sample is a thin strip.
-    private var short: Bool { verticalSizeClass == .compact }
-    #else
-    private var short: Bool { false }
-    #endif
+    let onClose: () -> Void
+    static let width: CGFloat = 300
 
     var body: some View {
-        VStack(alignment: .leading, spacing: short ? 8 : 12) {
-            PlayerPageHeader("Subtitle Style", onBack: onBack) {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Subtitle Style").font(.headline)
+                Spacer(minLength: 4)
                 if style.withoutPreferences != style.resetLook().withoutPreferences {
                     Button("Reset") { withAnimation(.smooth(duration: 0.3)) { style = style.resetLook() } }
-                        .font(.caption.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
+                        .font(.subheadline.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
                         .help("Back to the standard look and position")
                 }
-            }
-            // On a phone on its side the video beside the card shows every change.
-            if !short { SubtitleSample(style: style, height: 60) }
-            if let note = SubtitleStyleNote.current(session) {
-                Label(note, systemImage: "exclamationmark.circle")
-                    .font(.caption).foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            ChipFlow(items: SubtitleStyle.Preset.allCases) { p in
-                PanelChip(title: p.title, selected: style.matches(p)) { style = style.applying(p) }
-            }
-            // Labels in one column as wide as the longest, controls filling the rest.
-            Grid(alignment: .leading, horizontalSpacing: Spacing.s, verticalSpacing: short ? 6 : 10) {
-                StyleRow("Size") { SubtitleSizeStepper(size: $style.relativeSize) }
-                StyleRow("Colour") { ColorSwatches(title: "Colour", color: $style.textColor, showsTitle: false) }
-                StyleRow("Background") {
-                    PanelSegments(selection: Binding(get: { style.backgroundChoice }, set: { style.backgroundChoice = $0 }),
-                                  options: SubtitleStyle.BackgroundChoice.allCases.map { ($0.title, $0) })
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.subheadline.weight(.bold))
+                        .frame(width: PanelMetrics.control, height: PanelMetrics.control)
+                        .contentShape(Rectangle())
                 }
-                StyleRow("Outline") {
-                    PanelSegments(selection: Binding(get: { style.outlineChoice }, set: { style.outlineChoice = $0 }),
-                                  options: SubtitleStyle.OutlineChoice.allCases.map { ($0.title, $0) })
-                }
-                StyleRow("Position") {
-                    PanelSegments(selection: Binding(get: { style.positionChoice }, set: { c in withAnimation(.smooth(duration: 0.3)) { style.positionChoice = c } }),
-                                  options: SubtitleStyle.PositionChoice.allCases.map { ($0.title, $0) })
-                }
+                .buttonStyle(PlayerQuietButtonStyle())
+                .foregroundStyle(Palette.textSecondary)
+                .accessibilityLabel("Close Subtitle Style")
+                .keyboardShortcut(.cancelAction)
             }
-            Toggle(isOn: $style.hidesSoundCues) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Hide Sound Cues").font(.subheadline)
-                    Text("Leaves out [sounds], (sighs), ♪ lyrics and “NAME:” labels.")
+            .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 8)
+            Divider().opacity(0.6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if let note = SubtitleStyleNote.current(session) {
+                        Label(note, systemImage: "exclamationmark.circle")
+                            .font(.caption).foregroundStyle(Palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    PanelSection("Presets") { SubtitlePresetGrid(style: $style) }
+                    PanelSection("Font") {
+                        SubtitleFontList(style: $style)
+                        SubtitleWeightPicker(style: $style)
+                    }
+                    PanelSection("Look") { SubtitleLookRows(style: $style) }
+                    PanelSection("Position") {
+                        SubtitlePositionPad(style: $style)
+                        Toggle("Move Up for Controls", isOn: $style.avoidControls)
+                            .font(.subheadline).toggleStyle(.switch).tint(Palette.brand)
+                    }
+                    Toggle(isOn: $style.hidesSoundCues) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Hide Sound Cues").font(.subheadline)
+                            Text("Leaves out [sounds], (sighs), ♪ lyrics and “NAME:” labels.")
+                                .font(.caption).foregroundStyle(Palette.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.switch).tint(Palette.brand)
+                    .accessibilityIdentifier("style.hideSoundCues")
+                    Text(PanelMetrics.showsShortcuts ? "You can also drag subtitles on the video; − and = resize them."
+                         : "You can also drag subtitles on the video, and pinch to resize.")
                         .font(.caption).foregroundStyle(Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // Held to the panel's width: a row that would like more shrinks rather than spill.
+                .frame(width: Self.width - 28, alignment: .leading)
+                .padding(14)
             }
-            .toggleStyle(.switch).tint(Palette.brand)
-            .accessibilityIdentifier("style.hideSoundCues")
-            Text(PanelMetrics.showsShortcuts ? "Drag subtitles on the video to move them; − and = resize."
-                 : "Drag subtitles on the video to move them, pinch to resize.")
-                .font(.caption).foregroundStyle(Palette.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            .scrollIndicators(.automatic)
         }
+        .frame(width: Self.width)
+        .frame(maxHeight: .infinity)
+        .background(Palette.surface.ignoresSafeArea())
+        .overlay(alignment: .leading) { Rectangle().fill(Palette.edge).frame(width: 1).ignoresSafeArea() }
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Subtitle Style")
+        .accessibilityIdentifier("subtitleStyleInspector")
     }
 }
 
@@ -435,7 +442,7 @@ struct SubtitleSizeStepper: View {
             button("textformat.size.larger", label: "Larger", by: Self.step)
         }
         .padding(2)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Size")
         .accessibilityValue("\(Int((size / SubtitleStyle().relativeSize * 100).rounded())) percent")
@@ -495,78 +502,6 @@ extension SubtitleStyle {
         get { outlineWidth < 0.1 ? .off : outlineWidth < 1.5 ? .thin : .thick }
         set { outlineWidth = newValue.width; if newValue != .off { outlineColor = .black } }
     }
-
-    enum PositionChoice: CaseIterable, Hashable {
-        case bottom, higher, top
-        var title: String { switch self { case .bottom: "Bottom"; case .higher: "Higher"; case .top: "Top" } }
-    }
-
-    static let higherMargin = 0.16
-
-    /// The nearest of the three; a dragged spot shows as the one it's closest to.
-    var positionChoice: PositionChoice {
-        get {
-            switch anchor {
-            case .top: .top
-            case .middle: .higher
-            case .bottom: verticalMargin > (Self.defaultMargin + Self.higherMargin) / 2 ? .higher : .bottom
-            }
-        }
-        set {
-            alignment = .center; horizontalOffset = 0
-            switch newValue {
-            case .bottom: anchor = .bottom; verticalMargin = Self.defaultMargin
-            case .higher: anchor = .bottom; verticalMargin = Self.higherMargin
-            case .top: anchor = .top; verticalMargin = Self.defaultMargin
-            }
-        }
-    }
-}
-
-/// A line of sample text on a dark frame, in the current look and where it
-/// sits on the picture, so a change shows here even before the video takes it.
-struct SubtitleSample: View {
-    let style: SubtitleStyle
-    /// A fixed height (short screens); otherwise a 16:5 strip of the card's width.
-    var height: CGFloat? = nil
-
-    var body: some View {
-        Group {
-            if let height {
-                frame.frame(maxWidth: .infinity).frame(height: height)
-            } else {
-                frame.aspectRatio(16 / 5, contentMode: .fit).frame(maxWidth: .infinity)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.12)))
-        .animation(.smooth(duration: 0.25), value: style)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Subtitle sample")
-    }
-
-    private var frame: some View {
-        GeometryReader { geo in
-            let h = geo.size.height
-            ZStack(alignment: Alignment(horizontal: style.frameAlignment.horizontal, vertical: vertical)) {
-                LinearGradient(colors: [Color(white: 0.32), Color(white: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                // Sized as on a picture about twice the sample's height, so it reads like the real thing.
-                SubtitleText(text: "Where are we going?", style: style, videoHeight: max(h, 110) * 2.2)
-                    .padding(.horizontal, style.horizontalMargin * geo.size.width)
-                    .offset(y: offset(h))
-            }
-        }
-    }
-
-    private var vertical: VerticalAlignment {
-        switch style.anchor { case .bottom: .bottom; case .middle: .center; case .top: .top }
-    }
-
-    private func offset(_ h: Double) -> Double {
-        // The sample frame is shorter than a picture: half the margin reads right.
-        let m = min(style.verticalMargin, 0.3) * h * 0.8
-        switch style.anchor { case .bottom: return -m - 4; case .middle: return 0; case .top: return m + 4 }
-    }
 }
 
 /// Two or three choices in a track, the chosen one raised (a segmented control in the cards' look).
@@ -582,8 +517,9 @@ struct PanelSegments<Value: Hashable>: View {
                     Text(title)
                         .font(PanelMetrics.chipFont)
                         .frame(maxWidth: .infinity, minHeight: PanelMetrics.control - 4)
-                        .foregroundStyle(on ? Color.black : Palette.textPrimary)
-                        .background(on ? Color.white : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(on ? AnyShapeStyle(.background) : AnyShapeStyle(.primary))
+                        .background(on ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PanelPressStyle())
@@ -591,7 +527,7 @@ struct PanelSegments<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
@@ -606,7 +542,7 @@ extension SubtitleStyle {
     /// The look and position only (languages are preferences, not style).
     var withoutPreferences: SubtitleStyle {
         var s = self; s.preferredLanguage = nil; s.secondaryLanguage = nil; s.secondaryScale = 0; s.secondaryColor = .white
-        s.hidesSoundCues = false
+        s.hidesSoundCues = false; s.savedLooks = []
         return s
     }
 
@@ -615,6 +551,7 @@ extension SubtitleStyle {
         var s = SubtitleStyle()
         s.preferredLanguage = preferredLanguage; s.secondaryLanguage = secondaryLanguage
         s.secondaryScale = secondaryScale; s.secondaryColor = secondaryColor; s.hidesSoundCues = hidesSoundCues
+        s.savedLooks = savedLooks
         return s
     }
 }
@@ -641,7 +578,7 @@ struct ColorSwatches: View {
                         .overlay(Circle().strokeBorder(.white.opacity(0.35)))
                         .padding(3)
                         .overlay(Circle().strokeBorder(Palette.brandBright, lineWidth: selected ? 2 : 0))
-                        .frame(width: max(PanelMetrics.control, 28), height: max(PanelMetrics.control, 28))
+                        .frame(minWidth: 28, idealWidth: 34, maxWidth: 40, minHeight: 34)
                         .contentShape(Circle())
                 }
                 .buttonStyle(PanelPressStyle())
@@ -661,7 +598,7 @@ struct ColorSwatches: View {
                 .clipShape(Circle())
                 .padding(3)
                 .overlay(Circle().strokeBorder(Palette.brandBright, lineWidth: custom ? 2 : 0).allowsHitTesting(false))
-                .frame(width: max(PanelMetrics.control, 28), height: max(PanelMetrics.control, 28))
+                .frame(minWidth: 28, idealWidth: 34, maxWidth: 40, minHeight: 34)
                 .help("Custom Colour")
                 .accessibilityLabel("Custom \(title)")
         }

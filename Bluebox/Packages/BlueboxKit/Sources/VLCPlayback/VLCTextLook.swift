@@ -38,13 +38,15 @@ struct VLCTextLook: Equatable {
         shadowOpacity = style.shadow ? alpha(style.shadowOpacity * 0.8) : 0
         backgroundColor = rgb(style.backgroundColor)
         backgroundOpacity = alpha(style.backgroundOpacity)
-        // VLC only places text up from the bottom: middle and top are reached by
-        // raising it (a typical line's height is allowed for the text).
-        let line = 0.06
+        // VLC only places text up from the bottom, and a line's height grows
+        // upwards from there. Middle is raised by one line's height (so one or two
+        // lines straddle the centre); Top by two, so a two-line subtitle still
+        // clears the top edge (a single line then sits one line lower than Bluebox's).
+        let line = SubtitleStyle.clampSize(style.relativeSize) * 1.25
         let fromBottom: Double = switch style.anchor {
         case .bottom: style.verticalMargin
-        case .middle: 0.5 - line / 2
-        case .top: 1 - style.verticalMargin - line
+        case .middle: 0.5 - line
+        case .top: 1 - style.verticalMargin - 2 * line
         }
         margin = max(0, Int(((fromBottom - SubtitleStyle.defaultMargin) * 1080).rounded()))
         align = switch style.alignment { case .leading: 1; case .trailing: 2; case .center: 0 }

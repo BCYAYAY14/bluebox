@@ -52,6 +52,7 @@ enum SettingsSearchIndex {
         .init(title: "Shows with Skipping Off", page: .playback, section: "Skipping", keywords: ["skip intro", "don't skip", "list"]),
         .init(title: "Community Intro Timestamps", page: .playback, section: "Community Intro Timestamps", keywords: ["theintrodb", "introdb", "crowd", "wrong time", "ignoring community times"]),
         .init(title: "Dialogue Boost", page: .playback, section: "Audio", keywords: ["speech", "voices", "centre", "center", "clarity"]),
+        .init(title: "Equaliser", page: .playback, section: "Equaliser", keywords: ["equalizer", "eq", "bass", "treble", "sound", "audio", "preset"]),
         .init(title: "Night Mode", page: .playback, section: "Audio", keywords: ["loud", "quiet", "compressor", "volume", "late"]),
         .init(title: "Always Open in Infuse", page: .playback, section: "External Player", keywords: ["infuse", "external", "player", "dolby vision", "atmos"]),
         .init(title: "Preview Thumbnails While Scrubbing", page: .playback, section: "Player", keywords: ["scrub", "seek", "timeline", "frames"]),
@@ -60,7 +61,7 @@ enum SettingsSearchIndex {
         .init(title: "Scrobble What You Watch", page: .playback, section: "Trakt", keywords: ["trakt", "history", "now watching"]),
         // Subtitles
         .init(title: "Default Delay", page: .subtitles, section: "Timing", keywords: ["offset", "sync", "timing"]),
-        .init(title: "Subtitle Style", page: .subtitles, section: "Appearance", keywords: ["font", "size", "colour", "color", "outline", "shadow", "background", "position", "preset", "italic", "weight", "alignment"]),
+        .init(title: "Subtitle Style", page: .subtitles, section: "Presets", keywords: ["font", "size", "colour", "color", "outline", "shadow", "background", "position", "preset", "weight", "alignment", "atkinson", "inter", "large print", "save look"]),
         .init(title: "OpenSubtitles API Key", page: .subtitles, section: "Subtitle Search", keywords: ["search", "download"]),
         .init(title: "Search Automatically", page: .subtitles, section: "Subtitle Search", keywords: ["opensubtitles", "auto"]),
         .init(title: "Subdl API Key", page: .subtitles, section: "Search Online", keywords: ["subdl", "subtitle sites", "search"]),

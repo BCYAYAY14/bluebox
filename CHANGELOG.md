@@ -2,6 +2,22 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.0.16 (30 October 2026)
+
+### Subtitles
+- Subtitle Style opens as a panel beside the video, and the picture moves over to make room, so every change shows on the real video.
+- New presets: Standard, Cinema, Boxed, Bold Outline and Large Print. They set the font and weight too. Save Current keeps a look of your own as a preset, synced with your profile.
+- Choose the font in the player, from a list that shows each font in itself. Bluebox now includes Atkinson Hyperlegible and Inter, so subtitles look the same on every device. Regular, Semibold or Bold.
+- Position: drag the subtitles on a small picture (or on the video) and they snap to Top, Middle or Bottom. Middle now stays Middle.
+- While the controls show, subtitles move up just far enough to clear them, the video's own tracks included, and never jump. Paused, the controls fade after a few seconds like they do while playing, and the subtitles settle back.
+- Settings › Subtitles uses the same presets, fonts and position picture as the player.
+
+### Player
+- An equaliser in Tools › Sound: ten bands you drag, presets (Voice, Bass Boost, Treble, Cinema, Music, Headphones), and Preamp. It's your profile's, plays with every video, and is also in Settings › Playback. HLS streams play without it.
+- Night Mode works with VLC (MKV and most torrents). Before, it had no effect there. Turning it on or off no longer reopens the video, and Dialogue Boost with VLC is no longer quieter than it should be.
+- Picture has Frame and Colour tabs. Long lists of choices (aspect, crop, sleep timer, speed) are segmented controls with More for the rarer ones, instead of rows of pills.
+- On the Mac the switches in the player's cards are switches, not checkboxes. On iPhone the cards no longer cover the title, and every button is at least 44 points.
+
 ## 1.0.15 (30 October 2026)
 
 ### Subtitles

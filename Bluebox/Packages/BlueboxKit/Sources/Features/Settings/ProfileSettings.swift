@@ -14,6 +14,8 @@ public enum ProfileSettingKey {
     public static func autoplayNextEpisode(_ profileID: String) -> String { "bluebox.profile.\(profileID).autoplayNext" }
     /// `SubtitleStyle` JSON, including the preferred and second subtitle languages.
     public static func subtitleStyle(_ profileID: String) -> String { "bluebox.profile.\(profileID).subtitleStyle" }
+    /// `EqualizerSettings` JSON: the equaliser for every video this profile plays.
+    public static func equalizer(_ profileID: String) -> String { "bluebox.profile.\(profileID).equalizer" }
     /// `ShowSkipRules` JSON: the shows this profile always skips the intro, recap or credits of.
     public static func showSkipRules(_ profileID: String) -> String { "bluebox.profile.\(profileID).showSkipRules" }
     /// Bool: set once the shared values were copied into every profile.

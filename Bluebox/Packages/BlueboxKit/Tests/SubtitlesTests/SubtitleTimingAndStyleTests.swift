@@ -59,7 +59,7 @@ import Testing
     }
 
     @Test func roundTripsAndScalesWithVideoHeight() throws {
-        var s = SubtitleStyle().applying(.outlined)
+        var s = SubtitleStyle().applying(.boldOutline)
         s.fontName = "Avenir Next"; s.secondaryLanguage = "es"
         let back = try JSONDecoder().decode(SubtitleStyle.self, from: try JSONEncoder().encode(s))
         #expect(back == s)
@@ -67,13 +67,45 @@ import Testing
         #expect(SubtitleStyle().pointSize(forHeight: 100) == 9)   // never unreadably small
     }
 
-    @Test func presetsChangeOnlyWhatShowsAtOnce() {
-        var s = SubtitleStyle(); s.design = .serif; s.weight = .heavy; s.shadow = false; s.anchor = .top
-        let p = s.applying(.large)
-        #expect(p.design == .serif && p.weight == .heavy && !p.shadow && p.anchor == .top)
-        #expect(p.relativeSize == 0.065 && p.backgroundOpacity == 0.4)
-        #expect(p == p.applying(.large))  // applying twice changes nothing
-        #expect(p.applying(.classic).backgroundOpacity == 0 && p.applying(.classic).relativeSize == SubtitleStyle().relativeSize)
+    @Test func presetsSetTheTypeAndKeepThePosition() {
+        var s = SubtitleStyle(); s.anchor = .top; s.alignment = .leading; s.hidesSoundCues = true
+        let p = s.applying(.largePrint)
+        #expect(p.anchor == .top && p.alignment == .leading && p.hidesSoundCues)
+        #expect(p.fontName == "Atkinson Hyperlegible" && p.weight == .bold && p.relativeSize == 0.062 && p.backgroundOpacity == 0.55)
+        #expect(p == p.applying(.largePrint))  // applying twice changes nothing
+        #expect(p.matches(.largePrint) && !p.matches(.standard))
+        #expect(p.applying(.cinema).fontName == nil && p.applying(.cinema).design == .serif)
+        #expect(SubtitleStyle().matches(.standard))  // the default look is Standard
+    }
+
+    @Test func savedLooksRoundTripAndApply() throws {
+        var s = SubtitleStyle().applying(.boxed)
+        s.textColor = .yellow
+        s.saveCurrentLook(); s.saveCurrentLook()
+        #expect(s.savedLooks.map(\.name) == ["My Look 1", "My Look 2"])
+        let back = try JSONDecoder().decode(SubtitleStyle.self, from: try JSONEncoder().encode(s))
+        #expect(back.savedLooks == s.savedLooks)
+        var other = SubtitleStyle(); other.look = back.savedLooks[0].look
+        #expect(other.textColor == .yellow && other.backgroundOpacity == 0.75)
+    }
+
+    @Test func liftClearsTheControlsWithoutJumping() {
+        var s = SubtitleStyle()
+        // Below the bar: just above it. Already above: stays. No jump as the margin crosses the bar.
+        s.verticalMargin = 0.05; #expect(s.restingMargin(coveredBottom: 0.15) == 0.15)
+        s.verticalMargin = 0.149; #expect(s.restingMargin(coveredBottom: 0.15) == 0.15)
+        s.verticalMargin = 0.151; #expect(s.restingMargin(coveredBottom: 0.15) == 0.151)
+        s.avoidControls = false; s.verticalMargin = 0.05; #expect(s.restingMargin(coveredBottom: 0.15) == 0.05)
+        s.avoidControls = true; s.anchor = .middle; #expect(s.restingMargin(coveredBottom: 0.15) == 0)
+        s.anchor = .top; #expect(s.restingMargin(coveredBottom: 0.15, coveredTop: 0.08) == 0.08)
+    }
+
+    @Test func droppingInTheMiddleIsMiddle() {
+        let block = CGRect(x: 0.3, y: 0.5 - 0.05 + 0.01, width: 0.4, height: 0.1)
+        let p = SubtitlePlacement.dropping(block: block, alignment: .center, horizontalMargin: 0.08)
+        #expect(p.anchor == .middle && p.snappedY)
+        let low = SubtitlePlacement.dropping(block: CGRect(x: 0.3, y: 0.7, width: 0.4, height: 0.1), alignment: .center, horizontalMargin: 0.08)
+        #expect(low.anchor == .bottom && abs(low.verticalMargin - 0.2) < 0.0001)
     }
 
     @Test func presetsKeepLanguages() {

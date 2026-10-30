@@ -5,6 +5,7 @@ import ImageIO
 import Playback
 import Subtitles
 import SwiftVLC
+import VLCVariables
 #if os(iOS)
 import AVFoundation
 #endif
@@ -37,14 +38,15 @@ public final class VLCEngine: PlaybackEngine {
     /// Starts libVLC's one-time plugin setup off the main thread (expensive on iOS).
     public static func prewarm() { _ = VLCInstance.prewarmShared() }
 
-    /// The SwiftVLC player; `VLCVideoSurface` draws it. Replaced when Night
-    /// Mode changes (libVLC only takes audio filters per instance); the
+    /// The SwiftVLC player; `VLCVideoSurface` draws it. The first load makes
+    /// a fresh one (the player from `init` is never given a video output); the
     /// snapshot's `outputGeneration` changes with it.
     public private(set) var player: Player
     private var audioEffects = AudioEffects()
-    /// Which libVLC instance `player` runs on (see `instanceKey`); -1 until the
-    /// first load makes one (the player from `init` is never given a video output).
-    private var playerInstanceKey = -1
+    /// The first load has made the player that plays (see `player`).
+    private var playerReady = false
+    /// The native player the compressor settings were set on (Night Mode).
+    private var compressorSetOn: UnsafeMutableRawPointer?
     /// The subtitle look wanted (from `setEmbeddedSubtitleStyle`).
     private var textLook = VLCTextLook(SubtitleStyle())
     /// What was last set on the native player (`appliedTo` is its handle; SwiftVLC can swap it).
@@ -52,10 +54,6 @@ public final class VLCEngine: PlaybackEngine {
     private var appliedTo: UnsafeMutableRawPointer?
     /// Subtitle size, VLC's `sub-text-scale` / 100. Set on the player live.
     private var subtitleTextScale: Float = 0.9
-    private var reloadTask: Task<Void, Never>?
-    /// While a reopen runs: what to come back to. A pause or a track picked
-    /// meanwhile updates these, so the reopen doesn't undo it.
-    private var reopen: (playing: Bool, subtitle: String?, audio: String?)?
     private var subtitleDelay: TimeInterval = 0
     private var audioDelay: TimeInterval = 0
     private var volume: Float = 1
@@ -83,8 +81,7 @@ public final class VLCEngine: PlaybackEngine {
     private var desiredAudioID: String?
     /// Embedded track shown as the second line (one the overlay draws), nil for none.
     private var desiredSecondaryID: String?
-    /// Text tracks read from the file for Bluebox's overlay (MKV and WebM), kept
-    /// across a Night Mode reopen of the same file.
+    /// Text tracks read from the file for Bluebox's overlay (MKV and WebM).
     private var textFeed: EmbeddedTextFeed?
     private var textFeedURL: URL?
     /// The file's track behind each VLC subtitle track id (see `feedTrack`).
@@ -118,20 +115,22 @@ public final class VLCEngine: PlaybackEngine {
     private var lastClock: TimeInterval = -1
     private var frozenSince: ContinuousClock.Instant?
 
-    public init() {
+    /// The libVLC instance players are made on: the app's shared one, or one
+    /// with its own arguments (tests capture the sound with `--aout=afile`).
+    private let instance: VLCInstance
+
+    public init(instance: VLCInstance = .shared) {
+        self.instance = instance
         player = Player()
     }
 
     // MARK: Loading
 
     public func load(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
-        // A new video: a reopen of the old one under way is dropped.
-        reloadTask?.cancel(); reloadTask = nil
-        reopen = nil
         try await loadMedia(resource, startAt: startAt)
     }
 
-    /// Opens `resource` (a new video, or the same one reopened for Night Mode).
+    /// Opens `resource`.
     private func loadMedia(_ resource: PlaybackResource, startAt: TimeInterval?) async throws {
         teardown()
         let container = resource.variant.container ?? resource.url.pathExtension
@@ -147,8 +146,8 @@ public final class VLCEngine: PlaybackEngine {
         snapshot.status = .loading
         self.resource = resource
         intendedPaused = true  // the session calls play() after load when it wants autoplay
-        // A reopen (Night Mode) comes back on the same tracks; a new video starts on VLC's.
-        if reopen == nil { desiredSubtitleID = nil; desiredAudioID = nil; desiredSecondaryID = nil }
+        // A new video starts on VLC's tracks.
+        desiredSubtitleID = nil; desiredAudioID = nil; desiredSecondaryID = nil
         prepareTextFeed(for: resource)
         pendingSeek = nil; ended = false; chaptersLoaded = false
         pendingSeekIsResume = startAt != nil
@@ -160,20 +159,15 @@ public final class VLCEngine: PlaybackEngine {
         }
         await Self.activateAudioSession()
         guard self.resource == resource else { throw CancellationError() }
-        let night = Self.instanceKey(for: audioEffects)
-        if night != playerInstanceKey {
-            // Nothing is playing yet: a player on the right instance costs nothing here.
-            // The instance is made off the main thread (libVLC's setup is slow on iOS).
-            let instance = await Self.preparedInstance(night: night)
-            guard self.resource == resource else { throw CancellationError() }
+        if !playerReady {
             // The old player's decoder and video output must be gone before
             // the new one takes the surface: releasing it while they ran
             // crashed in VLC's picture pool (AV1 especially).
             await player.shutdown()
             guard self.resource == resource else { throw CancellationError() }
             player = Player(instance: instance)
-            playerInstanceKey = night
-            appliedTo = nil
+            playerReady = true
+            appliedTo = nil; compressorSetOn = nil
             snapshot.outputGeneration &+= 1
         }
 
@@ -200,6 +194,7 @@ public final class VLCEngine: PlaybackEngine {
         for option in Self.mediaOptions(for: resource, startAt: start) { media.addOption(option) }
         applyAdjustments()
         applyEqualizer()
+        applyAudioFilters()
         // Before the video output and the subtitle decoder start, which read it.
         applyTextLook()
         do { try player.play(media) } catch {
@@ -275,7 +270,6 @@ public final class VLCEngine: PlaybackEngine {
 
     public func play() {
         guard let resource else { return }
-        if reopen != nil { reopen?.playing = true; return }  // the reopen starts it when it's ready
         intendedPaused = false
         if ended || player.state == .stopped {
             restart(resource, at: 0)
@@ -290,7 +284,6 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func pause() {
-        reopen?.playing = false
         intendedPaused = true
         lastPauseReassert = .now
         player.pause()
@@ -366,7 +359,6 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func selectAudio(_ trackID: String?) {
-        if reopen != nil { reopen?.audio = trackID }
         desiredAudioID = trackID
         // Tracks not listed yet (just opened): kept, and chosen when they are (see `applyTrackSelection`).
         guard !player.audioTracks.isEmpty else { snapshot.selectedAudioID = trackID; return }
@@ -376,8 +368,6 @@ public final class VLCEngine: PlaybackEngine {
     }
 
     public func selectEmbeddedSubtitle(_ trackID: String?) {
-        // Mid-reopen the track list is empty: keep the id for when it's back.
-        if reopen != nil { reopen?.subtitle = trackID; snapshot.selectedEmbeddedSubtitleID = trackID; return }
         desiredSubtitleID = trackID.flatMap { id in player.subtitleTracks.contains { $0.id == id } ? id : nil }
         applyTrackSelection()
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
@@ -471,15 +461,13 @@ public final class VLCEngine: PlaybackEngine {
         Float(SubtitleStyle.clampSize(style.relativeSize) / 0.05)
     }
 
-    /// Stops for good: a Night Mode reopen still waiting can't start it again.
+    /// Stops for good.
     public func stop() {
-        reloadTask?.cancel(); reloadTask = nil
-        reopen = nil
         teardown()
         textFeed = nil; textFeedURL = nil; fileTracks = [:]; wholeTrackRead = nil
     }
 
-    /// Stops what's playing (also the first step of every load, including a reopen's).
+    /// Stops what's playing (also the first step of every load).
     private func teardown() {
         eventTask?.cancel(); eventTask = nil
         tickTask?.cancel(); tickTask = nil
@@ -529,125 +517,99 @@ public final class VLCEngine: PlaybackEngine {
 
     // MARK: Sound
 
-    /// Dialogue Boost is VLC's equalizer, applied live. Night Mode is VLC's
-    /// compressor, which libVLC only accepts as an instance argument (and
-    /// `set_equalizer` would overwrite it), so turning it on or off moves
-    /// playback to a player on a suitably configured instance, at the same
-    /// second. With Night Mode on, the instance carries the equalizer too.
-    public func setAudioEffects(_ e: AudioEffects) {
-        audioEffects = e
-        if Self.instanceKey(for: e) != playerInstanceKey {
-            replacePlayer()
-        } else {
-            applyEqualizer()
-        }
-    }
-
-    /// 0: the shared instance; 1: compressor; 2: compressor and dialogue equalizer.
-    static func instanceKey(for e: AudioEffects) -> Int { e.nightMode ? (e.dialogueBoost ? 2 : 1) : 0 }
-
-    /// Speech presence up, rumble and hiss down, on VLC's ten bands
-    /// (60, 170, 310, 600 Hz, 1, 3, 6, 12, 14, 16 kHz).
-    static let dialogueBands: [Float] = [-4, -3, -1, 1, 3, 5, 4, 0, -1, -2]
-    static let dialoguePreamp: Float = -3
-
-    /// libVLC arguments for a Night Mode instance: a feed-forward compressor
-    /// (−24 dB threshold, 4:1, +8 dB make-up), optionally after the dialogue equalizer.
-    static func nightArguments(dialogueBoost: Bool) -> [String] {
-        var args = [
-            "--audio-filter=\(dialogueBoost ? "equalizer:" : "")compressor",
-            "--compressor-rms-peak=0.2", "--compressor-attack=10", "--compressor-release=250",
-            "--compressor-threshold=-24", "--compressor-ratio=4", "--compressor-knee=6", "--compressor-makeup-gain=8",
-        ]
-        if dialogueBoost {
-            args += ["--equalizer-bands=\(dialogueBands.map { String(format: "%.1f", $0) }.joined(separator: " "))",
-                     "--equalizer-preamp=\(String(format: "%.1f", dialoguePreamp))"]
-        }
-        return args
-    }
-
-    private static var instances: [String: VLCInstance] = [:]
-    /// Arguments libVLC refused (an option this build lacks): not tried again.
-    private static var refused: Set<String> = []
-
-    /// The instance for Night Mode: the plain shared instance when it's off,
-    /// or when libVLC turns the arguments down.
-    private static func instance(night: Int) -> VLCInstance {
-        guard night != 0 else { return .shared }
-        let extra = nightArguments(dialogueBoost: night == 2)
-        let key = extra.joined(separator: " ")
-        if let made = instances[key] { return made }
-        if !refused.contains(key) {
-            do {
-                let made = try VLCInstance(arguments: VLCInstance.defaultArguments + extra)
-                instances[key] = made
-                return made
-            } catch {
-                refused.insert(key)
-                Log.playback.error("VLC instance with \(key, privacy: .public) failed: \(String(describing: error), privacy: .public)")
-            }
-        }
-        return .shared
-    }
-
-    /// The instance for Night Mode, made off the main thread if it's new.
-    private static func preparedInstance(night: Int) async -> VLCInstance {
-        guard night != 0 else { return .shared }
-        let extra = nightArguments(dialogueBoost: night == 2)
-        let key = extra.joined(separator: " ")
-        if instances[key] != nil || refused.contains(key) { return instance(night: night) }
-        let made = await Task.detached(priority: .userInitiated) {
-            try? VLCInstance(arguments: VLCInstance.defaultArguments + extra)
-        }.value
-        if let made { if instances[key] == nil { instances[key] = made } } else { refused.insert(key) }
-        return instance(night: night)
-    }
-
-    private func applyEqualizer() {
-        // Night Mode instances carry their own equalizer setting.
-        guard playerInstanceKey == 0 else { return }
-        if audioEffects.dialogueBoost {
-            guard player.equalizer == nil else { return }
-            let eq = Equalizer()
-            eq.preampGain = EqualizerGain(Self.dialoguePreamp)
-            try? eq.setBands(Self.dialogueBands)
-            player.equalizer = eq
-        } else if player.equalizer != nil {
-            player.equalizer = nil
-        }
-    }
-
-    /// Swaps in a player on the instance the effects need, reopening the media where it was.
+    /// Dialogue Boost and the equaliser are VLC's equalizer, and Night Mode is
+    /// its compressor, all applied live: none of them reopens the video.
     ///
-    /// It reopens through `load`, the same path as a new video (stop, a player
-    /// on the new instance, open, seek): swapping the player under a running
-    /// video output left the picture black and paused.
-    private func replacePlayer() {
-        guard let resource else { return }
-        if case .failed = snapshot.status { return }
-        let position = snapshot.position
-        let rate = snapshot.rate
-        if reopen == nil { reopen = (!intendedPaused, desiredSubtitleID, desiredAudioID ?? snapshot.selectedAudioID) }
-        reloadTask?.cancel()
-        reloadTask = Task { [weak self] in
-            guard let self else { return }
-            do { try await self.loadMedia(resource, startAt: max(position, 0.5)) } catch {
-                if !Task.isCancelled { self.reopen = nil }  // failed: play and pause work directly again
-                return
+    /// Measured with this libVLC 4 build (an `amem` capture of a −40 dBFS
+    /// tone, Oct 2026): `set_equalizer` replaces the audio output's
+    /// `audio-filter` with "equalizer" (dropping anything else there), and an
+    /// instance's `--audio-filter=compressor` never reaches the output at all
+    /// (the tone came out unchanged, not 8 dB up). Setting `audio-filter` on
+    /// the player's audio output itself runs the filters, live, on any
+    /// instance. So after each `set_equalizer` the chain is set again on the
+    /// output (`applyAudioFilters`): "equalizer:compressor", "compressor",
+    /// "equalizer" or nothing.
+    public func setAudioEffects(_ e: AudioEffects) {
+        let nightChanged = e.nightMode != audioEffects.nightMode
+        audioEffects = e
+        applyEqualizer()
+        if nightChanged { applyAudioFilters() }
+    }
+
+    /// libVLC 4's equaliser bands: octaves, 31 Hz to 16 kHz (not the 60 Hz…16 kHz
+    /// set of VLC 2 and 3 the presets are drawn on, so the curve is resampled).
+    /// From `Equalizer.bandFrequency` when libVLC answers.
+    @MainActor static let bandFrequencies: [Double] = {
+        let asked = (0..<Equalizer.bandCount).compactMap { Equalizer.bandFrequency(at: $0).map(Double.init) }
+        return asked.count == Equalizer.bandCount && !asked.isEmpty ? asked : [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+    }()
+
+    /// What libVLC's equalizer is given for these effects: Dialogue Boost and
+    /// the equaliser added up (`EqualizerCurve.combined`, ±20 dB), the bands
+    /// read off at libVLC's own frequencies. The preamp is offset by +12 dB:
+    /// libVLC's equalizer passes a flat signal at −12 dB with a 0 dB preamp
+    /// (its band-pass sum runs at a quarter of the input; its own Flat preset
+    /// has a +12 dB preamp), measured as a 1 kHz tone exactly level at +12.
+    /// Nil when neither changes the sound.
+    @MainActor static func vlcEqualizer(for e: AudioEffects) -> (preamp: Float, bands: [Float])? {
+        guard let curve = EqualizerCurve.combined(e) else { return nil }
+        let range = EqualizerCurve.engineRange
+        return (Float(min(max(curve.preamp + vlcUnityPreamp, range.lowerBound), range.upperBound)),
+                curve.resampled(at: bandFrequencies).map(Float.init))
+    }
+
+    /// The preamp at which libVLC's flat equalizer leaves the level alone.
+    static let vlcUnityPreamp = 12.0
+
+    /// Night Mode's compressor: feed-forward, −24 dB threshold, 4:1, +8 dB
+    /// make-up, 10 ms attack, 250 ms release. Set on the player as variables,
+    /// which the compressor in its audio output inherits when it starts.
+    static let compressorSettings: [(String, Float)] = [
+        ("compressor-rms-peak", 0.2), ("compressor-attack", 10), ("compressor-release", 250),
+        ("compressor-threshold", -24), ("compressor-ratio", 4), ("compressor-knee", 6), ("compressor-makeup-gain", 8),
+    ]
+
+    /// The audio output's filter chain for these effects (the equalizer first,
+    /// so the compressor evens out what it boosts).
+    static func audioFilters(equalizer: Bool, nightMode: Bool) -> String {
+        [equalizer ? "equalizer" : nil, nightMode ? "compressor" : nil].compactMap { $0 }.joined(separator: ":")
+    }
+
+    /// Puts the filter chain on the player's audio output (and on the player,
+    /// for an output made later). Rebuilding the chain costs a few
+    /// milliseconds of audio, so it's done only when it changes: on Night Mode
+    /// changing and after a `set_equalizer` (which resets the output's chain).
+    private func applyAudioFilters() {
+        guard let native = nativePlayer else { return }
+        if audioEffects.nightMode, compressorSetOn != native {
+            for (name, value) in Self.compressorSettings where !bluebox_vlc_set_float(native, name, value) {
+                Log.playback.error("VLC Night Mode: \(name, privacy: .public) couldn't be set")
             }
-            guard self.resource == resource, !Task.isCancelled, let wanted = self.reopen else { return }
-            self.reopen = nil
-            let wasPlaying = wanted.playing, subtitle = wanted.subtitle, audio = wanted.audio
-            // VLC keeps track ids for the same file: the same tracks come back on.
-            // The audio has to be chosen again too, or VLC plays the file's default
-            // track (another language, or the commentary).
-            self.desiredAudioID = audio
-            self.desiredSubtitleID = subtitle
-            self.snapshot.selectedEmbeddedSubtitleID = subtitle
-            self.applyTrackSelection()
-            if rate != 1 { self.setRate(rate) }
-            if wasPlaying { self.play() }
+            compressorSetOn = native
         }
+        let filters = Self.audioFilters(equalizer: player.equalizer != nil, nightMode: audioEffects.nightMode)
+        _ = bluebox_vlc_set_string(native, "audio-filter", filters)
+        if bluebox_vlc_set_aout_string(native, "audio-filter", filters) == 0, audioEffects.nightMode {
+            Log.playback.error("VLC Night Mode: the audio output didn't take the compressor")
+        }
+    }
+
+    /// Gives the player the equalizer the effects need, or takes it away.
+    /// Unchanged values cost nothing; a change is one `set_equalizer`.
+    private func applyEqualizer() {
+        guard let wanted = Self.vlcEqualizer(for: audioEffects) else {
+            if player.equalizer != nil { player.equalizer = nil; applyAudioFilters() }
+            return
+        }
+        if let current = player.equalizer, current.preamp == wanted.preamp, current.bands == wanted.bands { return }
+        // A new equalizer, filled in before it's handed over: one set_equalizer,
+        // not one per band (each change to an attached one applies at once).
+        let eq = Equalizer()
+        eq.preampGain = EqualizerGain(wanted.preamp)
+        try? eq.setBands(wanted.bands)
+        player.equalizer = eq
+        // set_equalizer left the output's chain as "equalizer": the compressor goes back on.
+        if audioEffects.nightMode { applyAudioFilters() }
     }
 
     public func stepFrame(by count: Int) {
@@ -888,7 +850,7 @@ public final class VLCEngine: PlaybackEngine {
 
     // MARK: Text tracks drawn by Bluebox
 
-    /// Starts reading the file's text tracks when it may be Matroska (kept for a reopen of the same file).
+    /// Starts reading the file's text tracks when it may be Matroska.
     private func prepareTextFeed(for resource: PlaybackResource) {
         if textFeedURL == resource.url, textFeed != nil { return }
         textFeed = nil; textFeedURL = nil; fileTracks = [:]

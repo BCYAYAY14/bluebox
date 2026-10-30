@@ -22,11 +22,11 @@ struct SpeedPanel: View {
             }
             // A phone on its side: the dial alone (its slider and steps cover the presets).
             if !PanelMetrics.dense {
-                ChipFlow(items: PlaybackSpeed.presets) { r in
-                    PanelChip(title: PlaybackSpeed.isNormal(r) ? "Normal" : PlaybackSpeed.label(r),
-                              selected: abs(rate - r) < 0.001) { onSet(r) }
-                        .accessibilityLabel(PlaybackSpeed.isNormal(r) ? "Normal speed" : "\(PlaybackSpeed.label(r)) speed")
-                }
+                // The usual speeds as segments; the rarer ones in More.
+                let preset = PlaybackSpeed.presets.first { abs(rate - $0) < 0.001 } ?? rate
+                PanelSegmentsWithMore(selection: Binding(get: { preset }, set: { onSet($0) }),
+                                      shown: [1, 1.25, 1.5, 2].map { (PlaybackSpeed.isNormal($0) ? "Normal" : PlaybackSpeed.label($0), $0) },
+                                      more: [0.5, 0.75, 1.75].map { (PlaybackSpeed.label($0), $0) })
             }
             ValueDial(title: "Speed", value: Double(rate), range: 0.25...3, defaultValue: 1, fine: 0.05, coarse: 0.25,
                       format: { PlaybackSpeed.label(Float($0)) }, meaning: meaning,

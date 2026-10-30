@@ -29,8 +29,29 @@ public extension SubtitleStyle {
     }
 }
 
+/// The fonts subtitles can use: the ones Bluebox brings, and installed families.
 public enum SubtitleFontCatalog {
-    private static let installed: Set<String> = Set((CTFontManagerCopyAvailableFontFamilyNames() as? [String]) ?? [])
+    /// Fonts in the app (SIL OFL), the same on every device: Atkinson
+    /// Hyperlegible (made for low vision) and Inter.
+    public static let bundled = ["Atkinson Hyperlegible", "Inter"]
+
+    /// Families that read well as subtitles, offered first (those installed here).
+    public static let suggested = ["Helvetica Neue", "Avenir Next", "Futura", "Gill Sans", "Georgia", "Verdana", "Trebuchet MS"]
+
+    /// Registered for this process on first use, so Core Text, SwiftUI and
+    /// libVLC's Core Text font finder all see them by family name.
+    private static let installed: Set<String> = {
+        for url in Bundle.module.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts") ?? [] {
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
+        return Set((CTFontManagerCopyAvailableFontFamilyNames() as? [String]) ?? [])
+    }()
+
+    /// Registers the bundled fonts (call once early, before any subtitle draws).
+    public static func prepare() { _ = installed }
 
     public static func isInstalled(_ family: String) -> Bool { installed.contains(family) }
+
+    /// Every installed family, for "All Fonts…".
+    public static var allFamilies: [String] { installed.filter { !$0.hasPrefix(".") }.sorted() }
 }

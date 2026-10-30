@@ -231,13 +231,14 @@ public final class AVPlayerEngine: PlaybackEngine {
 
     public func setAudioEffects(_ e: AudioEffects) {
         audioEffects = e
-        audioSwitches.set(e)  // the tap reads this live; no rebuild needed
+        audioSwitches.set(e)  // the tap reads this live (equaliser too); no rebuild needed
+        // The tap goes on the first time anything is audible, the equaliser alone included.
         guard e.isActive, let item, item.audioMix == nil, snapshot.supportsAudioEffects else { return }
         Task { await installAudioTap(on: item) }
     }
 
     /// Puts the effects tap on every audio track. It stays once installed and
-    /// passes audio through untouched while both effects are off.
+    /// passes audio through untouched while every effect is off (one atomic load a buffer).
     private func installAudioTap(on item: AVPlayerItem) async {
         guard let asset, item.audioMix == nil,
               let tracks = try? await asset.loadTracks(withMediaType: .audio), !tracks.isEmpty,
