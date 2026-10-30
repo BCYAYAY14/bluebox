@@ -36,7 +36,7 @@ extension AppModel {
         }
         EraseAllData.schedule()
         #if os(macOS)
-        NSApp.terminate(nil)  // AppDelegate runs prepareForTermination
+        NSApp.quitFromTask()  // AppDelegate runs prepareForTermination
         #else
         await prepareForTermination()
         exit(0)

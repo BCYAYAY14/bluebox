@@ -10,20 +10,22 @@ let log = Logger(subsystem: "app.bluebox", category: "updater")
 
 /// Must match `BlueboxUpdaterProtocol` in Features/UpdateInstaller.swift.
 @objc(BlueboxUpdaterProtocol) protocol BlueboxUpdaterProtocol {
-    /// Mounts `dmgFile` (downloaded by the app), checks the Bluebox.app inside
-    /// it, and swaps it in for the app at `appPath`. Then, once process `pid`
-    /// has quit, opens the new one. Replies nil, or what went wrong.
-    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
+    /// Copies the DMG the app downloaded (an open file, since this service
+    /// can't count on reaching the app's container by path), mounts it, checks
+    /// the Bluebox.app inside it, and swaps it in for the app at `appPath`.
+    /// Then, once process `pid` has quit, opens the new one. Replies nil, or
+    /// what went wrong.
+    func install(dmg: FileHandle, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
 }
 
 final class Updater: NSObject, BlueboxUpdaterProtocol {
     static let bundleID = "app.bluebox.Bluebox.mac"
 
-    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
+    func install(dmg: FileHandle, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
         nonisolated(unsafe) let reply = reply
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try Self.install(dmg: dmgFile, app: URL(fileURLWithPath: appPath))
+                try Self.install(dmg: dmg, app: URL(fileURLWithPath: appPath))
                 Self.relaunch(appPath, after: pid)
                 log.notice("installed; relaunching after \(pid, privacy: .public) quits")
                 reply(nil)
@@ -37,10 +39,9 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
 
     struct UpdateError: Error { let message: String }
 
-    static func install(dmg: URL, app: URL) throws {
+    static func install(dmg handle: FileHandle, app: URL) throws {
         let fm = FileManager.default
-        log.notice("installing \(dmg.path, privacy: .public) over \(app.path, privacy: .public)")
-        guard dmg.isFileURL, fm.fileExists(atPath: dmg.path) else { throw UpdateError(message: "The download is missing.") }
+        log.notice("installing over \(app.path, privacy: .public)")
         let folder = app.deletingLastPathComponent()
         guard app.pathExtension == "app", fm.isWritableFile(atPath: folder.path) else {
             throw UpdateError(message: "Bluebox can't replace itself in \(folder.path). Move it to Applications, or download the update from GitHub.")
@@ -49,8 +50,19 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: work) }
 
-        // The app's own downloads are quarantined; this copy is checked below instead.
-        try? run("/usr/bin/xattr", "-d", "com.apple.quarantine", dmg.path)
+        // hdiutil is its own process, and macOS keeps it out of the app's
+        // container, so the DMG is copied here first, from the open file.
+        let dmg = work.appending(path: "Bluebox.dmg")
+        log.notice("copying the download")
+        do {
+            try handle.seek(toOffset: 0)
+            guard fm.createFile(atPath: dmg.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+            let out = try FileHandle(forWritingTo: dmg)
+            defer { try? out.close() }
+            while let chunk = try handle.read(upToCount: 4 << 20), !chunk.isEmpty { try out.write(contentsOf: chunk) }
+        } catch {
+            throw UpdateError(message: "Bluebox couldn't read the download: \(error.localizedDescription) Nothing was changed.")
+        }
         let mount = work.appending(path: "mount", directoryHint: .isDirectory)
         log.notice("mounting")
         try run("/usr/bin/hdiutil", "attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen", "-noverify",
@@ -110,7 +122,10 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         watchdog.cancel()
-        let text = String(decoding: data, as: UTF8.self)
+        // hdiutil warns that `attach -mountpoint` is deprecated; that isn't the error.
+        let text = String(decoding: data, as: UTF8.self).split(separator: "\n")
+            .filter { !$0.contains("WARNING:") && !$0.contains("is deprecated") && !$0.contains("instead.") }
+            .joined(separator: "\n")
         guard p.terminationStatus == 0 else {
             throw UpdateError(message: "\(URL(fileURLWithPath: tool).lastPathComponent) failed: \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
         }

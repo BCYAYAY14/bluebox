@@ -1497,3 +1497,17 @@ extension AppModel {
         openSubtitlesSignedIn = false
     }
 }
+
+#if os(macOS)
+import AppKit
+
+extension NSApplication {
+    /// Quits from inside a Swift task. Calling terminate there deadlocks:
+    /// AppDelegate answers terminateLater and finishes on the main actor, which
+    /// AppKit's wait can't reach while the calling task still holds it. So it's
+    /// run from the run loop instead, once the task has let go.
+    func quitFromTask() {
+        RunLoop.main.perform { NSApp.terminate(nil) }
+    }
+}
+#endif

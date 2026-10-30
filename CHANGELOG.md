@@ -2,6 +2,18 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.0.14 (30 October 2026)
+
+### Mac
+- Installing from the DMG: a new window, Bluebox's black and blue with an arrow from the app to Applications, the version, and what to do if macOS won't open Bluebox the first time. The disk shows Bluebox's icon.
+
+### Episodes
+- A watched episode shows a full blue bar under its picture, the same as one you've started, instead of a WATCHED tag.
+
+### Fixed
+- Updating from inside the Mac app failed with "hdiutil: attach failed - Operation not permitted". macOS keeps other programs out of Bluebox's own folder, so the updater now gets the download as an open file. Bluebox 1.0.13 and earlier still have the old updater: download 1.0.14 from the Releases page once, and updates work from then on.
+- After an update installed, the old Bluebox never quit, so the new one never opened. Erase All Data had the same hang.
+
 ## 1.0.13 (30 October 2026)
 
 ### Player

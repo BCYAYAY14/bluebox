@@ -101,18 +101,3 @@ public enum SwarmHealth {
         seeders >= 100 ? good : seeders >= 20 ? fair : poor
     }
 }
-
-/// "✓ WATCHED": a small dark tag over a thumbnail's corner.
-public struct WatchedTag: View {
-    public init() {}
-    public var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy))
-            Text("WATCHED").font(.system(size: 9, weight: .heavy)).tracking(0.5)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 5).padding(.vertical, 2.5)
-        .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .accessibilityLabel("Watched")
-    }
-}

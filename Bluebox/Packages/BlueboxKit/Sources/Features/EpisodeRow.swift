@@ -161,13 +161,9 @@ struct EpisodeRow: View {
                     .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
                     .scaleEffect(hovering && !reduceMotion ? 1.1 : 1)
             }
-            if isWatched {
-                WatchedTag()
-                    .padding(5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
+            // Watched is a full bar, the same mark as a part-watched one.
             if let f = startedFraction {
-                EdgeProgressBar(fraction: f, height: 3, tint: isWatched ? Palette.textTertiary : Palette.brand)
+                EdgeProgressBar(fraction: f, height: 3, tint: Palette.brand)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }

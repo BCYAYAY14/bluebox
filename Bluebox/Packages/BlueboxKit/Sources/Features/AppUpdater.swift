@@ -117,7 +117,7 @@ public final class AppUpdater {
             state = .available(update)
             prompt = .failed(message)
         } else {
-            NSApp.terminate(nil)  // the updater opens the new Bluebox once this one has quit
+            NSApp.quitFromTask()  // the updater opens the new Bluebox once this one has quit
         }
     }
     #endif
@@ -162,7 +162,7 @@ public final class AppUpdater {
 #if os(macOS)
 /// Must match the protocol in Apps/macOSUpdater/main.swift.
 @objc(BlueboxUpdaterProtocol) protocol BlueboxUpdaterProtocol {
-    func install(dmgFile: URL, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
+    func install(dmg: FileHandle, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
 }
 
 /// Downloads Bluebox-mac.dmg into this app's temporary folder, reporting
@@ -231,9 +231,13 @@ final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sen
 
 /// Talks to BlueboxUpdater.xpc, which runs outside the sandbox: it mounts the
 /// downloaded DMG, swaps the new Bluebox.app in, and opens it once this one quits.
+/// The DMG goes over as an open file: macOS keeps other processes (the
+/// updater's hdiutil among them) out of this app's container, so a path won't do.
 enum UpdateInstaller {
     /// Nil when installed (quit to finish), or what went wrong. Gives up after `timeout`.
     static func install(dmgFile: URL, timeout: Duration = .seconds(120)) async -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: dmgFile) else { return "The download is missing." }
+        defer { try? handle.close() }
         let connection = NSXPCConnection(serviceName: "app.bluebox.Bluebox.mac.Updater")
         connection.remoteObjectInterface = NSXPCInterface(with: BlueboxUpdaterProtocol.self)
         connection.resume()
@@ -250,7 +254,7 @@ enum UpdateInstaller {
                 once.resume("The updater didn't start: \(error.localizedDescription)")
             } as? BlueboxUpdaterProtocol
             guard let proxy else { once.resume("The updater is missing from this copy of Bluebox."); return }
-            proxy.install(dmgFile: dmgFile, appPath: path, relaunchAfter: pid) { once.resume($0) }
+            proxy.install(dmg: handle, appPath: path, relaunchAfter: pid) { once.resume($0) }
         }
     }
 
