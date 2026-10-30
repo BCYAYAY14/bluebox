@@ -53,6 +53,8 @@ final class TorrentStream: StreamableFile, @unchecked Sendable {
     var onFirstByte: (@Sendable () -> Void)?
     /// Set once the stream has been handed to the player; waits after that count as stalls.
     var playing = false
+    /// Subtitle files bundled with this video, and where each starts in the torrent.
+    var subtitleFiles: [(entry: TorrentFileEntry, offset: Int64)] = []
 
     init(handle: BBTorrentHandle, file: TorrentFileEntry, offset: Int64) {
         self.handle = handle

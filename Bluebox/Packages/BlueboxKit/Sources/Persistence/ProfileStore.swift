@@ -67,6 +67,13 @@ public final class ProfileStore: @unchecked Sendable {
         }
     }
 
+    /// Back to the default profile alone, as on a new device, so the
+    /// account's profiles come down and win (after choosing another
+    /// account's library).
+    public func resetToDefault() {
+        lock.withLock { records = [Record(profile: .makeDefault(), needsSync: false)] }
+    }
+
     public func markAllNeedingSync() {
         lock.withLock {
             var r = records

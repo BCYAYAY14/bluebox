@@ -26,6 +26,10 @@ out="$here/../../Packages/BlueboxKit/Sources/Sync/SupabaseSetupFiles.swift"
   echo '    /// Backend/supabase/migrations/20261029100000_lists.sql, for projects set up before lists.'
   printf '    public static let listsMigrationSQL = #"""\n'
   cat "$here/migrations/20261029100000_lists.sql"
+  printf '"""#\n\n'
+  echo '    /// Backend/supabase/migrations/20261030000000_realtime_private.sql: private Realtime channels. Safe to run again; automatic setup runs it every time.'
+  printf '    public static let realtimePrivateMigrationSQL = #"""\n'
+  cat "$here/migrations/20261030000000_realtime_private.sql"
   printf '"""#\n'
   echo '}'
 } > "$out"

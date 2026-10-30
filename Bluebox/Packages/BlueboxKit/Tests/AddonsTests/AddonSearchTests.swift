@@ -9,16 +9,20 @@ final class FakeTransport: AddonTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var replies: [String: Reply]
     private var log: [URLRequest] = []
+    private var gates: [String: Gate] = [:]
 
     init(_ replies: [String: Reply]) { self.replies = replies }
 
     var requests: [URLRequest] { lock.withLock { log } }
     func set(_ host: String, _ reply: Reply) { lock.withLock { replies[host] = reply } }
+    /// Holds `host`'s answer until the gate opens.
+    func hold(_ host: String, until gate: Gate) { lock.withLock { gates[host] = gate } }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let host = request.url?.host ?? ""
-        let reply = lock.withLock { () -> Reply? in log.append(request); return replies[host] }
+        let (reply, gate) = lock.withLock { () -> (Reply?, Gate?) in log.append(request); return (replies[host], gates[host]) }
         guard let reply else { throw URLError(.cannotFindHost) }
+        await gate?.wait()
         if reply.delay > 0 { try await Task.sleep(for: .seconds(reply.delay)) }
         if let error = reply.error { throw error }
         let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: nil, headerFields: nil)!
@@ -36,20 +40,23 @@ final class FakeTransport: AddonTransport, @unchecked Sendable {
     @Test func answersAfterAGraceAndFoldsInLateAddons() async throws {
         let transport = FakeTransport([
             "fast": .init(body: StreamFixtures.torrentioMovie),
-            "slow": .init(delay: 1.5, body: StreamFixtures.stremThruMovie),
+            "slow": .init(body: StreamFixtures.stremThruMovie),
         ])
+        // The slow add-on answers only once the search has: no wall-clock limits,
+        // which a busy machine (a full test run, an Xcode build) blows through.
+        let slow = Gate()
+        transport.hold("slow", until: slow)
         let late = LateBox()
-        let started = Date()
         let outcome = try await AddonSearch.run([addon("fast"), addon("slow")], request: request,
                                                 client: AddonClient(transport: transport), health: AddonHealthMonitor(),
-                                                timing: SearchTiming(perAddon: 5, grace: 0.2, softDeadline: 3)) { list in
+                                                timing: SearchTiming(perAddon: 60, grace: 0.2, softDeadline: 3)) { list in
             await late.set(list)
         }
-        #expect(Date().timeIntervalSince(started) < 1.2)
+        // Answered without the slow add-on, which is still to come.
         #expect(outcome.pending == 1)
         #expect(outcome.releases.count == 5)
-        try await Task.sleep(for: .seconds(1.8))
-        let merged = await late.value
+        await slow.open()
+        let merged = try await late.next(count: 5 + 3 - 1)
         // StremThru's YTS release is the same torrent as Torrentio's: merged, not repeated.
         #expect(merged.count == 5 + 3 - 1)
         #expect(merged.first { $0.infoHash == "a779fa758f2229586eebc2e5960eb32fe5659596" }?.alsoFrom == ["Slow"] ||
@@ -129,6 +136,30 @@ final class FakeTransport: AddonTransport, @unchecked Sendable {
 actor LateBox {
     var value: [AddonRelease] = []
     func set(_ v: [AddonRelease]) { value = v }
+
+    /// The late list once it has `count` releases (or what's there after 30 s).
+    func next(count: Int) async throws -> [AddonRelease] {
+        let limit = ContinuousClock.now + .seconds(30)
+        while value.count < count, ContinuousClock.now < limit { try await Task.sleep(for: .milliseconds(20)) }
+        return value
+    }
+}
+
+/// Opened once by the test; everyone waiting on it carries on.
+actor Gate {
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        waiting.forEach { $0.resume() }
+        waiting = []
+    }
 }
 
 @Suite struct DebridCacheCheckTests {
@@ -179,6 +210,7 @@ actor LateBox {
         if settings == nil {
             s.addons = [InstalledAddon(id: "one", kind: .custom(base: "https://one/x"), name: "One"),
                         InstalledAddon(id: "two", kind: .custom(base: "https://two/x"), name: "Two")]
+            s.customLinks = ["one": "https://one/x", "two": "https://two/x"]
             s.hiddenQualities = []
         }
         return StremioSource(settings: s, debridKey: "", imdbID: { key in key.seriesKey != nil ? "tt0944947" : "tt1727587" },
@@ -218,6 +250,7 @@ actor LateBox {
         let transport = FakeTransport(["one": .init(body: StreamFixtures.torrentioMovie), "two": .init(body: #"{"streams":[]}"#)])
         var settings = AddonSettings()
         settings.addons = [InstalledAddon(id: "one", kind: .custom(base: "https://one/x"), name: "One")]
+        settings.customLinks = ["one": "https://one/x", "two": "https://two/x"]
         let s = source(transport, settings: settings)
         let key = MediaKey.movie(tmdbID: 45745)
         _ = try await s.releases(for: key)

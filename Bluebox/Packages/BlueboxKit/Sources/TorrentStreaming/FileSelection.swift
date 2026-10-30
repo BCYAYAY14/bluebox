@@ -7,6 +7,7 @@
 //  1x03, "Episode 3"…), or else the largest video. Written for Bluebox.
 //
 
+import Domain
 import Foundation
 
 /// A season and episode, for picking a file out of a pack.
@@ -65,6 +66,58 @@ enum FileSelection {
         if let episode, let match = bestMatch(videos, episode: episode) { return match }
         let features = videos.filter { !isExtra($0) }
         return (features.isEmpty ? videos : features).max { $0.size < $1.size }
+    }
+
+    /// Subtitle files in the torrent that belong to `video`: beside it with its
+    /// name ("Movie.en.srt"), in a Subs folder ("Subs/English.srt",
+    /// "Subs/<video name>/2_English.srt", "Subs/S01E03.English.srt"), or beside
+    /// it in a folder that holds no other video. A file naming another episode
+    /// never belongs.
+    static func subtitles(for video: TorrentFileEntry, in files: [TorrentFileEntry]) -> [TorrentFileEntry] {
+        let videos = files.filter { isVideo($0) && !isExtra($0) }
+        let stem = (video.name as NSString).deletingPathExtension.lowercased()
+        let folder = (video.path as NSString).deletingLastPathComponent.lowercased()
+        let episode = episodeNumbers(in: video.path)
+        func folderOf(_ path: String) -> String { (path as NSString).deletingLastPathComponent.lowercased() }
+        let videosInFolder = videos.filter { folderOf($0.path) == folder }.count
+        return files.filter { f in
+            guard !f.isPadding, SubtitleFileName.isSubtitle(f.path), f.size < 20_000_000 else { return false }
+            let name = (f.name as NSString).deletingPathExtension.lowercased()
+            let path = f.path.lowercased()
+            if name == stem || name.hasPrefix(stem + ".") || name.hasPrefix(stem + "_") || name.hasPrefix(stem + " ") { return true }
+            let components = path.split(separator: "/").map(String.init)
+            let subsIndex = components.dropLast().lastIndex { ["subs", "sub", "subtitles", "subtitle"].contains($0) }
+            let inner = subsIndex.map { Array(components[($0 + 1)..<(components.count - 1)]) } ?? []
+            let claimed = claimedEpisodes(name: f.name, folders: inner)
+            // Another episode's file.
+            if let episode, let claimed, !claimed.contains(where: episode.contains) { return false }
+            if let subsIndex {
+                let subsParent = components[..<subsIndex].joined(separator: "/")
+                guard folder.hasPrefix(subsParent) || subsParent.isEmpty || folder.isEmpty else { return false }
+                // "Subs/<video name>/2_English.srt" in a pack: the folder names the video.
+                if !inner.isEmpty { return inner.contains(stem) || (episode != nil && claimed != nil) || videos.count == 1 }
+                if episode != nil, claimed != nil { return true }
+                return videos.count == 1 || videosInFolder == 1 && subsParent == folder
+            }
+            // Beside the video in a folder that holds only it.
+            if folderOf(f.path) == folder, videosInFolder == 1 { return episode == nil || claimed != nil || videos.count == 1 }
+            return false
+        }
+        .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    /// The episodes a bundled subtitle names: a folder under Subs named for
+    /// the video ("Show.S01E02.1080p"), else its own name, read strictly
+    /// (S01E02, 1x02): "2_English.srt" is a track number, not episode 2.
+    static func claimedEpisodes(name: String, folders: [String]) -> [EpisodeNumber]? {
+        for folder in folders.reversed() where hasStrictEpisodeTag(folder) {
+            if let found = episodeNumbers(in: folder + ".mkv") { return found }
+        }
+        return hasStrictEpisodeTag(name) ? episodeNumbers(in: name) : nil
+    }
+
+    static func hasStrictEpisodeTag(_ s: String) -> Bool {
+        s.range(of: #"(?i)(?<![a-z0-9])(s\d{1,2}[ ._-]?e\d{1,3}|\d{1,2}x\d{2,3})(?![0-9])"#, options: .regularExpression) != nil
     }
 
     static func bestMatch(_ videos: [TorrentFileEntry], episode: EpisodeNumber) -> TorrentFileEntry? {

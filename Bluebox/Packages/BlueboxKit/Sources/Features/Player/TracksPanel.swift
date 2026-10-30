@@ -4,11 +4,11 @@ import Subtitles
 import SwiftUI
 
 /// A page inside the Audio & Subtitles card.
-enum TracksPage: String, CaseIterable { case style, timing, secondLine }
+enum TracksPage: String, CaseIterable { case style, timing, secondLine, lines }
 
 /// Audio & Subtitles: audio and subtitle columns side by side (stacked when
 /// the card is narrow), the chosen tracks checked, Add File and Search Online
-/// under the subtitles, then Style, Timing and Second line, which show their
+/// under the subtitles, then Style, Timing, Lines and Second line, which show their
 /// values and open as pages inside the same card.
 struct TracksPanel: View {
     @Environment(AppModel.self) private var app
@@ -49,6 +49,9 @@ struct TracksPanel: View {
                     .transition(pageTransition)
             case .secondLine:
                 SecondLinePage(session: session, style: $app.subtitleStyle, onBack: { page = nil })
+                    .transition(pageTransition)
+            case .lines:
+                SubtitleLinesPage(session: session, onBack: { page = nil })
                     .transition(pageTransition)
             case nil:
                 main.transition(reduceMotion ? .opacity : .push(from: .leading))
@@ -93,6 +96,8 @@ struct TracksPanel: View {
                     .accessibilityIdentifier("tracks.style")
                 PlayerPageChip(title: "Timing", value: session.subtitleOffset.isDefault ? nil : session.subtitleOffset.label) { page = .timing }
                     .accessibilityIdentifier("tracks.timing")
+                PlayerPageChip(title: "Lines") { page = .lines }
+                    .accessibilityIdentifier("tracks.lines")
                 PlayerPageChip(title: "Second Line", value: secondLineValue) { page = .secondLine }
                     .accessibilityIdentifier("tracks.secondLine")
             }
@@ -101,7 +106,7 @@ struct TracksPanel: View {
 
     private var secondLineValue: String? {
         guard let id = session.secondarySubtitleID else { return nil }
-        return TrackLabel.labels(for: session.externalSubtitles)[id]?.title
+        return TrackLabel.labels(for: session.externalSubtitles + session.snapshot.embeddedSubtitles)[id]?.title
     }
 
     // MARK: Columns
@@ -235,7 +240,13 @@ struct TracksPanel: View {
     private func languagePageDetail(_ r: TrackRow, in g: TrackLanguageGroup) -> String? {
         var parts: [String] = []
         if r.detail != nil, r.title != g.title { parts.append(r.title) }
-        parts.append(r.source == .video ? "In the video" : r.source == .added ? "Added file" : "Subtitle file")
+        let source = switch r.source {
+        case .video: "In the video"
+        case .added: "Added file"
+        case .torrent: "In the torrent"
+        case .file: "Subtitle file"
+        }
+        parts.append(source)
         return parts.joined(separator: " · ")
     }
 

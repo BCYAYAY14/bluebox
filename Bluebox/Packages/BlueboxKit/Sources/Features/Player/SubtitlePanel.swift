@@ -9,29 +9,38 @@ import SwiftUI
 
 // MARK: - Second line
 
-/// A second language under the first, from a subtitle file.
+/// A second language under the first, from a subtitle file or a text track
+/// in the video that Bluebox draws (VLC with MKV: SubRip, WebVTT, plain ASS).
 struct SecondLinePage: View {
     let session: PlayerSession
     @Binding var style: SubtitleStyle
     let onBack: () -> Void
 
+    /// Embedded tracks that can be a second line: drawn by Bluebox, and not the first line.
+    private var embeddedCandidates: [MediaTrack] {
+        let primary: String? = if case .embedded(let id) = session.subtitleSelection { id } else { nil }
+        return session.snapshot.embeddedSubtitles.filter { $0.drawnByBluebox && $0.id != primary }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             PlayerPageHeader("Second Line", onBack: onBack)
-            if session.externalSubtitles.isEmpty {
+            let candidates = session.externalSubtitles + embeddedCandidates
+            if candidates.isEmpty {
                 Text(session.snapshot.embeddedSubtitles.isEmpty
                      ? "Add or download a subtitle file to show a second language under the first."
-                     : "A second line comes from a subtitle file: the player shows one subtitle track from inside the video at a time. Add or download a file in another language.")
+                     : "A second line comes from a subtitle file, or a plain text track in an MKV. Add or download a file in another language.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                let labels = TrackLabel.labels(for: session.externalSubtitles)
+                let labels = TrackLabel.labels(for: candidates)
                 VStack(spacing: 2) {
                     PanelPickRow(title: "Off", symbol: "nosign", selected: session.secondarySubtitleID == nil) {
                         session.selectSecondarySubtitle(nil)
                     }
-                    ForEach(session.externalSubtitles) { t in
-                        PanelPickRow(title: labels[t.id]?.title ?? t.label, detail: labels[t.id]?.detail, symbol: "doc.text",
+                    ForEach(candidates) { t in
+                        PanelPickRow(title: labels[t.id]?.title ?? t.label, detail: labels[t.id]?.detail,
+                                     symbol: t.isExternal ? "doc.text" : "film",
                                      selected: session.secondarySubtitleID == t.id) {
                             session.selectSecondarySubtitle(t.id)
                         }
@@ -47,6 +56,99 @@ struct SecondLinePage: View {
     }
 }
 
+// MARK: - Lines
+
+/// Every line of the subtitles with its time: the one on screen highlighted
+/// and kept in view, a search that filters them, and a click that plays from
+/// a line. A file's lines are all there; a track in the video lists what's
+/// been read so far.
+struct SubtitleLinesPage: View {
+    let session: PlayerSession
+    let onBack: () -> Void
+    @State private var query = ""
+    @FocusState private var searching: Bool
+
+    var body: some View {
+        let cues = session.subtitleCues
+        let offset = session.subtitleOffset
+        let shown = SubtitleLines.search(cues, query: query)
+        let current = SubtitleLines.currentIndex(cues, at: session.snapshot.position, offset: offset)
+        VStack(alignment: .leading, spacing: 8) {
+            PlayerPageHeader("Lines", onBack: onBack)
+            if session.subtitleSelection == .off {
+                note("Turn on subtitles to see their lines.")
+            } else if cues.isEmpty {
+                note(session.knowsAllSubtitleCues ? "This subtitle file has no lines."
+                     : "This track's lines appear here as Bluebox reads them. Styled and picture subtitles are drawn by the player, so they aren't listed.")
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(Palette.textTertiary)
+                    TextField("Search lines", text: $query)
+                        .textFieldStyle(.plain).font(.subheadline)
+                        .focused($searching)
+                        .accessibilityIdentifier("lines.search")
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textTertiary) }
+                            .buttonStyle(.plain).accessibilityLabel("Clear Search")
+                    }
+                }
+                .padding(.horizontal, 8).frame(height: PanelMetrics.control)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 1) {
+                            ForEach(shown, id: \.self) { i in
+                                lineRow(cues[i], time: offset.playerTime(forCueTime: cues[i].start), current: i == current)
+                                    .id(i)
+                            }
+                        }
+                    }
+                    .frame(height: PanelMetrics.dense ? 180 : 300)
+                    .onAppear { if let current { proxy.scrollTo(current, anchor: .center) } }
+                    // Follows the playhead, unless a search is narrowing the list.
+                    .onChange(of: current) { _, new in
+                        guard query.isEmpty, let new else { return }
+                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(new, anchor: .center) }
+                    }
+                }
+                if shown.isEmpty { note("No line has “\(query)”.") }
+                if !session.knowsAllSubtitleCues {
+                    Text("Lines from the video's own track appear as they're read.")
+                        .font(.caption).foregroundStyle(Palette.textTertiary)
+                }
+            }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text).font(.footnote).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func lineRow(_ cue: SubtitleCue, time: TimeInterval, current: Bool) -> some View {
+        Button { Task { await session.jump(to: cue) } } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Formatters.duration(max(0, time)))
+                    .font(.caption.monospacedDigit()).foregroundStyle(current ? Palette.brandBright : Palette.textTertiary)
+                    .frame(minWidth: 44, alignment: .leading)
+                Text(cue.text.replacingOccurrences(of: "\n", with: " "))
+                    .font(.subheadline.weight(current ? .semibold : .regular))
+                    .foregroundStyle(Palette.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background {
+                if current { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Palette.brand.opacity(0.22)) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PanelPressStyle())
+        .accessibilityLabel("\(Formatters.duration(max(0, time))), \(cue.text)")
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityHint("Plays from this line")
+    }
+}
+
 // MARK: - Timing
 
 /// Subtitle timing: the delay (steps, a slider, keys), "Match a Line" (one
@@ -57,6 +159,7 @@ struct SubtitleTimingPage: View {
     @State private var subtitleFPS = 25.0
     @State private var videoFPS = 24000.0 / 1001
     @State private var showsDrift = false
+    @State private var audioSync = SubtitleAudioSync()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -73,6 +176,7 @@ struct SubtitleTimingPage: View {
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
+                if session.canRetimeSubtitleLines || !session.subtitleCues.isEmpty { syncToAudio }
                 // Only Bluebox's own lines can be shown here (VLC draws the video's in the picture).
                 if session.canRetimeSubtitleLines { nowShowing }
                 ValueDial(title: "Subtitle delay", value: session.subtitleOffset.seconds, range: -10...10, defaultValue: 0,
@@ -89,6 +193,43 @@ struct SubtitleTimingPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    /// Sync to the Audio: Bluebox listens and sets the timing; says what it did, with Undo.
+    @ViewBuilder private var syncToAudio: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PanelActionButton(title: audioSync.isRunning ? progressTitle : "Sync to the Audio", symbol: "waveform") {
+                if audioSync.isRunning { audioSync.cancel() } else { audioSync.start(session) }
+            }
+            .accessibilityIdentifier("timing.syncToAudio")
+            .accessibilityHint(audioSync.isRunning ? "Stops listening" : "Listens to the speech and lines the subtitles up")
+            switch audioSync.phase {
+            case .idle, .listening, .matching:
+                Text(audioSync.isRunning ? "Listening on this device. Tap again to stop."
+                     : "Listens to a couple of minutes of speech and lines the subtitles up, drift included.")
+                    .font(.caption).foregroundStyle(Palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .done(let offset, _, let drift):
+                HStack(spacing: 6) {
+                    Label("Synced · \(offset.label)" + (drift ? ", drift fixed" : ""), systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold)).foregroundStyle(Palette.brandBright)
+                    Spacer(minLength: 0)
+                    Button("Undo") { audioSync.undo(session) }
+                        .font(.caption.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
+                }
+            case .failed(let message):
+                Text(message).font(.caption).foregroundStyle(Palette.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var progressTitle: String {
+        switch audioSync.phase {
+        case .listening(let part, let total): total > 1 ? "Listening… \(part) of \(total)" : "Listening…"
+        case .matching: "Matching…"
+        default: "Sync to the Audio"
         }
     }
 
@@ -244,6 +385,16 @@ struct SubtitleStylePage: View {
                                   options: SubtitleStyle.PositionChoice.allCases.map { ($0.title, $0) })
                 }
             }
+            Toggle(isOn: $style.hidesSoundCues) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Hide Sound Cues").font(.subheadline)
+                    Text("Leaves out [sounds], (sighs), ♪ lyrics and “NAME:” labels.")
+                        .font(.caption).foregroundStyle(Palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch).tint(Palette.brand)
+            .accessibilityIdentifier("style.hideSoundCues")
             Text(PanelMetrics.showsShortcuts ? "Drag subtitles on the video to move them; − and = resize."
                  : "Drag subtitles on the video to move them, pinch to resize.")
                 .font(.caption).foregroundStyle(Palette.textTertiary)
@@ -455,6 +606,7 @@ extension SubtitleStyle {
     /// The look and position only (languages are preferences, not style).
     var withoutPreferences: SubtitleStyle {
         var s = self; s.preferredLanguage = nil; s.secondaryLanguage = nil; s.secondaryScale = 0; s.secondaryColor = .white
+        s.hidesSoundCues = false
         return s
     }
 
@@ -462,7 +614,7 @@ extension SubtitleStyle {
     func resetLook() -> SubtitleStyle {
         var s = SubtitleStyle()
         s.preferredLanguage = preferredLanguage; s.secondaryLanguage = secondaryLanguage
-        s.secondaryScale = secondaryScale; s.secondaryColor = secondaryColor
+        s.secondaryScale = secondaryScale; s.secondaryColor = secondaryColor; s.hidesSoundCues = hidesSoundCues
         return s
     }
 }

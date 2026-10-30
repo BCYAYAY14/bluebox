@@ -16,6 +16,8 @@ let package = Package(
         .library(name: "Domain", targets: ["Domain"]),
         // The Live Activity's attributes and look, shared with the iOS widget extension.
         .library(name: "DownloadsActivity", targets: ["DownloadsActivity"]),
+        // The Mac updater's signature check, linked by Apps/macOSUpdater alone.
+        .library(name: "UpdateVerification", targets: ["UpdateVerification"]),
     ],
     dependencies: [
         // VLC plays the containers AVFoundation can't (MKV, AVI, WebM…), which is most torrent releases.
@@ -25,6 +27,8 @@ let package = Package(
         .target(name: "Domain"),
         // No dependencies, so the widget extension stays small.
         .target(name: "DownloadsActivity"),
+        // Foundation and Security only: the unsandboxed updater links nothing else.
+        .target(name: "UpdateVerification"),
         // libtorrent 2.1 + Bluebox's Objective-C++ wrapper (BBTorrent), built from
         // source by scripts/build-libtorrent.sh for iOS, the iOS simulator and macOS.
         .binaryTarget(name: "LibTorrentEngine", path: "LibTorrent/LibTorrentEngine.xcframework"),
@@ -65,6 +69,7 @@ let package = Package(
                 "Domain", "DesignSystem", "Metadata", "MediaSources",
                 "Subtitles", "Persistence", "Playback", "Sync", "Torrent", "Downloads",
                 "TorrentStreaming", "VLCPlayback", "Addons", "SkipSegments", "DownloadsActivity",
+                "UpdateVerification",
             ]
         ),
         .testTarget(name: "DomainTests", dependencies: ["Domain", "TestingSupport"]),
@@ -80,6 +85,7 @@ let package = Package(
         .testTarget(name: "TorrentTests", dependencies: ["Torrent", "TestingSupport"]),
         .testTarget(name: "AddonsTests", dependencies: ["Addons"]),
         .testTarget(name: "TorrentStreamingTests", dependencies: ["TorrentStreaming"]),
+        .testTarget(name: "UpdateVerificationTests", dependencies: ["UpdateVerification"]),
         .testTarget(name: "SyncTests", dependencies: ["Sync", "Persistence", "TestingSupport"]),
     ]
 )

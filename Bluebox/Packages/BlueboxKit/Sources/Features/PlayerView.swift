@@ -166,7 +166,7 @@ struct PlayerView: View {
         #endif
     }
 
-    private var canSearchSubtitles: Bool { app.hasOpenSubtitlesKey && session.item?.key.tmdbID != nil }
+    private var canSearchSubtitles: Bool { app.canSearchSubtitlesOnline(for: session.item?.key) }
 
     /// Controls draw over the video unless a message card (error, end of
     /// film) asks what to do next. They stay while a panel card is open.
@@ -200,7 +200,9 @@ struct PlayerView: View {
                             VLCVideoSurface(engine: vlcEngine, stretch: framed, pip: vlcPiP).allowsHitTesting(false)
                         }
                     }
-                    SubtitleOverlay(primary: session.subtitleText, secondary: session.secondarySubtitleText,
+                    // While the lines are drawn into the picture (PiP, AirPlay) the overlay stands aside.
+                    let inPicture = session.drawsSubtitlesInPicture || session.snapshot.isExternalPlaybackActive
+                    SubtitleOverlay(primary: inPicture ? nil : session.subtitleText, secondary: inPicture ? nil : session.secondarySubtitleText,
                                     style: Bindable(app).subtitleStyle,
                                     videoRect: layout.visibleRect.isEmpty ? CGRect(origin: .zero, size: geo.size) : layout.visibleRect,
                                     // Above the timeline whenever it shows, the tools' sample line too.
@@ -217,11 +219,11 @@ struct PlayerView: View {
             .ignoresSafeArea()
             // Taps go to the picture layer only: on the whole stage, the
             // double-tap recogniser would swallow taps meant for the buttons.
-            // Mac: click shows or hides the controls, double-click toggles full screen.
+            // Mac: click plays or pauses, double-click toggles full screen.
             // iOS: tap shows or hides them; double-tap the left or right third skips.
             .contentShape(Rectangle())
             .onTapGesture(count: 2, coordinateSpace: .local) { doubleTap(at: $0) }
-            .onTapGesture { toggleControls() }
+            .onTapGesture { singleTap() }
             #if os(iOS)
             // Press and hold the video to play at 2× (YouTube's gesture).
             .onLongPressGesture(minimumDuration: 0.45, maximumDistance: 30, perform: {
@@ -250,7 +252,7 @@ struct PlayerView: View {
                 controls.transition(.opacity)
             }
             if !locked, !previewing, panel == nil, session.upNext == nil, !showsCard {
-                SkipPill(skip: skip, onAccept: { perform(skip.accept()) }, onWrongTime: wrongSkipTime, onAlways: alwaysSkip)
+                SkipPill(skip: skip, controlsShown: controlsShown, onAccept: { perform(skip.accept()) }, onWrongTime: wrongSkipTime, onAlways: alwaysSkip)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, stageSize.height < 500 ? Spacing.l : Spacing.xl)
                     // Above the bar while it shows; low in the corner otherwise.
@@ -369,6 +371,8 @@ struct PlayerView: View {
         .focused($focused)
         .onAppear { focused = true }
         .onChange(of: panel) { _, open in if open == nil { focused = true } }
+        // Picture in Picture can't show the overlay: the lines go into the picture.
+        .onChange(of: pipActive, initial: true) { _, active in session.drawsSubtitlesInPicture = active }
         .modifier(PlayerKeys(actions: keyActions))
         .task(id: session.snapshot.status == .playing) { await autoHide() }
         .task(id: session.item?.key) {
@@ -537,7 +541,8 @@ struct PlayerView: View {
         }
         .sheet(isPresented: $searchingSubtitles) {
             if let key = session.item?.key {
-                SubtitleSearchSheet(key: key) { url in session.importSubtitle(url) }
+                SubtitleSearchSheet(key: key, release: session.currentResource?.variant.displayName,
+                                    title: session.item?.title) { url in session.importSubtitle(url) }
             }
         }
         #if os(iOS)
@@ -633,6 +638,16 @@ struct PlayerView: View {
 
     // MARK: Taps
 
+    /// Click plays or pauses (Mac, as in QuickTime); tap shows or hides the controls (iOS).
+    private func singleTap() {
+        #if os(macOS)
+        guard !locked else { return }
+        session.togglePlayPause(); poke()
+        #else
+        toggleControls()
+        #endif
+    }
+
     /// Double-click toggles full screen (Mac); double-tap the left or right
     /// third skips, the middle plays or pauses (iOS).
     private func doubleTap(at location: CGPoint) {
@@ -719,7 +734,28 @@ struct PlayerView: View {
             snapshot: { Task { await saveSnapshot() } },
             tools: { toggle(.tools) },
             jump: { jumping = true },
-            chapter: { offset in Task { await session.jumpToChapter(offset: offset) } }
+            chapter: { offset in Task { await session.jumpToChapter(offset: offset) } },
+            line: { next in
+                Task {
+                    let moved = await session.jumpToLine(next: next)
+                    if !moved { flash(session.subtitleSelection == .off ? "Subtitles are off" : next ? "No next line" : "No earlier line") }
+                }
+                poke()
+            },
+            toggleSubtitles: {
+                let now = session.toggleSubtitles()
+                let label: String = switch now {
+                case .off: "Off"
+                case .embedded(let id), .external(let id): TrackLabel.labels(for: session.allSubtitleTracks)[id]?.spoken ?? "On"
+                }
+                flash(now == .off && session.allSubtitleTracks.isEmpty ? "No subtitles" : "Subtitles: \(label)")
+            },
+            seekPercent: { n in
+                guard let duration = session.snapshot.duration, duration > 0 else { return }
+                Task { await session.seek(to: duration * Double(n) / 10) }
+                flash("\(n * 10)%")
+                poke()
+            }
         )
     }
 
@@ -1026,7 +1062,7 @@ struct PlayerView: View {
                     .frame(width: 64, height: 64).contentShape(Circle())
             }
             .accessibilityLabel("Back \(app.settings.skipBackSeconds) seconds")
-            .help("Back \(app.settings.skipBackSeconds) seconds (←)")
+            .help("Back \(app.settings.skipBackSeconds) seconds (←). Previous subtitle line: ⇧←")
             Button { session.togglePlayPause(); poke() } label: {
                 ZStack {
                     if showsWaiting {
@@ -1049,7 +1085,7 @@ struct PlayerView: View {
                     .frame(width: 64, height: 64).contentShape(Circle())
             }
             .accessibilityLabel("Forward \(app.settings.skipForwardSeconds) seconds")
-            .help("Forward \(app.settings.skipForwardSeconds) seconds (→)")
+            .help("Forward \(app.settings.skipForwardSeconds) seconds (→). Next subtitle line: ⇧→")
         }
         .buttonStyle(PressableStyle())
         .shadow(color: .black.opacity(0.5), radius: 8)
@@ -1243,7 +1279,7 @@ struct PlayerView: View {
                 .accessibilityIdentifier("episodesButton")
         case .tracks:
             PlayerBarButton(symbol: session.subtitleSelection == .off ? "captions.bubble" : "captions.bubble.fill",
-                            label: "Audio & Subtitles", shortcut: "V, B", isOn: panel == .tracks) { toggle(.tracks) }
+                            label: "Audio & Subtitles", shortcut: "V, C, B", isOn: panel == .tracks) { toggle(.tracks) }
                 .panelAnchor(.tracks, in: $anchors)
                 .accessibilityIdentifier("tracksMenu")
         case .speed:
@@ -1640,6 +1676,12 @@ struct PlayerKeys: ViewModifier {
         let tools: () -> Void
         let jump: () -> Void
         let chapter: (Int) -> Void
+        /// ⇧← ⇧→: previous (replaying the one just heard) or next subtitle line.
+        let line: (Bool) -> Void
+        /// C: subtitles off, and back on.
+        let toggleSubtitles: () -> Void
+        /// 0–9: to 0–90% of the video.
+        let seekPercent: (Int) -> Void
     }
 
     let actions: Actions
@@ -1647,8 +1689,15 @@ struct PlayerKeys: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onKeyPress(.space) { actions.playPause(); return .handled }
-            .onKeyPress(.leftArrow) { actions.skip(false); return .handled }
+            .onKeyPress(keys: [.leftArrow], phases: .down) { press in
+                if press.modifiers.contains(.shift) { actions.line(false) } else { actions.skip(false) }
+                return .handled
+            }
             .onKeyPress(keys: [.rightArrow], phases: [.down, .repeat, .up]) { press in
+                if press.modifiers.contains(.shift) {
+                    if press.phase == .down { actions.line(true) }
+                    return .handled
+                }
                 actions.forwardKey(press.phase); return .handled
             }
             .onKeyPress(.upArrow) { actions.volume(0.1); return .handled }
@@ -1656,7 +1705,7 @@ struct PlayerKeys: ViewModifier {
             #if os(iOS)
             .onKeyPress(.escape) { actions.close(); return .handled }
             #endif
-            .onKeyPress(characters: .init(charactersIn: "[]{}-=_+vbaczrlstjnpmeNP,."), phases: .down) { press in
+            .onKeyPress(characters: .init(charactersIn: "[]{}-=_+vbacCzrlstjnpmeNP,.<>0123456789"), phases: .down) { press in
                 guard press.modifiers.subtracting(.shift).isEmpty else { return .ignored }
                 switch press.characters {
                 case "[": actions.stepSpeed(-1)
@@ -1668,7 +1717,8 @@ struct PlayerKeys: ViewModifier {
                 case "v": actions.cycleSubtitles()
                 case "b": actions.cycleAudio()
                 case "a": actions.aspect()
-                case "c": actions.crop()
+                case "c": actions.toggleSubtitles()
+                case "C": actions.crop()
                 case "z": actions.zoom()
                 case "r": actions.rotate()
                 case "l": actions.loop()
@@ -1681,8 +1731,12 @@ struct PlayerKeys: ViewModifier {
                 case "p": actions.chapter(-1)
                 case "N": actions.episodeStep(true)
                 case "P": actions.episodeStep(false)
-                case ",": actions.stepFrame(-1)
-                case ".": actions.stepFrame(1)
+                case ",", "<": actions.stepFrame(-1)
+                case ".", ">": actions.stepFrame(1)
+                case let d where d.count == 1 && d.first!.isASCII && d.first!.isNumber:
+                    // Shift with a digit types a symbol on most layouts; plain digits only.
+                    guard press.modifiers.isEmpty, let n = Int(d) else { return .ignored }
+                    actions.seekPercent(n)
                 default: return .ignored
                 }
                 return .handled
@@ -1794,22 +1848,28 @@ extension View {
     }
 }
 
-/// Finds subtitles on OpenSubtitles for what's playing and adds the chosen one.
+/// Search Online: every site that's on (OpenSubtitles, Subdl, Podnapisi,
+/// the Jellyfin server) at once, one list with the best match for this
+/// release first and the site under each; the chosen one is added.
 struct SubtitleSearchSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     let key: MediaKey
+    /// The release playing (file or release name), to rank matches.
+    var release: String?
+    var title: String?
     let onPick: (URL) -> Void
-    @State private var results: [SubtitleSearchResult]?
+    @State private var results: [OnlineSubtitle]?
+    @State private var failures: [String] = []
     @State private var error: String?
-    @State private var downloading: Int?
+    @State private var downloading: String?
 
     var body: some View {
         NavigationStack {
             Group {
                 if let results, results.isEmpty {
                     ContentUnavailableView("No subtitles found", systemImage: "captions.bubble",
-                                           description: Text("Try another preferred language in Settings › Subtitles."))
+                                           description: Text("Try another preferred language, or turn on more sites, in Settings › Subtitles."))
                 } else if let results {
                     List(results) { r in
                         Button { Task { await pick(r) } } label: {
@@ -1829,7 +1889,15 @@ struct SubtitleSearchSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning).padding() }
+                VStack(spacing: 4) {
+                    if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
+                    if !failures.isEmpty {
+                        Text("\(failures.joined(separator: ", ")) didn't answer.").font(.footnote).foregroundStyle(Palette.textSecondary)
+                    }
+                    Text("Sites: \(app.enabledSubtitleSites.map(\.title).joined(separator: ", ")). Choose in Settings › Subtitles.")
+                        .font(.caption).foregroundStyle(Palette.textTertiary)
+                }
+                .padding()
             }
             .navigationTitle("Subtitles")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -1837,20 +1905,28 @@ struct SubtitleSearchSheet: View {
         .frame(minWidth: 460, minHeight: 420)
         .preferredColorScheme(.dark)
         .task {
-            do { results = try await app.searchSubtitles(for: key) }
-            catch { self.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+            let found = await app.searchAllSubtitles(for: key, release: release, title: title)
+            results = found.results
+            failures = found.failures
+            if found.results.isEmpty, !found.failures.isEmpty, found.failures.count == app.enabledSubtitleSites.filter(app.canAsk).count {
+                error = "No site could be reached. Check your connection and keys in Settings › Subtitles."
+            }
         }
     }
 
-    private func details(_ r: SubtitleSearchResult) -> String {
-        var parts = [r.language.flatMap { Locale.current.localizedString(forLanguageCode: $0) } ?? r.language ?? "Unknown"]
-        parts.append("\(r.downloadCount) downloads")
+    /// "OpenSubtitles · English · ✓ Exact · SDH"
+    private func details(_ r: OnlineSubtitle) -> String {
+        var parts = [r.site.title]
+        parts.append(r.language.flatMap { Locale.current.localizedString(forLanguageCode: $0) } ?? r.language ?? "Unknown")
+        if r.site == .jellyfin { parts.append("Server") }
+        else if let release, SubtitleSearchMerge.matchScore(r.release, release) >= SubtitleSearchMerge.exactThreshold { parts.append("✓ Exact") }
+        if r.downloadCount > 0 { parts.append("\(r.downloadCount) downloads") }
         if r.hearingImpaired { parts.append("SDH") }
         if r.machineTranslated { parts.append("Machine translated") }
         return parts.joined(separator: " · ")
     }
 
-    private func pick(_ r: SubtitleSearchResult) async {
+    private func pick(_ r: OnlineSubtitle) async {
         downloading = r.id; error = nil
         defer { downloading = nil }
         do {

@@ -3,6 +3,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Domain
 import Foundation
+import Subtitles
 
 /// AVFoundation-backed engine. Handles MP4/MOV/M4V and HLS with the codecs the
 /// OS supports (H.264, HEVC; AV1 only on hardware with an AV1 decoder).
@@ -41,6 +42,12 @@ public final class AVPlayerEngine: PlaybackEngine {
     private let legibleReceiver = LegibleReceiver()
     private var asset: AVURLAsset?
     private let adjustmentsBox = AdjustmentsBox()
+    /// Lines drawn into the frames while Picture in Picture or AirPlay is on.
+    private let burnInBox = BurnInBox()
+    private var burnsIn = false
+    /// Lines of the embedded text track seen so far (AVPlayer only hands over the current one).
+    private var seenCues: [SubtitleCue] = []
+    private var shownLine: (text: String, start: TimeInterval)?
     private var adjustments = VideoAdjustments()
     private let audioSwitches = AudioEffectsSwitch()
     private var audioEffects = AudioEffects()
@@ -148,7 +155,10 @@ public final class AVPlayerEngine: PlaybackEngine {
         legible.setDelegate(legibleReceiver, queue: .main)
         legibleReceiver.onText = { [weak self] text in
             guard let self, self.snapshot.selectedEmbeddedSubtitleID != nil else { return }
-            if self.snapshot.embeddedSubtitleText != text { self.snapshot.embeddedSubtitleText = text }
+            if self.snapshot.embeddedSubtitleText != text {
+                self.noteLine(text)
+                self.snapshot.embeddedSubtitleText = text
+            }
         }
         item.add(legible)
         legibleOutput = legible
@@ -159,7 +169,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         // Embedded subtitles start off; the session decides what to show.
         if let legibleGroup { item.select(nil, in: legibleGroup) }
 
-        if !adjustments.isDefault, !isHLS { await applyComposition(to: item) }
+        if needsComposition, !isHLS { await applyComposition(to: item) }
         if audioEffects.isActive, !isHLS { await installAudioTap(on: item) }
 
         let start = isResume ? ProgressPolicy.standard.startPosition(resumingAt: startAt, duration: snapshot.duration) : startAt
@@ -176,7 +186,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         adjustments = a
         adjustmentsBox.set(a)
         guard let item, snapshot.supportsVideoAdjustments else { return }
-        if a.isDefault {
+        if !needsComposition {
             item.videoComposition = nil  // full quality (and HDR) when nothing is adjusted
         } else if wasDefault || item.videoComposition == nil {
             Task { await applyComposition(to: item) }
@@ -184,6 +194,37 @@ public final class AVPlayerEngine: PlaybackEngine {
             // A paused frame isn't re-rendered on its own; redraw it in place.
             Task { await seek(to: snapshot.position) }
         }
+    }
+
+    /// Picture adjustments or lines drawn into the picture need the frames to pass through Core Image.
+    private var needsComposition: Bool { !adjustments.isDefault || burnsIn }
+
+    // MARK: Subtitles in the picture
+
+    public func setSubtitleBurnIn(_ burnIn: SubtitleBurnIn?) {
+        burnInBox.set(burnIn)
+        let wanted = burnIn != nil
+        guard wanted != burnsIn else { return }
+        burnsIn = wanted
+        guard let item, snapshot.supportsVideoAdjustments else { return }
+        if !needsComposition { item.videoComposition = nil }
+        else if item.videoComposition == nil { Task { await applyComposition(to: item) } }
+    }
+
+    public func embeddedSubtitleCues() -> [SubtitleCue] { seenCues }
+
+    /// A line AVPlayer shows: the one before it ends now and is kept.
+    private func noteLine(_ text: String?) {
+        let now = item?.currentTime().seconds ?? snapshot.position
+        guard now.isFinite else { return }
+        if let shown = shownLine, now > shown.start {
+            let cue = SubtitleCue(start: shown.start, end: now, text: shown.text)
+            if !seenCues.contains(where: { abs($0.start - cue.start) < 0.3 && $0.text == cue.text }) {
+                let i = seenCues.firstIndex { $0.start > cue.start } ?? seenCues.count
+                seenCues.insert(cue, at: i)
+            }
+        }
+        shownLine = text.map { ($0, now) }
     }
 
     // MARK: Sound
@@ -206,9 +247,11 @@ public final class AVPlayerEngine: PlaybackEngine {
 
     private func applyComposition(to item: AVPlayerItem) async {
         guard let asset else { return }
-        let box = adjustmentsBox
+        let box = adjustmentsBox, burnIn = burnInBox
         guard let composition = try? await AVVideoComposition.videoComposition(with: asset, applyingCIFiltersWithHandler: { request in
-            request.finish(with: box.apply(to: request.sourceImage).cropped(to: request.sourceImage.extent), context: nil)
+            let source = request.sourceImage
+            let adjusted = box.apply(to: source)
+            request.finish(with: burnIn.draw(over: adjusted, extent: source.extent).cropped(to: source.extent), context: nil)
         }) else { return }
         guard item === self.item else { return }
         item.videoComposition = composition
@@ -353,6 +396,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         item.select(option, in: legibleGroup)
         snapshot.selectedEmbeddedSubtitleID = option == nil ? nil : trackID
         snapshot.embeddedSubtitleText = nil
+        seenCues = []; shownLine = nil
     }
 
     public func stop() {
@@ -376,6 +420,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         player.replaceCurrentItem(with: nil)
         item = nil; audioGroup = nil; legibleGroup = nil; videoOutput = nil; legibleOutput = nil; asset = nil
         snapshot.embeddedSubtitleText = nil
+        seenCues = []; shownLine = nil
         streamLoader?.cancelAll(); streamLoader = nil
         scrubTarget = nil; seekGeneration += 1; isSeeking = false
     }
@@ -484,6 +529,10 @@ public final class AVPlayerEngine: PlaybackEngine {
         observations.append(item.observe(\.presentationSize, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in self?.snapshot.presentationSize = item.presentationSize }
         })
+        observations.append(player.observe(\.isExternalPlaybackActive, options: [.initial, .new]) { [weak self] player, _ in
+            let active = player.isExternalPlaybackActive
+            Task { @MainActor in self?.snapshot.isExternalPlaybackActive = active }
+        })
         let center = NotificationCenter.default
         notificationTasks.append(Task { [weak self] in
             for await _ in center.notifications(named: AVPlayerItem.didPlayToEndTimeNotification, object: item) {
@@ -590,6 +639,30 @@ final class LegibleReceiver: NSObject, AVPlayerItemLegibleOutputPushDelegate, @u
         let text = strings.map(\.string).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let value = text.isEmpty ? nil : text
         MainActor.assumeIsolated { onText?(value) }
+    }
+}
+
+/// The lines to draw into the frames, read by the Core Image handler on
+/// AVFoundation's thread. The drawn block is kept until the line, the style
+/// or the frame size changes.
+final class BurnInBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: SubtitleBurnIn?
+    private var cache: (burnIn: SubtitleBurnIn, size: CGSize, image: CIImage?)?
+
+    func set(_ v: SubtitleBurnIn?) { lock.withLock { value = v } }
+
+    func draw(over image: CIImage, extent: CGRect) -> CIImage {
+        let overlay: CIImage? = lock.withLock {
+            guard let value, !value.isEmpty else { return nil }
+            if let cache, cache.burnIn == value, cache.size == extent.size { return cache.image }
+            let image = value.render(frame: extent.size).map { r in
+                CIImage(cgImage: r.image).transformed(by: CGAffineTransform(translationX: extent.minX + r.origin.x, y: extent.minY + r.origin.y))
+            }
+            cache = (value, extent.size, image)
+            return image
+        }
+        return overlay?.composited(over: image) ?? image
     }
 }
 

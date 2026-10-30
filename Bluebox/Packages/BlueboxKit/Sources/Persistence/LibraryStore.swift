@@ -284,6 +284,17 @@ public actor LibraryStore: LibraryRepository, ProgressRepository, TitleCache {
         return changed
     }
 
+    /// Deletes every progress record, watchlist entry, list and list entry,
+    /// without removal markers: this device chose another account's library,
+    /// and the old one stays in its own account. Cached titles stay.
+    public func eraseLibrary() throws {
+        try modelContext.fetch(FetchDescriptor<ProgressRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.fetch(FetchDescriptor<WatchlistEntryRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.fetch(FetchDescriptor<ListEntryRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.fetch(FetchDescriptor<UserListRecord>()).forEach { modelContext.delete($0) }
+        try modelContext.save()
+    }
+
     /// Flags every progress record, watchlist entry, list and list entry for upload, e.g. after
     /// signing in to a different account.
     public func markAllNeedingSync() throws {

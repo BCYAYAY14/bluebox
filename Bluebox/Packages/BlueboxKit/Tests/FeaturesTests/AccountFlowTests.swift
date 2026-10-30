@@ -117,50 +117,85 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
         #expect(!app.account.isConfigured)
     }
 
-    /// Bluebox no longer sends sign-in emails, but a link still in an inbox works.
-    @Test func anOldEmailLinkStillSignsIn() async throws {
-        let http = AccountStubServer()
-        let app = try app(http)
-        try await app.connectSupabase(url: Self.url, key: Self.key)
-        #expect(app.account.handleOpenURL(URL(string: "bluebox://title/1")!) == false)
-        let link = AuthCallback(url: URL(string: "bluebox://auth-callback#access_token=good-access&refresh_token=r&expires_in=3600&type=magiclink")!)!
-        await app.account.completeSignIn(link)
-        #expect(app.account.email == "link@example.com")
-        #expect(app.account.linkEvent == .signedIn("link@example.com"))
-        #expect(http.paths.contains { $0.hasPrefix("/rest/v1/rpc/") })
-        #expect(app.account.lastSynced != nil)
-    }
-
-    @Test func expiredLinkExplainsItself() async throws {
-        let app = try app(AccountStubServer())
-        try await app.connectSupabase(url: Self.url, key: Self.key)
-        let link = AuthCallback(url: URL(string: "bluebox://auth-callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired")!)!
-        await app.account.completeSignIn(link)
-        #expect(app.account.linkEvent == .failed(SyncError.linkExpired.localizedDescription))
-        #expect(!app.account.isSignedIn)
-    }
-
-    @Test func linkWithoutAProjectSaysConnectFirst() async throws {
-        let app = try app(AccountStubServer())
-        #expect(app.account.handleOpenURL(URL(string: "bluebox://auth-callback#access_token=a&refresh_token=r")!))
-        await app.account.completeSignIn(AuthCallback(url: URL(string: "bluebox://auth-callback#access_token=a&refresh_token=r")!)!)
-        guard case .failed(let why) = app.account.linkEvent else { Issue.record("no event"); return }
-        #expect(why.contains("Connect your server"))
-    }
-
-    @Test func switchingServersWhileALinkIsFinishingIgnoresIt() async throws {
+    /// Security review BB-01: a sign-in link Bluebox didn't ask for never
+    /// changes who's signed in, never reaches the server and never syncs.
+    @Test func anUnsolicitedSignInLinkIsRefused() async throws {
         let http = AccountStubServer(), secrets = MemorySecretStore()
         let app = try app(http, secrets: secrets)
         try await app.connectSupabase(url: Self.url, key: Self.key)
-        http.holdUser = true
-        let link = AuthCallback(url: URL(string: "bluebox://auth-callback#access_token=good-access&refresh_token=r")!)!
-        let finishing = Task { await app.account.completeSignIn(link) }
-        await http.waitUntilHeld()
-        app.disconnectSupabase()
-        http.release()
-        await finishing.value
+        try await app.account.createAccount(username: "brian", password: "a long password")
+        let session = try secrets.read(SecretAccount.supabaseSession)
+        let before = http.paths.count
+        #expect(app.account.handleOpenURL(URL(string: "bluebox://title/1")!) == false)
+        for link in ["bluebox://auth-callback#access_token=good-access&refresh_token=r&expires_in=3600&type=magiclink",
+                     "bluebox://auth-callback?token_hash=abc&type=email",
+                     "bluebox://auth-callback?code=xyz",
+                     "bluebox://auth-callback"] {
+            app.handleOpenURL(URL(string: link)!)
+            await Task.yield()
+            #expect(app.account.linkEvent == .failed(AuthCallback.refusal))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(app.account.accountName == "brian")
+        #expect(try secrets.read(SecretAccount.supabaseSession) == session)
+        #expect(http.paths.count == before)  // nothing sent: no /auth/v1/user, no sync
+    }
+
+    @Test func aSignInLinkWhileSignedOutSignsNobodyIn() async throws {
+        let http = AccountStubServer()
+        let app = try app(http)
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        #expect(app.account.handleOpenURL(URL(string: "bluebox://auth-callback#access_token=good-access&refresh_token=r")!))
+        try await Task.sleep(for: .milliseconds(100))
         #expect(!app.account.isSignedIn)
-        #expect(try secrets.read(SecretAccount.supabaseSession) == nil)
+        #expect(!http.paths.contains("/auth/v1/user"))
+    }
+
+    // MARK: Changing accounts (security review BB-01)
+
+    /// Signed in as brian with a title in My List, then signed in as mia.
+    private func switchedAccounts(_ http: AccountStubServer) async throws -> AppModel {
+        let app = try app(http)
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        try await app.account.createAccount(username: "brian", password: "a long password")
+        try await app.store.setWatchlisted(Title(key: .movie(tmdbID: 603), kind: .movie, name: "The Matrix"), true)
+        await app.account.syncNow()
+        await app.account.signOut()
+        try await app.account.createAccount(username: "mia", password: "another password")
+        return app
+    }
+
+    @Test func signingInToAnotherAccountAsksFirst() async throws {
+        let http = AccountStubServer()
+        let app = try await switchedAccounts(http)
+        let change = try #require(app.account.accountChange)
+        #expect(change.previousName == "brian" && change.newName == "mia")
+        #expect(change.myList == 1)
+        #expect(AccountChangePrompt.message(change).contains("1 in My List"))
+        // Nothing synced to mia: no RPCs since she signed in.
+        let since = http.paths.drop(while: { $0 != "/auth/v1/signup" }).dropFirst().drop(while: { $0 != "/auth/v1/signup" })
+        #expect(!since.contains { $0.hasPrefix("/rest/v1/rpc/") })
+    }
+
+    @Test func usingTheAccountsLibraryErasesThisDevicesCopy() async throws {
+        let http = AccountStubServer()
+        let app = try await switchedAccounts(http)
+        let before = http.paths.count
+        await app.account.resolveAccountChange(.useAccountLibrary)
+        #expect(app.account.accountChange == nil)
+        #expect(try await app.store.watchlist().isEmpty)
+        #expect(!http.paths.dropFirst(before).contains("/rest/v1/rpc/sync_watchlist_for"))  // nothing of brian's sent
+        #expect(app.account.lastSynced != nil)
+    }
+
+    @Test func addingThisDevicesLibraryUploadsIt() async throws {
+        let http = AccountStubServer()
+        let app = try await switchedAccounts(http)
+        let before = http.paths.count
+        await app.account.resolveAccountChange(.addDeviceLibrary)
+        #expect(app.account.accountChange == nil)
+        #expect(http.paths.dropFirst(before).contains("/rest/v1/rpc/sync_watchlist_for"))
+        #expect(try await app.store.watchlist().count == 1)
     }
 
     // MARK: Username and password
@@ -193,6 +228,12 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
         let app = try app(http, secrets: secrets)
         let link = try #require(SupabaseConfig(url: Self.url, publishableKey: Self.key)).connectLinkURL
         await app.connect(fromLink: link)
+        // Asked first: nothing is contacted or stored until the user says yes.
+        #expect(app.pendingConnect?.host == "abcdefghijklmnopqrst.supabase.co")
+        #expect(app.pendingConnect?.replacing == nil)
+        #expect(!app.account.isConfigured && http.paths.isEmpty)
+        await app.confirmConnect()
+        #expect(app.pendingConnect == nil)
         #expect(app.account.isConfigured && !app.account.isSignedIn)
         #expect(app.account.server == URL(string: Self.url))
         #expect(app.account.openRequest != nil)
@@ -213,6 +254,23 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
         #expect(app.account.isSignedIn)
         guard case .failed(let why) = app.account.linkEvent else { Issue.record("no message"); return }
         #expect(why.contains("signed in to another server"))
+    }
+
+    /// A link from someone else must not quietly point a signed-out device at their server.
+    @Test func aConnectLinkCanBeTurnedDown() async throws {
+        let http = AccountStubServer(), secrets = MemorySecretStore()
+        let app = try app(http, secrets: secrets)
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        let requests = http.paths.count
+        let other = try #require(SupabaseConfig(url: "https://zzzzzzzzzzzzzzzzzzzz.supabase.co", publishableKey: Self.key)).connectLinkURL
+        await app.connect(fromLink: other)
+        let pending = try #require(app.pendingConnect)
+        #expect(pending.replacing == "abcdefghijklmnopqrst.supabase.co")
+        #expect(ConnectLinkPrompt.message(pending).contains("This replaces abcdefghijklmnopqrst.supabase.co"))
+        app.cancelConnect()
+        #expect(app.pendingConnect == nil)
+        #expect(app.account.server == URL(string: Self.url))
+        #expect(http.paths.count == requests)
     }
 
     @Test func aBrokenConnectLinkSaysSo() async throws {

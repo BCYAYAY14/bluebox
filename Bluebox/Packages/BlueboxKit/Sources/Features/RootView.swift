@@ -843,6 +843,7 @@ struct ProfileMenu: View {
     var showsChevron = false
     let openSettings: (SettingsPage?) -> Void
     @State private var isPresented = false
+    private var updater: AppUpdater { .shared }
 
     var body: some View {
         let current = app.currentProfile
@@ -869,6 +870,14 @@ struct ProfileMenu: View {
                                 .offset(x: 3, y: -3)
                                 .transition(.scale.combined(with: .opacity))
                                 .accessibilityIdentifier("syncDot")
+                        } else if updater.hasUnseenUpdate {
+                            // Blue: a new Bluebox the daily check found. The menu says which.
+                            Circle().fill(Palette.brand)
+                                .frame(width: 9, height: 9)
+                                .overlay(Circle().strokeBorder(Palette.chrome, lineWidth: 2).padding(-2))
+                                .offset(x: 3, y: -3)
+                                .transition(.scale.combined(with: .opacity))
+                                .accessibilityIdentifier("updateDot")
                         }
                     }
                 if showsChevron {
@@ -881,7 +890,8 @@ struct ProfileMenu: View {
         .buttonStyle(ProfileMenuTriggerStyle(isOpen: isPresented))
         .profileMenu(isPresented: $isPresented, openSettings: openSettings)
         .fixedSize()
-        .accessibilityLabel(issues.isEmpty ? "Profile: \(current.name)" : "Profile: \(current.name), sync has stopped")
+        .accessibilityLabel(!issues.isEmpty ? "Profile: \(current.name), sync has stopped"
+                            : updater.hasUnseenUpdate ? "Profile: \(current.name), an update is available" : "Profile: \(current.name)")
         .accessibilityHint("Switch who's watching or open Settings")
         .accessibilityIdentifier("profileMenu")
         #if DEBUG
@@ -930,6 +940,12 @@ private struct ProfileMenuPanel: ViewModifier {
                 BlueboxMenuAlertBlock(BlueboxMenuAlert(
                     systemImage: "exclamationmark.arrow.triangle.2.circlepath", title: issue.title, message: issue.message,
                     actionTitle: issue.fixTitle, action: { app.fix(issue, openSettings: openSettings) }))
+            }
+            // A new Bluebox the daily check found, until About has shown it.
+            if let update = AppUpdater.shared.update, AppUpdater.shared.hasUnseenUpdate {
+                BlueboxMenuSection {
+                    BlueboxMenuButton("Bluebox \(update.version) Is Available", systemImage: "arrow.down.circle") { openSettings(.about) }
+                }
             }
             if profiles.count > 1 {
                 BlueboxMenuAvatarRow(profiles.prefix(5).map { p in

@@ -100,8 +100,8 @@ struct BlueboxApp: App {
                                          contentReady: model != nil || launchError != nil))
             .preferredColorScheme(.dark)
             .task { await launch() }
-            .updatePrompt()
-            // Links from another device (bluebox://connect…) and old sign-in links (bluebox://auth-callback…)
+            .updateStatus()
+            // Links from another device (bluebox://connect…) and refused sign-in links (bluebox://auth-callback…)
             .onOpenURL { url in
                 if let model { model.handleOpenURL(url) } else { pendingURL = url }
             }
@@ -254,14 +254,18 @@ extension BlueboxApp {
     }
 }
 
-/// Bluebox › About Bluebox opens Bluebox's own About window (`AboutWindowView`).
+/// Bluebox › About Bluebox opens Bluebox's own About window (`AboutWindowView`);
+/// Check for Updates… opens Settings on About and checks there.
 struct AboutCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Bluebox") { openWindow(id: BlueboxApp.aboutWindowID) }
-            Button("Check for Updates…") { Task { await AppUpdater.shared.check(userInitiated: true) } }
+            Button("Check for Updates…") {
+                AppUpdater.showAboutAndCheck(openSettings)
+            }
         }
     }
 }

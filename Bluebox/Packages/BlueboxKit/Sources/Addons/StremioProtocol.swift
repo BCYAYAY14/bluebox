@@ -9,6 +9,7 @@
 //  ("tt0111161") or an episode ("tt0944947:1:2").
 //
 
+import Domain
 import Foundation
 
 // MARK: - Manifest
@@ -153,6 +154,14 @@ public enum AddonURL {
     public static func displayHost(_ base: String) -> String {
         URL(string: base)?.host ?? base
     }
+
+    /// `scheme://host[:port]`, without the path, query or anything else that
+    /// can hold an add-on's configuration. What preferences, sync, logs and
+    /// exports may keep.
+    public static func origin(_ link: String) -> String {
+        guard let c = URLComponents(string: link), let scheme = c.scheme, let host = c.host else { return "" }
+        return "\(scheme)://\(host)" + (c.port.map { ":\($0)" } ?? "")
+    }
 }
 
 // MARK: - Stream responses
@@ -198,7 +207,7 @@ public enum StreamParser {
                 let c = try decoder.container(keyedBy: Keys.self)
                 bingeGroup = try? c.decodeIfPresent(String.self, forKey: .bingeGroup)
                 filename = try? c.decodeIfPresent(String.self, forKey: .filename)
-                videoSize = StreamParser.lenientInt(c, .videoSize)
+                videoSize = StreamParser.lenientInt(c, .videoSize, in: 0...ReleaseNameParser.maxSizeBytes)
                 notWebReady = try? c.decodeIfPresent(Bool.self, forKey: .notWebReady)
                 if let headers = try? c.nestedContainer(keyedBy: Keys.self, forKey: .proxyHeaders),
                    headers.contains(.request) {
@@ -213,7 +222,7 @@ public enum StreamParser {
             let c = try decoder.container(keyedBy: Keys.self)
             url = try? c.decodeIfPresent(String.self, forKey: .url)
             infoHash = try? c.decodeIfPresent(String.self, forKey: .infoHash)
-            fileIdx = StreamParser.lenientInt(c, .fileIdx).map(Int.init)
+            fileIdx = StreamParser.lenientInt(c, .fileIdx, in: 0...StreamParser.maxFileIndex).map(Int.init)
             ytId = try? c.decodeIfPresent(String.self, forKey: .ytId)
             externalUrl = try? c.decodeIfPresent(String.self, forKey: .externalUrl)
             nzbUrl = try? c.decodeIfPresent(String.self, forKey: .nzbUrl)
@@ -229,7 +238,13 @@ public enum StreamParser {
         }
     }
 
-    /// `{ "streams": [...] }`, skipping entries that don't decode.
+    /// The most streams read from one answer; the rest are ignored.
+    static let maxStreams = 2_000
+    /// The highest `fileIdx` believed (a season pack has hundreds of files, not millions).
+    static let maxFileIndex: Int64 = 100_000
+
+    /// `{ "streams": [...] }`, skipping entries that don't decode, and
+    /// stopping after `maxStreams`.
     struct Envelope: Decodable {
         var streams: [Wire]
 
@@ -237,7 +252,7 @@ public enum StreamParser {
             let c = try decoder.container(keyedBy: Keys.self)
             var list = try c.nestedUnkeyedContainer(forKey: .streams)
             var out: [Wire] = []
-            while !list.isAtEnd {
+            while !list.isAtEnd, out.count < StreamParser.maxStreams {
                 if let wire = try? list.decode(Wire.self) { out.append(wire) } else { _ = try? list.decode(Skip.self) }
             }
             streams = out
@@ -247,10 +262,13 @@ public enum StreamParser {
         enum Keys: String, CodingKey { case streams }
     }
 
-    fileprivate static func lenientInt<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ key: K) -> Int64? {
-        if let v = try? c.decodeIfPresent(Int64.self, forKey: key) { return v }
-        if let v = try? c.decodeIfPresent(Double.self, forKey: key), v.isFinite { return Int64(v) }
-        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int64(s) }
+    /// A whole number in `range`, written as a number or a string. Fractions,
+    /// values outside `range` and anything unreadable are nil (`SafeNumber`),
+    /// never a trap.
+    static func lenientInt<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ key: K, in range: ClosedRange<Int64>) -> Int64? {
+        if let v = try? c.decodeIfPresent(Int64.self, forKey: key) { return range.contains(v) ? v : nil }
+        if let v = try? c.decodeIfPresent(Double.self, forKey: key) { return SafeNumber.int64(v, in: range) }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return SafeNumber.int64(s, in: range) }
         return nil
     }
 

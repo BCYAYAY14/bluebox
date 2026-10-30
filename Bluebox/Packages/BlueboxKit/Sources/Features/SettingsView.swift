@@ -406,6 +406,10 @@ private struct SidebarRow: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 0)
+                if page == .about && AppUpdater.shared.hasUnseenUpdate {
+                    Circle().fill(Palette.brand).frame(width: 7, height: 7)
+                        .accessibilityLabel("Update available")
+                }
             }
             .foregroundStyle(selected ? Palette.textPrimary : Palette.textSecondary)
             .padding(.horizontal, 10)
@@ -519,7 +523,8 @@ struct SettingsCategoryRow: View {
         case .notifications: app.newEpisodeSettings.notify ? "On" : "Off"
         case .privacy, .statistics: nil
         case .downloads: app.downloadSettings.wifiOnly ? "Wi‑Fi Only" : nil
-        case .sources, .storage, .advanced, .about: nil
+        case .about: AppUpdater.shared.hasUnseenUpdate ? "Update Available" : nil
+        case .sources, .storage, .advanced: nil
         }
     }
 }

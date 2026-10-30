@@ -6,8 +6,12 @@ import Persistence
 /// Pushes local changes to Supabase and pulls everyone else's.
 ///
 /// One pass:
-/// 1. If the signed-in user differs from the last one that synced here, flag
-///    everything local for upload (the local library joins the account).
+/// 0. If this device last synced with a different account, stop with
+///    `SyncError.accountChanged` until the user chooses (`approve` or `adopt`):
+///    nothing (library, settings, keys) moves between accounts without a choice.
+/// 1. If the signed-in user differs from the last one that synced this
+///    profile, flag everything local for upload (the local library joins the
+///    account: a device's first sign-in, or the user chose to add it).
 /// 2. Push pending progress and watchlist entries through the `sync_*`
 ///    functions, which merge on the server and return the stored rows.
 ///    Rows that came back are merged locally, then the upload flags are cleared
@@ -69,6 +73,10 @@ public actor SyncEngine {
 
     private func runOnce() async throws -> Report {
         guard let session = await auth.currentSession else { throw SyncError.signedOut }
+        if let previous = Self.previousAccount(prefs), previous != session.userID,
+           prefs.value(String.self, for: Keys.approvedUserID) != session.userID {
+            throw SyncError.accountChanged(previous: previous)
+        }
         let lastUserKey = Keys.lastUserID(profile: profileID)
         if prefs.value(String.self, for: lastUserKey) != session.userID {
             try await store.markAllNeedingSync()
@@ -83,7 +91,31 @@ public actor SyncEngine {
         try await pullProgress(user: session.userID, &report)
         try await pullWatchlist(user: session.userID, &report)
         try await syncLists(user: session.userID, &report)
+        prefs.set(session.userID, for: Keys.lastAccountID)
         return report
+    }
+
+    // MARK: Account changes
+
+    /// The account this device last synced with, or nil if it never has.
+    /// Devices from before this was recorded fall back to the default
+    /// profile's last user.
+    public static func previousAccount(_ prefs: PreferencesStore) -> String? {
+        prefs.value(String.self, for: Keys.lastAccountID) ?? prefs.value(String.self, for: Keys.lastUserID(profile: Profile.defaultID))
+    }
+
+    /// The user chose to add this device's library to `user`: the next pass
+    /// flags it all for upload, as for a device's first sign-in.
+    public static func approve(user: String, prefs: PreferencesStore) {
+        prefs.set(user, for: Keys.approvedUserID)
+    }
+
+    /// The user chose `user`'s library and this device's was erased: nothing
+    /// is flagged for upload, the account's library comes down.
+    public static func adopt(user: String, profileIDs: [String], prefs: PreferencesStore) {
+        for id in profileIDs + [Profile.defaultID] { prefs.set(user, for: Keys.lastUserID(profile: id)) }
+        prefs.set(user, for: Keys.lastAccountID)
+        prefs.set(user, for: Keys.approvedUserID)
     }
 
     // MARK: Push
@@ -171,6 +203,7 @@ public actor SyncEngine {
     private func syncSettings(user: String, _ report: inout Report) async throws {
         guard let settings else { return }
         do {
+            settings.begin(user: user)
             settings.adoptExisting()
             let pending = settings.pending()
             for batch in pending.chunked(Self.batchSize) {
@@ -191,6 +224,21 @@ public actor SyncEngine {
         } catch SyncError.server(let status, let message) where Self.isMissingTable(status: status, message: message) {
             return
         }
+    }
+
+    /// Deletes every Keychain value (`secret.*` rows) this account has on the
+    /// server. A delete, not a removal marker, so no device's Keychain is
+    /// touched; the device forgets its stamps so turning Sync API Keys on
+    /// later uploads them again.
+    public func removeSecretsFromServer() async throws {
+        var c = URLComponents(url: config.endpoint("rest/v1/account_settings"), resolvingAgainstBaseURL: false)!
+        c.queryItems = [URLQueryItem(name: "key", value: "like.\(SettingsSync.secretPrefix)*")]
+        _ = try await authorized { token in
+            var req = self.baseRequest(c.url!, token: token)
+            req.httpMethod = "DELETE"
+            return req
+        }
+        settings?.forgetSecretStamps()
     }
 
     static func isMissingTable(status: Int, message: String?) -> Bool {
@@ -328,6 +376,10 @@ public actor SyncEngine {
     static let decoder = JSONDecoder()
 
     enum Keys {
+        /// The account this device last finished a pass with.
+        static let lastAccountID = "bluebox.sync.lastAccountID"
+        /// An account the user chose to bring this device's library into.
+        static let approvedUserID = "bluebox.sync.approvedUserID"
         /// The default profile keeps the keys used before profiles existed.
         static func lastUserID(profile: String) -> String {
             profile == Profile.defaultID ? "bluebox.sync.lastUserID" : "bluebox.sync.lastUserID.\(profile)"

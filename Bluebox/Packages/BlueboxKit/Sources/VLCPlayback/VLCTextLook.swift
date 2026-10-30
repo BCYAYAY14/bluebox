@@ -70,7 +70,7 @@ struct VLCTextLook: Equatable {
         int("freetype-shadow-opacity", shadowOpacity, old?.shadowOpacity)
         if old == nil {
             _ = bluebox_vlc_set_integer(player, "freetype-shadow-color", 0)
-            _ = bluebox_vlc_set_integer(player, "freetype-shadow-angle", -90)
+            _ = bluebox_vlc_set_float(player, "freetype-shadow-angle", -90)
         }
         int("freetype-background-color", backgroundColor, old?.backgroundColor)
         int("freetype-background-opacity", backgroundOpacity, old?.backgroundOpacity)

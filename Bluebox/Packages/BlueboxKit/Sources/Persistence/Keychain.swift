@@ -13,7 +13,12 @@ public enum SecretAccount {
     public static let omdb = "omdb.apiKey"
     public static let openSubtitles = "opensubtitles.apiKey"
     public static let openSubtitlesSession = "opensubtitles.session"
+    public static let subdl = "subdl.apiKey"
     public static func source(_ id: String) -> String { "source.\(id)" }
+    /// An add-on added by link: the whole link, which holds its configuration
+    /// (often a debrid key). Preferences keep only its origin.
+    public static let addonLinkPrefix = "addon."
+    public static func addonLink(_ addonID: String) -> String { addonLinkPrefix + addonID }
 }
 
 public struct KeychainError: Error, Equatable, LocalizedError {

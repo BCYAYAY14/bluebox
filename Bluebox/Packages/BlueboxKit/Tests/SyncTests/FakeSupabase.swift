@@ -61,6 +61,9 @@ final class FakeSupabase: HTTPClient, @unchecked Sendable {
         return (body, HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 
+    /// The keys of an account's `account_settings` rows.
+    func settingKeys(user: String) -> Set<String> { lock.withLock { Set((settings[user] ?? [:]).keys) } }
+
     func count(_ prefix: String) -> Int { lock.withLock { log.filter { $0.hasPrefix(prefix) }.count } }
 
     private func tick() -> SyncTimestamp { clock += 1; return SyncTimestamp(microseconds: clock) }
@@ -208,6 +211,13 @@ final class FakeSupabase: HTTPClient, @unchecked Sendable {
         case "/rest/v1/list_entries" where !listTablesMissing:
             let rows = (listEntries["\(user)|\(pulledProfile)"] ?? [:]).values.map { ($0.serverTS, $0.row.entry_key ?? "", $0.row) }
             return (200, try! enc.encode(page(rows, req)))
+        case "/rest/v1/account_settings" where req.httpMethod == "DELETE":
+            // Only the `like.<prefix>*` filter Bluebox sends.
+            let like = query.first { $0.name == "key" }?.value ?? ""
+            guard like.hasPrefix("like."), like.hasSuffix("*") else { return (400, Data()) }
+            let prefix = String(like.dropFirst(5).dropLast())
+            settings[user] = (settings[user] ?? [:]).filter { !$0.key.hasPrefix(prefix) }
+            return (204, Data())
         case "/rest/v1/account_settings" where !settingsTableMissing:
             let rows = (settings[user] ?? [:]).values.map { ($0.serverTS, $0.row.key, $0.row) }
             return (200, try! enc.encode(page(rows, req)))

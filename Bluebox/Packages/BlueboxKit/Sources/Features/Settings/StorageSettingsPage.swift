@@ -216,6 +216,7 @@ extension AppModel {
         // Add-ons added by link are sources, not settings: they stay.
         var addonDefaults = AddonSettings()
         addonDefaults.addons += addonSettings.addons.filter { $0.preset == nil }
+        addonDefaults.customLinks = addonSettings.customLinks
         setAddonSettings(addonDefaults)
         settings.resetToDefaults()
     }

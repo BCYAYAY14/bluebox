@@ -24,11 +24,16 @@ final class SkipController {
     /// The part the pill offers "Always for this show" for, the first time it
     /// comes up for a show (nil: don't offer).
     private(set) var alwaysPart: ShowSkipRules.Part?
+    /// When Skip Intro or Skip Recap came up: the pill shows on its own for
+    /// `shownAlone`, then only with the controls (nil: past that, or credits).
+    private(set) var freshSince: Date?
+    @ObservationIgnored var shownAlone: TimeInterval = 8
 
     /// Segments already skipped automatically or dismissed ("Watch Credits"):
     /// seeking back into one doesn't skip it again.
     @ObservationIgnored private var settled: Set<String> = []
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    @ObservationIgnored private var freshTask: Task<Void, Never>?
     @ObservationIgnored private var lastQuery: SkipSegmentQuery?
 
     static let resolver = SkipSegmentResolver.live(http: URLSessionHTTPClient())
@@ -37,7 +42,7 @@ final class SkipController {
 
     func reset() {
         result = nil; offer = nil; activeSegment = nil; settled = []; lastQuery = nil; alwaysPart = nil
-        cancelCountdown()
+        cancelCountdown(); endFresh()
     }
 
     /// Looks segments up for `query` (cheap to repeat: crowd answers are cached).
@@ -84,6 +89,7 @@ final class SkipController {
             let part = ShowSkipRules.Part(segment.kind)
             let promisable = !(part == .credits && hasNext && !autoplayNext)
             alwaysPart = !found.auto && promisable && offerAlways(part) ? part : nil
+            if !found.auto, case .skip = found.0 { startFresh() } else { endFresh() }
         }
         if offer != found.0 { offer = found.0 }
         guard found.auto else { return nil }
@@ -102,7 +108,7 @@ final class SkipController {
     private func clearOffer() {
         if offer != nil { offer = nil; activeSegment = nil }
         if alwaysPart != nil { alwaysPart = nil }
-        cancelCountdown()
+        cancelCountdown(); endFresh()
     }
 
     /// The pill was pressed.
@@ -111,7 +117,7 @@ final class SkipController {
         if let s = activeSegment { settled.insert(Self.id(s)) }
         self.offer = nil
         alwaysPart = nil
-        cancelCountdown()
+        cancelCountdown(); endFresh()
         switch offer {
         case .skip(_, let to): return .seek(to)
         case .nextEpisode: return .playNext
@@ -124,7 +130,32 @@ final class SkipController {
         offer = nil
         activeSegment = nil
         alwaysPart = nil
-        cancelCountdown()
+        cancelCountdown(); endFresh()
+    }
+
+    /// Whether the pill shows: Next Episode until a choice is made; Skip Intro
+    /// and Skip Recap for their first seconds, then while the controls show.
+    /// Hidden, it stays in place (see-through), so Return still skips.
+    func pillShown(controlsShown: Bool) -> Bool {
+        guard let offer else { return false }
+        return offer == .nextEpisode || freshSince != nil || controlsShown
+    }
+
+    private func startFresh() {
+        freshTask?.cancel()
+        freshSince = Date()
+        freshTask = Task { [weak self] in
+            guard let wait = self?.shownAlone else { return }
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled, let self else { return }
+            self.freshSince = nil
+            self.freshTask = nil
+        }
+    }
+
+    private func endFresh() {
+        freshTask?.cancel(); freshTask = nil
+        if freshSince != nil { freshSince = nil }
     }
 
     /// While true the countdown stands still: playback is paused, or the pill
@@ -191,9 +222,12 @@ extension AppModel {
 
 /// Netflix's bottom-right button: white with black text for the main action,
 /// a quieter outlined one beside it for "Watch Credits", and a small
-/// "Wrong time?" under crowd timestamps.
+/// "Wrong time?" under crowd timestamps. Skip Intro and Skip Recap show on
+/// their own for 8 s, then only with the controls; Next Episode stays.
 struct SkipPill: View {
     let skip: SkipController
+    /// The player's controls are up: Skip Intro and Skip Recap show again with them.
+    var controlsShown = false
     let onAccept: () -> Void
     let onWrongTime: () -> Void
     /// "Always for this show" (offered the first time a part comes up for a show).
@@ -218,6 +252,9 @@ struct SkipPill: View {
                         }
                     }
                     .buttonStyle(SkipPrimaryStyle())
+                    .overlay(alignment: .bottom) {
+                        if offer != .nextEpisode, let since = skip.freshSince { TimeLeftBar(since: since, duration: skip.shownAlone) }
+                    }
                     .accessibilityIdentifier("skipSegment")
                     .keyboardShortcut(.return, modifiers: [])
                 }
@@ -245,14 +282,41 @@ struct SkipPill: View {
                 }
             }
             .animation(.default, value: skip.countdown)
+            .opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
+            .animation(.easeInOut(duration: 0.35), value: shown)
             .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
+
+    private var shown: Bool { skip.pillShown(controlsShown: controlsShown) }
 
     private func title(_ offer: SkipSegmentPlanner.Offer) -> String {
         let base = SkipSegmentPlanner.title(for: offer)
         if offer == .nextEpisode, let n = skip.countdown { return "\(base) in \(n)" }
         return base
+    }
+}
+
+/// A thin bar along the bottom of Skip Intro running out over the seconds it
+/// shows on its own.
+private struct TimeLeftBar: View {
+    let since: Date
+    let duration: TimeInterval
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let left = max(0, 1 - context.date.timeIntervalSince(since) / duration)
+            GeometryReader { g in
+                Rectangle().fill(.black.opacity(0.3))
+                    .frame(width: g.size.width * left, height: 3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

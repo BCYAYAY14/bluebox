@@ -94,6 +94,8 @@ public enum PreferenceKey {
     public static let defaultSubtitleDelay = "bluebox.subtitles.defaultDelay"
     /// Bool: search OpenSubtitles when nothing in your language is available.
     public static let autoSearchSubtitles = "bluebox.subtitles.autoSearch"
+    /// Search Online sites turned off (`SubtitleSite` raw values).
+    public static let subtitleSitesOff = "bluebox.subtitles.sitesOff"
 
     // MARK: Settings › Network
     /// Bool: stream over cellular (iPhone and iPad). Off means Wi‑Fi or wired only.

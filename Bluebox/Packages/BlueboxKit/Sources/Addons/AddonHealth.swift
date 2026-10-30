@@ -147,6 +147,7 @@ public actor AddonHealthMonitor {
         case AddonError.timedOut: "Timed out"
         case AddonError.badStatus(let code): "HTTP \(code)"
         case AddonError.unexpectedResponse: "Unreadable answer"
+        case AddonError.responseTooLarge: "Answer too large"
         case AddonError.debridRejected: "Debrid key rejected"
         case let e as URLError: e.code == .notConnectedToInternet ? "Offline" : "Network error"
         default: "Failed"

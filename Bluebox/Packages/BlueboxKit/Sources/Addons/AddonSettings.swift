@@ -156,7 +156,12 @@ public struct InstalledAddon: Codable, Sendable, Hashable, Identifiable {
     public enum Kind: Codable, Sendable, Hashable {
         /// Built from your settings each time (so the debrid key stays in the Keychain).
         case preset(AddonPreset)
-        /// Added by its manifest link; `base` is that link without `/manifest.json`.
+        /// Added by its manifest link. `base` is only the link's origin
+        /// (`https://host`); the whole link, which holds the add-on's
+        /// configuration and often a debrid key, is in the Keychain
+        /// (`SecretAccount.addonLink`) and in `AddonSettings.customLinks`.
+        /// Settings saved before 1.0.15 have the whole link here, which
+        /// `AddonSettings.movingLinksOut()` moves.
         case custom(base: String)
     }
 
@@ -180,9 +185,10 @@ public struct InstalledAddon: Codable, Sendable, Hashable, Identifiable {
                        summary: preset.summary)
     }
 
-    /// An add-on added by link, described by its manifest.
+    /// An add-on added by link, described by its manifest. Only the link's
+    /// origin is kept here; the caller keeps the link itself in the Keychain.
     public static func custom(base: URL, manifest: AddonManifest) -> InstalledAddon {
-        InstalledAddon(id: "custom.\(UUID().uuidString.lowercased())", kind: .custom(base: base.absoluteString),
+        InstalledAddon(id: "custom.\(UUID().uuidString.lowercased())", kind: .custom(base: AddonURL.origin(base.absoluteString)),
                        name: manifest.name, version: manifest.version, summary: manifest.description,
                        types: manifest.streamTypes)
     }
@@ -235,6 +241,9 @@ public struct AddonSettings: Codable, Sendable, Equatable {
     public var checkDebridCache = true
     /// How long one add-on may take before it's given up on.
     public var addonTimeoutSeconds = 10
+    /// The links of add-ons added by link, by add-on ID, read from the
+    /// Keychain. Never saved with these settings or synced with them.
+    public var customLinks: [String: String] = [:]
 
     // Torrent engine (TorrentStreaming).
     public var maxPeers = 80
@@ -253,6 +262,28 @@ public struct AddonSettings: Codable, Sendable, Equatable {
     public var uploadLimitKBps: Int?
 
     public init() {}
+
+    /// An add-on added by link whose link isn't on this device (it came from
+    /// another device without Sync API Keys): it's skipped until pasted again.
+    public func needsLink(_ addon: InstalledAddon) -> Bool {
+        if case .custom = addon.kind { return customLinks[addon.id] == nil }
+        return false
+    }
+
+    /// Settings from before links moved to the Keychain hold the whole link in
+    /// `custom(base:)`. Returns the settings with only origins left, and the
+    /// links taken out, by add-on ID.
+    public func movingLinksOut() -> (settings: AddonSettings, links: [String: String]) {
+        var copy = self, links: [String: String] = [:]
+        for i in copy.addons.indices {
+            guard case .custom(let base) = copy.addons[i].kind else { continue }
+            let origin = AddonURL.origin(base)
+            guard origin != base else { continue }
+            links[copy.addons[i].id] = base
+            copy.addons[i].kind = .custom(base: origin)
+        }
+        return (copy, links)
+    }
 
     /// The presets turned on, in order (the shape earlier versions stored).
     public var providers: [AddonPreset] {
@@ -383,7 +414,7 @@ public struct AddonSettings: Codable, Sendable, Equatable {
             let base: URL?
             switch addon.kind {
             case .preset(let preset): base = AddonPresetURL.base(for: preset, settings: self, debridKey: debridKey)
-            case .custom(let link): base = URL(string: link)
+            case .custom: base = customLinks[addon.id].flatMap(URL.init(string:))
             }
             guard let base, seen.insert(base).inserted else { return nil }
             return ResolvedAddon(id: addon.id, name: addon.name, base: base, types: addon.types)

@@ -121,15 +121,21 @@ public enum SubtitleParser {
                       let si = format.firstIndex(of: "start"), let ei = format.firstIndex(of: "end"),
                       let ti = format.firstIndex(of: "text"),
                       let s = parseTimestamp(fields[si]), let e = parseTimestamp(fields[ei]) else { continue }
-                let body = removingDrawings(fields[ti])
-                    .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
-                    .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
-                    .replacingOccurrences(of: "\\h", with: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let body = plainASSText(fields[ti])
                 if !body.isEmpty { cues.append(SubtitleCue(start: s, end: e, text: body)) }
             }
         }
         return cues
+    }
+
+    /// An ASS event's text as plain lines: override blocks and drawings
+    /// dropped, `\N` and `\n` as line breaks, `\h` as a space.
+    static func plainASSText(_ text: String) -> String {
+        removingDrawings(text)
+            .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\\h", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Drops vector drawings: text after `\p1` (or any `\pN`, N > 0) up to `\p0` is

@@ -18,12 +18,24 @@ public protocol AddonTransport: Sendable {
 
 public struct URLSessionAddonTransport: AddonTransport {
     let session: URLSession
+    let maxBytes: Int
 
-    public init(session: URLSession = .shared) { self.session = session }
+    public init(session: URLSession = .shared, maxBytes: Int = AddonClient.maxResponseBytes) {
+        self.session = session; self.maxBytes = maxBytes
+    }
 
+    /// Reads the body as it arrives and gives up past `maxBytes`, so an add-on
+    /// can't make Bluebox hold an endless answer in memory.
     public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw AddonError.unexpectedResponse }
+        if http.expectedContentLength > Int64(maxBytes) { throw AddonError.responseTooLarge }
+        var data = Data()
+        if http.expectedContentLength > 0 { data.reserveCapacity(Int(http.expectedContentLength)) }
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count > maxBytes { throw AddonError.responseTooLarge }
+        }
         return (data, http)
     }
 }
@@ -31,10 +43,17 @@ public struct URLSessionAddonTransport: AddonTransport {
 /// Talks to Stremio add-ons.
 public struct AddonClient: Sendable {
     public let transport: any AddonTransport
+    /// The largest answer read (`maxResponseBytes` unless a test lowers it).
+    let responseLimit: Int
 
-    public init(transport: any AddonTransport = URLSessionAddonTransport()) {
+    public init(transport: any AddonTransport = URLSessionAddonTransport(), responseLimit: Int = AddonClient.maxResponseBytes) {
         self.transport = transport
+        self.responseLimit = responseLimit
     }
+
+    /// The largest manifest or stream list read: generous for thousands of
+    /// streams, small enough that a hostile answer can't exhaust memory.
+    public static let maxResponseBytes = 8 << 20
 
     static let userAgent: String = {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -46,11 +65,12 @@ public struct AddonClient: Sendable {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        let transport = transport
+        let transport = transport, limit = responseLimit
         let finished = request
         return try await Self.withDeadline(seconds: timeout) {
             let (data, response) = try await transport.data(for: finished)
             guard (200..<300).contains(response.statusCode) else { throw AddonError.badStatus(response.statusCode) }
+            guard data.count <= limit else { throw AddonError.responseTooLarge }
             return data
         }
     }

@@ -10,12 +10,16 @@ import Foundation
 /// join one channel with `postgres_changes` for each table, heartbeat every
 /// 25 s, rejoin with a fresh access token before the old one expires, and
 /// reconnect with backoff when the socket drops. Row level security applies:
-/// only the signed-in user's changes arrive.
+/// only the signed-in user's changes arrive. The channel is private and per
+/// account (`bluebox-sync:<user id>`), so it still works with the project's
+/// public channel access turned off (migrations/20261030000000_realtime_private.sql).
 public actor RealtimeListener {
     public enum State: Sendable, Equatable { case stopped, connecting, listening }
 
     static let tables = ["watch_progress", "watchlist_entries", "profiles", "account_settings"]
-    static let topic = "realtime:bluebox-sync"
+    /// Per account, like the remote-control channel; private, so Realtime
+    /// checks the user may read it (realtime.messages policies).
+    static func topic(userID: String) -> String { "realtime:bluebox-sync:\(userID.lowercased())" }
     static let heartbeatInterval: Duration = .seconds(25)
     /// Rejoin with a fresh token this often (access tokens last an hour).
     static let tokenRefreshInterval: Duration = .seconds(40 * 60)
@@ -68,11 +72,13 @@ public actor RealtimeListener {
     /// due for a refresh, or the task is cancelled.
     private func connectAndListen() async throws {
         let token = try await auth.accessToken()
+        guard let userID = await auth.currentSession?.userID else { throw SyncError.signedOut }
+        let topic = Self.topic(userID: userID)
         let socket = session.webSocketTask(with: Self.socketURL(config))
         socket.resume()
         defer { socket.cancel(with: .goingAway, reason: nil) }
 
-        try await send(socket, Self.joinMessage(token: token, ref: nextRef()))
+        try await send(socket, Self.joinMessage(topic: topic, token: token, ref: nextRef()))
         let heartbeat = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.heartbeatInterval)
@@ -95,7 +101,7 @@ public actor RealtimeListener {
             case .string(let s): data = Data(s.utf8)
             @unknown default: continue
             }
-            switch Self.classify(data) {
+            switch Self.classify(data, topic: topic) {
             case .joined:
                 onState(.listening)
                 onChange()  // anything that changed while not listening
@@ -122,12 +128,13 @@ public actor RealtimeListener {
         return c.url!
     }
 
-    static func joinMessage(token: String, ref: String) -> [String: Any] {
+    static func joinMessage(topic: String, token: String, ref: String) -> [String: Any] {
         let changes = tables.map { ["event": "*", "schema": "public", "table": $0] }
         return [
             "topic": topic, "event": "phx_join", "ref": ref, "join_ref": ref,
             "payload": [
-                "config": ["broadcast": ["self": false], "presence": ["key": ""], "postgres_changes": changes],
+                "config": ["broadcast": ["self": false], "presence": ["key": ""], "postgres_changes": changes,
+                           "private": true] as [String: Any],
                 "access_token": token,
             ] as [String: Any],
         ]
@@ -139,7 +146,7 @@ public actor RealtimeListener {
 
     enum Incoming: Equatable { case joined, change, closed(String), other }
 
-    static func classify(_ data: Data) -> Incoming {
+    static func classify(_ data: Data, topic: String) -> Incoming {
         guard let m = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let event = m["event"] as? String else { return .other }
         let payload = m["payload"] as? [String: Any]

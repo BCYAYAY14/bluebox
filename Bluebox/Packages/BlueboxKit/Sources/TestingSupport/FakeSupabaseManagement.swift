@@ -14,6 +14,8 @@ public final class FakeSupabaseManagement: HTTPClient, @unchecked Sendable {
     public struct Project {
         public var ref: String, name: String, status: String, region: String
         public var tables = false, profilesOnlyMissing = false, settingsMissing = false, listsMissing = false, users = 0
+        /// The realtime.messages policies (migrations/20261030000000_realtime_private.sql) have run.
+        public var realtimePrivate = false
         public init(ref: String, name: String, status: String, region: String = "eu-west-1") {
             self.ref = ref; self.name = name; self.status = status; self.region = region
         }
@@ -131,6 +133,7 @@ public final class FakeSupabaseManagement: HTTPClient, @unchecked Sendable {
     }
 
     private func runQuery(_ sql: String, _ p: inout Project) -> (Int, Data) {
+        if sql.contains("on realtime.messages") { p.realtimePrivate = true }
         if sql.contains("to_regclass") {
             let progress = p.tables
             let profiles = p.tables && !p.profilesOnlyMissing

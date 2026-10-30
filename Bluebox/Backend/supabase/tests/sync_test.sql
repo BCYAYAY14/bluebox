@@ -168,4 +168,36 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok - anon cannot call list sync';
 end $$;
 reset role;
+-- Realtime Authorization (security review BB-03): own topics only.
+insert into realtime.messages (topic, extension, private) values
+  ('bluebox-remote:aaaaaaaa-0000-0000-0000-000000000001', 'broadcast', true),
+  ('bluebox-remote:bbbbbbbb-0000-0000-0000-000000000002', 'broadcast', true),
+  ('bluebox-sync:aaaaaaaa-0000-0000-0000-000000000001', 'presence', true);
+set role authenticated;
+select set_config('request.jwt.claim.sub', :a, false);
+select set_config('realtime.topic', 'bluebox-remote:aaaaaaaa-0000-0000-0000-000000000001', false);
+select pg_temp.check((select count(*) > 0 from realtime.messages), 'realtime: A can join own remote topic');
+insert into realtime.messages (topic, extension, private) values ('bluebox-remote:aaaaaaaa-0000-0000-0000-000000000001', 'broadcast', true);
+select pg_temp.check(true, 'realtime: A can broadcast on own remote topic');
+select set_config('realtime.topic', 'bluebox-sync:aaaaaaaa-0000-0000-0000-000000000001', false);
+select pg_temp.check((select count(*) > 0 from realtime.messages), 'realtime: A can join own sync topic');
+do $$ begin
+  insert into realtime.messages (topic, extension, private) values ('bluebox-sync:aaaaaaaa-0000-0000-0000-000000000001', 'broadcast', true);
+  raise exception 'FAILED: A can broadcast on the sync topic';
+exception when insufficient_privilege then raise notice 'ok - realtime: nobody broadcasts on a sync topic';
+end $$;
+select set_config('realtime.topic', 'bluebox-remote:bbbbbbbb-0000-0000-0000-000000000002', false);
+select pg_temp.check((select count(*) = 0 from realtime.messages), 'realtime: A cannot join B''s remote topic');
+do $$ begin
+  insert into realtime.messages (topic, extension, private) values ('bluebox-remote:bbbbbbbb-0000-0000-0000-000000000002', 'broadcast', true);
+  raise exception 'FAILED: A can broadcast on B''s topic';
+exception when insufficient_privilege then raise notice 'ok - realtime: A cannot broadcast to B';
+end $$;
+reset role;
+set role anon;
+select set_config('request.jwt.claim.sub', '', false);
+select set_config('realtime.topic', 'bluebox-remote:aaaaaaaa-0000-0000-0000-000000000001', false);
+select pg_temp.check((select count(*) = 0 from realtime.messages), 'realtime: signed-out clients see nothing');
+select pg_temp.check(public.bluebox_realtime_private(), 'realtime: setup marker callable by anon');
+reset role;
 \echo ALL SQL TESTS PASSED

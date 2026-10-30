@@ -143,6 +143,7 @@ import Testing
             InstalledAddon(id: "c2", kind: .custom(base: "https://addon.example/x"), name: "Dup"),
             .preset(.stremthru),
         ]
+        s.customLinks = ["c1": "https://addon.example/x", "c2": "https://addon.example/x"]
         let resolved = s.resolvedAddons(debridKey: "")
         #expect(resolved.map(\.id) == ["c1", "preset.stremthru"])
         #expect(s.availablePresets.isEmpty)
@@ -154,6 +155,7 @@ import Testing
         let manifest = try JSONDecoder().decode(AddonManifest.self, from: Data(StreamFixtures.torrentioManifest.utf8))
         let addon = InstalledAddon.custom(base: URL(string: "https://torrentio.strem.fun/realdebrid=SECRET")!, manifest: manifest)
         #expect(addon.hostLabel == "torrentio.strem.fun")
+        #expect(addon.kind == .custom(base: "https://torrentio.strem.fun"))  // the link itself goes to the Keychain
         #expect(addon.name == "Torrentio" && addon.types == ["movie", "series"])
         #expect(addon.id.hasPrefix("custom."))
     }
@@ -205,5 +207,46 @@ import Testing
         #expect(h.state() == .healthy)
         #expect(h.summary() == "Healthy · 0.8 s · 2 of 2 answered")
         #expect(AddonHealth(addonID: "new").state() == .unknown)
+    }
+}
+
+/// Add-ons added by link keep their link out of preferences and sync (security review BB-06).
+@Suite struct AddonLinkTests {
+    let full = "https://comet.example/eyJkZWJyaWRBcGlLZXkiOiJzZWNyZXQifQ"
+    var custom: InstalledAddon { InstalledAddon(id: "custom.1", kind: .custom(base: full), name: "Comet") }
+
+    @Test func originDropsEverythingThatCanHoldConfiguration() {
+        #expect(AddonURL.origin(full) == "https://comet.example")
+        #expect(AddonURL.origin("http://192.168.1.5:7000/cfg/x?apikey=1#f") == "http://192.168.1.5:7000")
+        #expect(AddonURL.origin("not a url") == "")
+    }
+
+    @Test func oldSettingsGiveUpTheirLinks() throws {
+        var old = AddonSettings()
+        old.addons.append(custom)
+        let (settings, links) = old.movingLinksOut()
+        #expect(links == ["custom.1": full])
+        #expect(settings.addons.last?.kind == .custom(base: "https://comet.example"))
+        // Already moved: nothing more to take.
+        #expect(settings.movingLinksOut().links.isEmpty)
+    }
+
+    @Test func linksAreNeverSaved() throws {
+        var settings = AddonSettings()
+        settings.addons.append(InstalledAddon(id: "custom.1", kind: .custom(base: "https://comet.example"), name: "Comet"))
+        settings.customLinks["custom.1"] = full
+        let json = String(decoding: try JSONEncoder().encode(settings), as: UTF8.self)
+        #expect(!json.contains("eyJkZWJyaWRBcGlLZXkiOiJzZWNyZXQifQ"))
+        #expect(try JSONDecoder().decode(AddonSettings.self, from: Data(json.utf8)).customLinks.isEmpty)
+    }
+
+    @Test func anAddonWithoutItsLinkIsSkipped() {
+        var settings = AddonSettings()
+        settings.addons = [InstalledAddon(id: "custom.1", kind: .custom(base: "https://comet.example"), name: "Comet")]
+        #expect(settings.needsLink(settings.addons[0]))
+        #expect(settings.resolvedAddons(debridKey: "").isEmpty)
+        settings.customLinks["custom.1"] = full
+        #expect(!settings.needsLink(settings.addons[0]))
+        #expect(settings.resolvedAddons(debridKey: "").map(\.base.absoluteString) == [full])
     }
 }

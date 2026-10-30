@@ -151,9 +151,14 @@ public final class AppModel {
     public private(set) var hasOMDbKey = false
     /// True when the Supabase project was entered in Settings (not built in).
     public private(set) var hasCustomServer = false
+    /// A connect link waiting for the user's yes.
+    public private(set) var pendingConnect: PendingConnect?
     /// Online subtitle search; nil without an OpenSubtitles API key.
     @ObservationIgnored private(set) var subtitleSearch: OpenSubtitlesService?
     public private(set) var hasOpenSubtitlesKey = false
+    /// Subdl search (Search Online); nil without a Subdl API key.
+    @ObservationIgnored var subdl: SubdlService?
+    public internal(set) var hasSubdlKey = false
     public private(set) var openSubtitlesSignedIn = false
     @ObservationIgnored private let sample = SampleMetadataProvider()
 
@@ -164,7 +169,15 @@ public final class AppModel {
         // API keys, add-ons and settings follow the account (not in previews and tests' sample mode).
         let settingsSync = forceSample ? nil : SettingsSync(prefs: prefs, secrets: secrets, preferenceKeys: Self.syncedPreferenceKeys,
                                                             profileKeySuffixes: Self.syncedProfileKeySuffixes,
-                                                            secretAccounts: Self.syncedSecretAccounts)
+                                                            secretAccounts: Self.syncedSecretAccounts,
+                                                            secretAccountPrefixes: [SecretAccount.addonLinkPrefix])
+        // Add-on links are Keychain accounts named after the add-on; the list says which exist.
+        settingsSync?.currentPrefixedSecretAccounts = { [prefs] in
+            (prefs.value(AddonSettings.self, for: PreferenceKey.addons)?.addons ?? []).compactMap {
+                if case .custom = $0.kind { return SecretAccount.addonLink($0.id) }
+                return nil
+            }
+        }
         let secrets: any SecretStore = settingsSync.map { RecordingSecretStore(secrets, sync: $0) } ?? secrets
         if let settingsSync { prefs.onSet = { key in settingsSync.preferenceChanged(key) } }
         self.store = store; self.defaultStore = store; self.secrets = secrets; self.prefs = prefs; self.http = http
@@ -212,6 +225,10 @@ public final class AppModel {
             hasOpenSubtitlesKey = true
             openSubtitlesSignedIn = session != nil
         }
+        if !forceSample, let key = (try? secrets.read(SecretAccount.subdl)).flatMap({ $0 }), !key.isEmpty {
+            subdl = SubdlService(apiKey: key, http: http)
+            hasSubdlKey = true
+        }
         // AppSettings first: it copies the shared settings into each profile once.
         settings = AppSettings(prefs: prefs)
         subtitleStyle = prefs.value(SubtitleStyle.self, for: ProfileSettingKey.subtitleStyle(Profile.defaultID)) ?? SubtitleStyle()
@@ -234,7 +251,7 @@ public final class AppModel {
         let torrentDir = torrentDirectory ?? FileManager.default.temporaryDirectory.appending(path: "bluebox-torrents-\(UUID().uuidString)")
         torrents = TorrentSource(client: TorrentClient(directory: torrentDir),
                                  items: prefs.value([TorrentSource.Item].self, for: PreferenceKey.torrents) ?? [])
-        let addonSettings = prefs.value(AddonSettings.self, for: PreferenceKey.addons) ?? AddonSettings()
+        let addonSettings = Self.loadAddonSettings(prefs: prefs, secrets: secrets)
         let debridKey = (try? secrets.read(SecretAccount.debrid)).flatMap { $0 } ?? ""
         self.addonSettings = addonSettings
         self.debridKey = debridKey
@@ -258,6 +275,7 @@ public final class AppModel {
         }
         account.onAccountCreated = { [weak self] in self?.serverSetup.firstAccountCreated() }
         account.onSignedIn = { [weak self] in self?.serverSetup.forget() }
+        account.onUseAccountLibrary = { [weak self] in await self?.eraseLibraryForAccountChange() }
         serverSetup.connect = { [weak self] config in
             try await self?.connectSupabase(url: config.url.absoluteString, key: config.publishableKey)
         }
@@ -518,6 +536,32 @@ public final class AppModel {
         }
         reloadProfiles()
         account.scheduleSync()
+    }
+
+    /// The user chose the newly signed-in account's library over this
+    /// device's (which came from another account and stays in it): every
+    /// profile's library, lists, hidden titles and Home tweaks go, and the
+    /// profiles go back to the default one alone, so the account's come down.
+    /// Nothing here is marked for upload. Downloads, sources and settings stay.
+    func eraseLibraryForAccountChange() async {
+        await switchProfile(to: Profile.defaultID, sync: false)
+        for id in profileStore.allIDs() {
+            hiddenTitles.removeAll(profileID: id)
+            personalHome.remove(profileID: id)
+            guard id != Profile.defaultID else { continue }
+            try? locks.setPIN(nil, for: id)
+            openStores[id] = nil
+            if let libraryDirectory {
+                for suffix in ["", "-shm", "-wal"] {
+                    try? FileManager.default.removeItem(at: libraryDirectory.appending(path: "\(Self.libraryFileName(id))\(suffix)"))
+                }
+            }
+        }
+        lockedProfileIDs = []
+        profileStore.resetToDefault()
+        try? await store.eraseLibrary()
+        reloadProfiles()
+        libraryRevision += 1
     }
 
     private func reloadProfiles() {
@@ -1294,6 +1338,8 @@ extension AppModel {
         return report
     }
 
+    public func cancelConnect() { pendingConnect = nil }
+
     /// Forgets the project entered in Settings and signs out.
     public func disconnectSupabase() {
         try? secrets.write(nil, for: SecretAccount.supabaseServer)
@@ -1303,7 +1349,7 @@ extension AppModel {
     }
 
     /// Links opened from outside: `bluebox://connect?…` from another device's
-    /// "Add Another Device", old `bluebox://auth-callback…` sign-in links, and
+    /// "Add Another Device", `bluebox://auth-callback…` sign-in links (refused), and
     /// (Mac) `magnet:` links, .torrent and video files opened with Bluebox,
     /// which go the Settings › Sources way and then offer Play (`openExternal`).
     public func handleOpenURL(_ url: URL) {
@@ -1316,9 +1362,21 @@ extension AppModel {
         }
     }
 
-    /// Connects this device to the server in a connect link, then shows
+    /// A server from a connect link, waiting for the user to confirm it
+    /// (`ConnectLinkPrompt`): a link can come from anyone, and the username and
+    /// password typed next go to that server.
+    public struct PendingConnect: Equatable, Identifiable, Sendable {
+        public let link: ConnectLink
+        /// The server this device uses now, which connecting replaces.
+        public let replacing: String?
+        public var id: String { link.url.absoluteString }
+        public var host: String { link.config.url.host() ?? link.config.url.absoluteString }
+    }
+
+    /// Asks before connecting to the server in a connect link, then shows
     /// Settings › Account to sign in. A device signed in elsewhere isn't
-    /// switched silently: it says how to change servers first.
+    /// switched: it says how to change servers first. Pasting a link in
+    /// Settings connects straight away, since the user chose it there.
     func connect(fromLink url: URL) async {
         let link: ConnectLink
         do {
@@ -1328,7 +1386,6 @@ extension AppModel {
             account.showLinkEvent(.failed(AccountModel.describe(error)))
             return
         }
-        let host = link.config.url.host() ?? link.config.url.absoluteString
         if account.server == link.config.url, account.isConfigured {
             account.openRequest = UUID()
             return
@@ -1338,6 +1395,15 @@ extension AppModel {
             account.openRequest = UUID()
             return
         }
+        pendingConnect = PendingConnect(link: link, replacing: account.isConfigured ? account.server.flatMap { $0.host() } : nil)
+    }
+
+    /// The user confirmed the server in a connect link.
+    public func confirmConnect() async {
+        guard let pending = pendingConnect else { return }
+        pendingConnect = nil
+        let link = pending.link, host = pending.host
+        guard !account.isSignedIn else { return }  // signed in meanwhile
         account.showLinkEvent(.connecting)
         do {
             try await connectSupabase(url: link.config.url.absoluteString, key: link.config.publishableKey)
@@ -1429,7 +1495,8 @@ extension AppModel {
     /// skips (`ProfileSettingKey`) and its Privacy & Features switches.
     static let syncedProfileKeySuffixes = [".audioLanguage", ".autoplayNext", ".subtitleStyle", ".showSkipRules"]
         + FeatureSwitches.syncedProfileSuffixes
-    /// API keys. Sign-ins that refresh themselves (Supabase, Trakt, OpenSubtitles) stay per device.
+    /// API keys, with Sync API Keys on (add-on links too, by prefix). Sign-ins
+    /// that refresh themselves (Supabase, Trakt, OpenSubtitles) stay per device.
     static let syncedSecretAccounts: Set<String> = [
         SecretAccount.tmdb, SecretAccount.omdb, SecretAccount.openSubtitles, SecretAccount.debrid,
     ]
@@ -1449,8 +1516,8 @@ extension AppModel {
             if changed.contains(PreferenceKey.downloadSettings) {
                 setDownloadSettings(prefs.value(DownloadSettings.self, for: PreferenceKey.downloadSettings) ?? DownloadSettings())
             }
-            if changed.contains(PreferenceKey.addons) {
-                setAddonSettings(prefs.value(AddonSettings.self, for: PreferenceKey.addons) ?? AddonSettings())
+            if changed.contains(PreferenceKey.addons) || changed.contains(where: { $0.hasPrefix("secret." + SecretAccount.addonLinkPrefix) }) {
+                setAddonSettings(Self.loadAddonSettings(prefs: prefs, secrets: secrets))
             }
             if changed.contains("secret." + SecretAccount.debrid) {
                 setDebridKey((try? secrets.read(SecretAccount.debrid)).flatMap { $0 } ?? "")

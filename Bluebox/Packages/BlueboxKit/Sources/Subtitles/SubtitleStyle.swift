@@ -61,6 +61,9 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     public var secondaryColor: RGBA = .yellow
     public var preferredLanguage: String? = nil
     public var secondaryLanguage: String? = nil
+    /// Hide Sound Cues: [bracketed] and (parenthesised) cues, ♪ lyrics and
+    /// "NAME:" labels left out of the lines Bluebox draws (see `SoundCues`).
+    public var hidesSoundCues = false
 
     public init() {}
 
@@ -137,7 +140,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case design, fontName, relativeSize, weight, italic, textColor, outlineWidth, outlineColor, shadow, shadowOpacity
         case backgroundColor, backgroundOpacity, alignment, anchor, verticalMargin, horizontalMargin, horizontalOffset, lineSpacing
-        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage
+        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage, hidesSoundCues
         case size, color, background, position
     }
 
@@ -157,6 +160,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         avoidControls = v(.avoidControls, base.avoidControls); secondaryScale = v(.secondaryScale, base.secondaryScale)
         secondaryColor = v(.secondaryColor, base.secondaryColor)
         preferredLanguage = v(.preferredLanguage, base.preferredLanguage); secondaryLanguage = v(.secondaryLanguage, base.secondaryLanguage)
+        hidesSoundCues = v(.hidesSoundCues, base.hidesSoundCues)
         // Legacy presets.
         if let size: String = v(.size, nil) {
             relativeSize = ["small": 0.035, "medium": 0.045, "large": 0.055, "extraLarge": 0.07][size] ?? relativeSize
@@ -187,6 +191,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         try c.encode(avoidControls, forKey: .avoidControls); try c.encode(secondaryScale, forKey: .secondaryScale)
         try c.encode(secondaryColor, forKey: .secondaryColor)
         try c.encodeIfPresent(preferredLanguage, forKey: .preferredLanguage); try c.encodeIfPresent(secondaryLanguage, forKey: .secondaryLanguage)
+        try c.encode(hidesSoundCues, forKey: .hidesSoundCues)
     }
 }
 

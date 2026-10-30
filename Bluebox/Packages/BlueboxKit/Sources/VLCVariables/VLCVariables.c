@@ -18,8 +18,9 @@ typedef union {
     struct { int32_t x; int32_t y; } coords;
 } bluebox_vlc_value_t;
 
-enum { VAR_BOOL = 0x0020, VAR_INTEGER = 0x0030, VAR_STRING = 0x0040 };
+enum { VAR_BOOL = 0x0020, VAR_INTEGER = 0x0030, VAR_STRING = 0x0040, VAR_FLOAT = 0x0050 };
 
+extern int config_GetType(const char *name);
 extern int var_Create(void *object, const char *name, int type);
 extern int var_Type(void *object, const char *name);
 extern int var_SetChecked(void *object, const char *name, int type, bluebox_vlc_value_t value);
@@ -41,6 +42,10 @@ static void *player_of(void *media_player) {
 
 static bool set(void *media_player, const char *name, int type, bluebox_vlc_value_t value) {
     if (player_of(media_player) == NULL) return false;
+    // A module option read as another type gets the raw bits (release builds
+    // only assert the type): -90 set as an integer reads as a NaN float.
+    int option = config_GetType(name) & 0xff;
+    if (option != 0 && option != type) return false;
     int existing = var_Type(media_player, name);
     if (existing == 0) {
         if (var_Create(media_player, name, type) != 0) return false;
@@ -53,6 +58,11 @@ static bool set(void *media_player, const char *name, int type, bluebox_vlc_valu
 bool bluebox_vlc_set_integer(void *media_player, const char *name, int64_t value) {
     bluebox_vlc_value_t v = { .i_int = value };
     return set(media_player, name, VAR_INTEGER, v);
+}
+
+bool bluebox_vlc_set_float(void *media_player, const char *name, float value) {
+    bluebox_vlc_value_t v = { .f_float = value };
+    return set(media_player, name, VAR_FLOAT, v);
 }
 
 bool bluebox_vlc_set_bool(void *media_player, const char *name, bool value) {

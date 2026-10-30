@@ -1,4 +1,5 @@
 import DesignSystem
+import Domain
 import Playback
 import Subtitles
 import SwiftUI
@@ -6,7 +7,7 @@ import SwiftUI
 /// One audio or subtitle track as people read it: "English (US)" with "SDH"
 /// underneath, not VLC's "English (SDH / US) - [English]".
 struct TrackRow: Identifiable, Equatable {
-    enum Source: Equatable { case video, file, added }
+    enum Source: Equatable { case video, file, added, torrent }
     let id: String
     let title: String
     let detail: String?
@@ -32,6 +33,7 @@ struct TrackRow: Identifiable, Equatable {
         case .video: nil
         case .file: "File"
         case .added: "Added"
+        case .torrent: "Torrent"
         }
     }
 }
@@ -92,7 +94,8 @@ enum TrackRows {
         let rows = tracks.map { t in
             let l = labels[t.id] ?? TrackLabel(title: t.label)
             let selection: SubtitleSelection = t.isExternal ? .external(t.id) : .embedded(t.id)
-            let source: TrackRow.Source = !t.isExternal ? .video : t.id.hasPrefix("import-") ? .added : .file
+            let source: TrackRow.Source = !t.isExternal ? .video : t.id.hasPrefix("import-") ? .added
+                : t.id.hasPrefix(ExternalSubtitle.torrentPrefix) ? .torrent : .file
             return TrackRow(id: t.id, title: l.title, detail: details[t.id] ?? nil, source: source, isBitmap: t.isBitmap,
                             languageCode: l.languageCode, selected: key.selection == selection, selection: selection,
                             format: t.format, keepsOwnStyle: t.keepsOwnStyle)

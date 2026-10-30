@@ -229,7 +229,7 @@ struct PicturePage: View {
                 }
                 Text("Pinch the video to zoom; drag to pan while zoomed.").font(.caption).foregroundStyle(Palette.textTertiary)
             }
-            PanelSection("Crop", accessory: { KeyCap("C") }) {
+            PanelSection("Crop", accessory: { KeyCap("⇧C") }) {
                 ChipFlow(items: VideoFraming.Ratio.allCases) { r in
                     PanelChip(title: r == .auto ? "None" : r.label, selected: session.videoFraming.crop == r) { session.videoFraming.crop = r }
                 }
@@ -254,8 +254,8 @@ struct PicturePage: View {
                     iconButton("arrow.up.and.down.righttriangle.up.righttriangle.down", label: "Flip Vertically",
                                isOn: session.videoFraming.flipVertical) { session.videoFraming.flipVertical.toggle() }
                     Spacer(minLength: Spacing.s)
-                    iconButton("backward.frame", label: "Previous Frame (,)", isOn: false) { session.stepFrame(by: -1) }
-                    iconButton("forward.frame", label: "Next Frame (.)", isOn: false) { session.stepFrame(by: 1) }
+                    iconButton("backward.frame", label: "Previous Frame (<)", isOn: false) { session.stepFrame(by: -1) }
+                    iconButton("forward.frame", label: "Next Frame (>)", isOn: false) { session.stepFrame(by: 1) }
                 }
             }
             adjustments
@@ -492,11 +492,13 @@ struct ShortcutsPage: View {
 
     static let all: [(String, String)] = [
         ("Space", "Play or pause"), ("← →", "Back or forward"), ("Hold →", "Play at 2× while held"),
+        ("⇧← ⇧→", "Previous or next subtitle line"), ("0–9", "Jump to 0–90% of the video"),
         ("[ ]", "Slower or faster (0.05×)"), ("↑ ↓", "Volume"), ("M", "Mute"),
         ("F", "Full screen"), ("Esc", "Close a card, leave full screen, then close"),
-        ("T", "Tools"), ("E", "Episodes"), ("V", "Next subtitle track"), ("B", "Next audio track"),
+        ("T", "Tools"), ("E", "Episodes"), ("V", "Next subtitle track"), ("C", "Subtitles off or back on"),
+        ("B", "Next audio track"),
         ("{ }", "Subtitles earlier or later (0.1 s)"), ("− =", "Subtitle size"),
-        ("A", "Aspect ratio"), ("C", "Crop"), ("Z", "Zoom"), ("R", "Rotate"), (", .", "Step one frame"),
+        ("A", "Aspect ratio"), ("⇧C", "Crop"), ("Z", "Zoom"), ("R", "Rotate"), ("< >", "Step one frame back or forward (also , .)"),
         ("L", "A–B repeat"), ("J", "Jump to time"), ("N P", "Next or previous chapter"),
         ("⇧N ⇧P", "Next or previous episode"), ("S", "Save frame"),
     ]

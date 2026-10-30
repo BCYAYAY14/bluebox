@@ -135,6 +135,16 @@ final class StubHTTP: HTTPClient, @unchecked Sendable {
         #expect(report.warnings.first?.contains("Email provider, which is off") == true)
     }
 
+    /// Set up before private Realtime channels (security review BB-03): say how to add the policies.
+    @Test func reportsMissingRealtimePolicies() async throws {
+        let old = try await SupabaseProjectProbe.check(config, http: StubHTTP.healthy(missing: ["rpc/bluebox_realtime_private"]))
+        #expect(old.realtimePrivateMissing)
+        #expect(old.warnings.count == 1 && old.warnings[0].contains("20261030000000_realtime_private.sql"))
+        #expect(old.warnings[0].contains("Allow public access"))
+        let current = try await SupabaseProjectProbe.check(config, http: StubHTTP.healthy())
+        #expect(!current.realtimePrivateMissing)
+    }
+
     @Test func missingTablesSayRunSetupSQL() async {
         await #expect(throws: SupabaseSetupError.tablesMissing) {
             try await SupabaseProjectProbe.check(config, http: StubHTTP.healthy(missing: ["watch_progress", "profiles"]))
@@ -202,15 +212,16 @@ final class StubHTTP: HTTPClient, @unchecked Sendable {
         #expect(SupabaseSetupFiles.profilesMigrationSQL == (try file("migrations/20261028000000_profiles.sql")))
         #expect(SupabaseSetupFiles.accountSettingsMigrationSQL == (try file("migrations/20261029000000_account_settings.sql")))
         #expect(SupabaseSetupFiles.listsMigrationSQL == (try file("migrations/20261029100000_lists.sql")))
+        #expect(SupabaseSetupFiles.realtimePrivateMigrationSQL == (try file("migrations/20261030000000_realtime_private.sql")))
     }
 
-    /// setup.sql is the four migrations in order, so a project with only the
+    /// setup.sql is the five migrations in order, so a project with only the
     /// first ones gets exactly the rest from the later migrations.
     @Test func setupSQLIsTheMigrationsInOrder() throws {
         let setup = SupabaseSetupFiles.setupSQL
-        #expect(setup.hasSuffix(SupabaseSetupFiles.listsMigrationSQL))
+        #expect(setup.hasSuffix(SupabaseSetupFiles.realtimePrivateMigrationSQL))
         #expect(setup.contains(SupabaseSetupFiles.profilesMigrationSQL + "\n\n" + SupabaseSetupFiles.accountSettingsMigrationSQL
-                               + "\n\n" + SupabaseSetupFiles.listsMigrationSQL))
+                               + "\n\n" + SupabaseSetupFiles.listsMigrationSQL + "\n\n" + SupabaseSetupFiles.realtimePrivateMigrationSQL))
         #expect(setup.contains(try file("migrations/20261027000000_library_sync.sql")))
     }
 }

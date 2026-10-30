@@ -66,6 +66,10 @@ public struct ExternalSubtitle: Hashable, Codable, Sendable, Identifiable {
     public init(id: String, url: URL, languageCode: String?, label: String, format: String) {
         self.id = id; self.url = url; self.languageCode = languageCode; self.label = label; self.format = format
     }
+
+    /// Ids of subtitle files bundled in a torrent start with this.
+    public static let torrentPrefix = "torrent-"
+    public var isFromTorrent: Bool { id.hasPrefix(Self.torrentPrefix) }
 }
 
 /// Everything a player needs to start playback. URLs may expire; callers must

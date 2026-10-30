@@ -241,3 +241,39 @@ import Testing
         #expect(Set(merged).count == merged.count)
     }
 }
+
+@Suite struct TorrentSubtitleFileTests {
+    private func file(_ i: Int, _ path: String, _ kb: Int64 = 60) -> TorrentFileEntry {
+        TorrentFileEntry(index: i, path: path, size: kb * 1024)
+    }
+
+    @Test func movieWithSubsFolder() {
+        let files = [file(0, "Movie.2019.1080p/Movie.2019.1080p.mkv", 4_000_000), file(1, "Movie.2019.1080p/Subs/English.srt"),
+                     file(2, "Movie.2019.1080p/Subs/Spanish.srt"), file(3, "Movie.2019.1080p/RARBG.txt"),
+                     file(4, "Movie.2019.1080p/Sample/sample.mkv", 20_000)]
+        let subs = FileSelection.subtitles(for: files[0], in: files).map(\.index)
+        #expect(subs == [1, 2])
+    }
+
+    @Test func besideTheVideoWithItsName() {
+        let files = [file(0, "Movie.mkv", 2_000_000), file(1, "Movie.en.srt"), file(2, "Movie.fr.ass"), file(3, "Other.srt")]
+        #expect(FileSelection.subtitles(for: files[0], in: files).map(\.index) == [1, 2, 3])
+        // A video with company in its folder: only files with its name.
+        let pack = [file(0, "A.mkv", 2_000_000), file(1, "B.mkv", 2_000_000), file(2, "A.en.srt"), file(3, "B.en.srt")]
+        #expect(FileSelection.subtitles(for: pack[0], in: pack).map(\.index) == [2])
+    }
+
+    @Test func seasonPackPicksTheEpisodesFolderOrName() {
+        let files = [file(0, "Show.S01/Show.S01E01.1080p.mkv", 1_000_000), file(1, "Show.S01/Show.S01E02.1080p.mkv", 1_000_000),
+                     file(2, "Show.S01/Subs/Show.S01E01.1080p/2_English.srt"), file(3, "Show.S01/Subs/Show.S01E02.1080p/2_English.srt"),
+                     file(4, "Show.S01/Subs/S01E02.French.srt"), file(5, "Show.S01/Subs/S01E01.French.srt")]
+        #expect(FileSelection.subtitles(for: files[1], in: files).map(\.index) == [4, 3])
+        #expect(FileSelection.subtitles(for: files[0], in: files).map(\.index) == [5, 2])
+    }
+
+    @Test func skipsPaddingAndHugeFiles() {
+        var pad = file(2, ".pad/1.srt"); pad.isPadding = true
+        let files = [file(0, "M.mkv", 2_000_000), file(1, "Subs/English.srt", 30_000), pad]
+        #expect(FileSelection.subtitles(for: files[0], in: files).isEmpty)
+    }
+}

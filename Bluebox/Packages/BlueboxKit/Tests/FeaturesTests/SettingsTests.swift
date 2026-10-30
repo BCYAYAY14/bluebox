@@ -67,11 +67,13 @@ import Testing
     @Test func resetKeepsAddonsAddedByLink() throws {
         let app = AppModel(store: try LibraryStore.make(inMemory: true), secrets: MemorySecretStore(), prefs: prefs(), forceSample: true)
         var addons = app.addonSettings
-        addons.addons.append(InstalledAddon(id: "custom.x", kind: .custom(base: "https://addon.example/x"), name: "Mine"))
+        addons.addons.append(InstalledAddon(id: "custom.x", kind: .custom(base: "https://addon.example"), name: "Mine"))
+        addons.customLinks["custom.x"] = "https://addon.example/x"
         addons.maxPeers = 150
         app.setAddonSettings(addons)
         app.resetAllSettings()
         #expect(app.addonSettings.maxPeers == 80)
         #expect(app.addonSettings.addons.map(\.id) == AddonSettings().addons.map(\.id) + ["custom.x"])
+        #expect(app.addonSettings.customLinks["custom.x"] == "https://addon.example/x")
     }
 }

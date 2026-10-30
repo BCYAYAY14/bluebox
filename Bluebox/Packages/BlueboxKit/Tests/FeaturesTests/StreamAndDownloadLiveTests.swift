@@ -38,7 +38,7 @@ struct StreamAndDownloadLiveTests {
         // Download first, then stream the same release while it runs.
         await downloader.start(id: "live", magnet: magnet, fileIndex: release.fileIndex) { log.add($0) }
         let streamer = TorrentStreamer(settings: TorrentStreamSettings())
-        let (url, _) = try await streamer.start(candidates: [TorrentCandidate(magnet: magnet, fileIndex: release.fileIndex)]) { _ in }
+        let (url, _, _) = try await streamer.start(candidates: [TorrentCandidate(magnet: magnet, fileIndex: release.fileIndex)]) { _ in }
         print("LIVE stream ready after \(clock.now - began): \(url)")
 
         // Read the start and, after a seek, the middle, while the download continues.

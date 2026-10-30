@@ -42,7 +42,7 @@ public final class PlayerSession {
     public private(set) var subtitleSelection: SubtitleSelection = .off
     public private(set) var subtitleOffset = SubtitleOffset()
     public private(set) var subtitleText: String?
-    /// Second subtitle track shown with the first (dual subtitles). External tracks only.
+    /// Second subtitle track shown with the first (dual subtitles): a file, or an embedded track with `drawnByBluebox`.
     public private(set) var secondarySubtitleID: String?
     public private(set) var secondarySubtitleText: String?
     public private(set) var subtitleError: String?
@@ -66,7 +66,18 @@ public final class PlayerSession {
     public private(set) var audioDelay: TimeInterval = 0
     /// Also sent to the engine, which draws embedded text subtitles itself (VLC).
     public var subtitleStyle = SubtitleStyle() {
-        didSet { if subtitleStyle != oldValue { engine.setEmbeddedSubtitleStyle(subtitleStyle) } }
+        didSet {
+            guard subtitleStyle != oldValue else { return }
+            engine.setEmbeddedSubtitleStyle(subtitleStyle)
+            if subtitleStyle.hidesSoundCues != oldValue.hidesSoundCues { cueCache = nil; updateSubtitleText() }
+            pushBurnIn()
+        }
+    }
+    /// Picture in Picture is on: the lines are drawn into the picture (the
+    /// overlay can't follow it there). AirPlay does the same on its own
+    /// (`snapshot.isExternalPlaybackActive`).
+    public var drawsSubtitlesInPicture = false {
+        didSet { if drawsSubtitlesInPicture != oldValue { pushBurnIn() } }
     }
     /// The audio and subtitle choices made in this session, applied to every
     /// item it plays next (Up Next, Next Episode, the Episodes list).
@@ -108,6 +119,15 @@ public final class PlayerSession {
     @ObservationIgnored private var timeline: SubtitleTimeline?
     @ObservationIgnored private var secondaryTimeline: SubtitleTimeline?
     @ObservationIgnored private var secondaryTask: Task<Void, Never>?
+    /// The subtitle choice before C turned subtitles off, for turning them back on.
+    @ObservationIgnored private var subtitleBeforeOff: SubtitleSelection?
+    /// The lines of the selected track as shown (sound cues out when hidden), kept until they change.
+    @ObservationIgnored private var cueCache: (key: CueKey, cues: [SubtitleCue])?
+    private struct CueKey: Equatable { let selection: SubtitleSelection; let count: Int; let first: SubtitleCue?; let last: SubtitleCue?; let hides: Bool }
+    @ObservationIgnored private var lastBurnIn: SubtitleBurnIn?
+    /// The preferred language matched only a file from the torrent while the
+    /// video's own tracks weren't known yet: decided once they are.
+    @ObservationIgnored private var torrentPickPending = false
     /// The first point of a two-point sync, waiting for the second.
     public private(set) var pendingSyncPoint: (cue: TimeInterval, heard: TimeInterval)?
     @ObservationIgnored private var lastSavedPosition: TimeInterval?
@@ -162,6 +182,7 @@ public final class PlayerSession {
         lastSavedPosition = nil
         timeline = nil; subtitleText = nil; subtitleError = nil; subtitleSelection = .off
         secondaryTimeline = nil; secondarySubtitleID = nil; secondarySubtitleText = nil; pendingSyncPoint = nil
+        subtitleBeforeOff = nil; cueCache = nil; torrentPickPending = false; lastBurnIn = nil
         // Timing fixes belong to one file: the next episode's starts in sync
         // (Settings' default delay is applied again when it starts).
         subtitleOffset.reset()
@@ -214,6 +235,7 @@ public final class PlayerSession {
         engine.setEmbeddedSubtitleDelay(subtitleOffset.seconds)
         engine.setVolume(volume, muted: isMuted)
         engine.setAudioDelay(audioDelay)
+        lastBurnIn = nil
         engineChanged(engine.snapshot)
     }
 
@@ -405,6 +427,81 @@ public final class PlayerSession {
 
     public var allSubtitleTracks: [MediaTrack] { snapshot.embeddedSubtitles + externalSubtitles }
 
+    /// C: subtitles off, and back on to the track that was on.
+    /// Returns the selection now in force.
+    @discardableResult
+    public func toggleSubtitles() -> SubtitleSelection {
+        if subtitleSelection != .off {
+            subtitleBeforeOff = subtitleSelection
+            selectSubtitle(.off)
+        } else {
+            let all = allSubtitleTracks
+            let back = subtitleBeforeOff.flatMap { s -> SubtitleSelection? in
+                switch s {
+                case .off: nil
+                case .embedded(let id), .external(let id): all.contains { $0.id == id } ? s : nil
+                }
+            }
+            // Never turned on here: the preferred language, else the first track.
+            let fallback: SubtitleSelection? = {
+                let lang = subtitleStyle.preferredLanguage
+                if let lang, let t = TrackChoice(languageCode: lang).best(in: all) { return t.isExternal ? .external(t.id) : .embedded(t.id) }
+                return all.first.map { $0.isExternal ? .external($0.id) : .embedded($0.id) }
+            }()
+            if let next = back ?? fallback { selectSubtitle(next) }
+        }
+        return subtitleSelection
+    }
+
+    /// Every line of the main subtitle track, on the subtitle file's clock
+    /// (`subtitleOffset` turns that into the video's), with sound cues left
+    /// out when they're hidden. A file's lines are all known; an embedded
+    /// track's only as far as the engine has read or shown them.
+    public var subtitleCues: [SubtitleCue] {
+        let raw: [SubtitleCue]
+        switch subtitleSelection {
+        case .off: return []
+        case .external: raw = timeline?.cues ?? []
+        case .embedded: raw = engine.embeddedSubtitleCues()
+        }
+        let key = CueKey(selection: subtitleSelection, count: raw.count, first: raw.first, last: raw.last, hides: subtitleStyle.hidesSoundCues)
+        if let cache = cueCache, cache.key == key { return cache.cues }
+        let cues = subtitleStyle.hidesSoundCues ? SoundCues.strip(raw) : raw
+        cueCache = (key, cues)
+        return cues
+    }
+
+    /// True when every line of the main track is known (a file), not just those read so far.
+    public var knowsAllSubtitleCues: Bool {
+        if case .external = subtitleSelection { return timeline != nil }
+        return false
+    }
+
+    /// ⇧← and ⇧→: the start of the previous line (replaying the one just
+    /// heard), or of the next. Returns false when there's no line to go to.
+    @discardableResult
+    public func jumpToLine(next: Bool) async -> Bool {
+        let cues = subtitleCues
+        let now = displayPosition
+        guard let target = next ? SubtitleLines.next(cues, at: now, offset: subtitleOffset)
+                                : SubtitleLines.previous(cues, at: now, offset: subtitleOffset) else { return false }
+        await seek(to: target)
+        return true
+    }
+
+    /// Plays from a line (the Lines page).
+    public func jump(to cue: SubtitleCue) async {
+        await seek(to: max(0, subtitleOffset.playerTime(forCueTime: cue.start) - SubtitleLines.lead))
+    }
+
+    /// Sets the timing in one go (Sync to the Audio).
+    public func applySubtitleOffset(_ offset: SubtitleOffset) {
+        pendingSyncPoint = nil
+        subtitleOffset = offset
+        pushSubtitleDelay()
+        updateSubtitleText()
+    }
+
     /// - Parameter remember: a person chose it: keep the language (or Off) for the next items.
     public func selectSubtitle(_ selection: SubtitleSelection, remember: Bool = true) {
         if remember {
@@ -487,8 +584,8 @@ public final class PlayerSession {
     public var canAdjustSubtitleTiming: Bool {
         switch subtitleSelection {
         case .external: true
-        // VLC delays the tracks it draws itself (spu-delay).
-        case .embedded: snapshot.drawsEmbeddedSubtitles
+        // VLC delays the tracks it draws itself (spu-delay) and the text it hands over.
+        case .embedded: snapshot.drawsEmbeddedSubtitles || snapshot.delaysEmbeddedSubtitles
         case .off: false
         }
     }
@@ -501,11 +598,15 @@ public final class PlayerSession {
 
     private func pushSubtitleDelay() { engine.setEmbeddedSubtitleDelay(subtitleOffset.seconds) }
 
-    /// Shows a second external track alongside the main one (nil turns it off).
+    /// Shows a second track alongside the main one: a file, or an embedded track the engine hands over (nil turns it off).
     public func selectSecondarySubtitle(_ id: String?) {
         secondaryTask?.cancel()
         secondaryTimeline = nil; secondarySubtitleText = nil
         secondarySubtitleID = id
+        // An embedded text track the engine hands over (VLC with MKV) works as a second line too.
+        let embedded = id.flatMap { id in snapshot.embeddedSubtitles.first { $0.id == id && $0.drawnByBluebox } }
+        engine.selectSecondaryEmbeddedSubtitle(embedded?.id)
+        if embedded != nil { updateSubtitleText(); return }
         guard let id, let sub = externalByID[id] else { secondarySubtitleID = nil; return }
         let loader = subtitleLoader
         secondaryTask = Task { [weak self] in
@@ -563,16 +664,45 @@ public final class PlayerSession {
     private func applyPreferredSubtitle() {
         let lang = subtitleStyle.preferredLanguage
         if rememberedSubtitle == nil, let lang {
-            if let t = TrackChoice(languageCode: lang).best(in: externalSubtitles) {
+            let choice = TrackChoice(languageCode: lang)
+            // Files that came with the item (a server's, a folder's) first; the
+            // torrent's only when the video has no track in the language.
+            let bundled = externalSubtitles.filter { externalByID[$0.id]?.isFromTorrent == true }
+            if let t = choice.best(in: externalSubtitles.filter { externalByID[$0.id]?.isFromTorrent != true }) {
                 selectSubtitle(.external(t.id), remember: false)
-            } else if let t = TrackChoice(languageCode: lang).best(in: snapshot.embeddedSubtitles) {
+            } else if let t = choice.best(in: snapshot.embeddedSubtitles) {
                 selectSubtitle(.embedded(t.id), remember: false)
+            } else if let t = choice.best(in: bundled) {
+                // The video's tracks may not be known yet: wait for them before deciding.
+                if snapshot.embeddedSubtitles.isEmpty, snapshot.audioTracks.isEmpty, snapshot.status != .playing {
+                    torrentPickPending = true
+                } else {
+                    selectSubtitle(.external(t.id), remember: false)
+                }
             }
         }
         // The second line follows its setting on every item, even after a manual pick of the first.
         if let second = subtitleStyle.secondaryLanguage, second != lang,
            let t = TrackChoice(languageCode: second).best(in: externalSubtitles) {
             selectSecondarySubtitle(t.id)
+        }
+    }
+
+    /// The torrent's file in the preferred language, once the video's own
+    /// tracks are known: picked unless the video has one in that language.
+    private func resolveTorrentPick() {
+        guard torrentPickPending else { return }
+        let s = snapshot
+        let known = !s.embeddedSubtitles.isEmpty || !s.audioTracks.isEmpty || s.status == .playing
+        guard known else { return }
+        torrentPickPending = false
+        // Someone chose a track meanwhile.
+        guard subtitleSelection == .off, rememberedSubtitle == nil, let lang = subtitleStyle.preferredLanguage else { return }
+        let choice = TrackChoice(languageCode: lang)
+        if let t = choice.best(in: s.embeddedSubtitles) {
+            selectSubtitle(.embedded(t.id), remember: false)
+        } else if let t = choice.best(in: externalSubtitles.filter { externalByID[$0.id]?.isFromTorrent == true }) {
+            selectSubtitle(.external(t.id), remember: false)
         }
     }
 
@@ -597,13 +727,41 @@ public final class PlayerSession {
         if known, s.status == .playing || s.status == .paused { restoreTracksPending = false }
     }
 
+    /// The second line is an embedded track (its text comes from the engine), not a file.
+    private var secondaryIsEmbedded: Bool {
+        guard let id = secondarySubtitleID else { return false }
+        return externalByID[id] == nil
+    }
+
     private func updateSubtitleText() {
-        let text: String?
+        var text: String?
         if case .embedded = subtitleSelection { text = snapshot.embeddedSubtitleText }
         else { text = timeline?.text(at: snapshot.position, offset: subtitleOffset) }
+        var second = secondaryIsEmbedded ? snapshot.secondaryEmbeddedSubtitleText
+            : secondaryTimeline?.text(at: snapshot.position, offset: subtitleOffset)
+        if subtitleStyle.hidesSoundCues {
+            text = text.flatMap(SoundCues.strip)
+            second = second.flatMap(SoundCues.strip)
+        }
         if text != subtitleText { subtitleText = text }
-        let second = secondaryTimeline?.text(at: snapshot.position, offset: subtitleOffset)
         if second != secondarySubtitleText { secondarySubtitleText = second }
+        pushBurnIn()
+    }
+
+    /// The lines Bluebox draws, handed to the engine to draw into the picture
+    /// while Picture in Picture or AirPlay is on. Tracks the engine draws
+    /// itself (styled ASS, pictures) are already in the picture.
+    private func pushBurnIn() {
+        var burnIn: SubtitleBurnIn?
+        if drawsSubtitlesInPicture || snapshot.isExternalPlaybackActive {
+            var primary = subtitleText
+            if case .embedded(let id) = subtitleSelection, snapshot.drawsEmbeddedSubtitles,
+               snapshot.embeddedSubtitles.first(where: { $0.id == id })?.drawnByBluebox != true { primary = nil }
+            burnIn = SubtitleBurnIn(primary: primary, secondary: secondarySubtitleText, style: subtitleStyle)
+        }
+        guard burnIn != lastBurnIn else { return }
+        lastBurnIn = burnIn
+        engine.setSubtitleBurnIn(burnIn)
     }
 
     // MARK: Up next
@@ -688,6 +846,7 @@ public final class PlayerSession {
         if let o = optimisticPlaying, s.status.isActive == o || s.status == .ended || s.status.isFailure
             || (!o && s.status == .paused) { setOptimistic(nil) }
         updateSubtitleText()
+        if torrentPickPending, !isStarting { resolveTorrentPick() }
         if restoreTracksPending, !isStarting, s.audioTracks != old.audioTracks || s.embeddedSubtitles != old.embeddedSubtitles
             || s.status != old.status { restoreRememberedTracks() }
         guard item != nil, !isStarting else { return }

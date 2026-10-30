@@ -13,11 +13,15 @@ import AVFoundation
 /// open: MKV, AVI, WebM and friends, which is most torrent releases.
 ///
 /// Differences from `AVPlayerEngine`:
-/// - Embedded subtitles are rendered by VLC inside the picture, so
-///   `embeddedSubtitleText` stays nil (external subtitles are still drawn by
-///   Bluebox's overlay from the snapshot time). Text tracks take the user's
-///   subtitle style through VLC's text renderer variables, set on the player
-///   (see `VLCTextLook`): size, colour, box, outline and position change live,
+/// - Embedded subtitles are split. In MKV and WebM, SubRip, WebVTT and ASS
+///   with no styled lines are read from the file near the playhead
+///   (`EmbeddedTextFeed`), VLC's own track is turned off, and the text goes
+///   out as `embeddedSubtitleText` for Bluebox's overlay, timed here with
+///   the playhead, the subtitle delay and the rate. Everything else (styled
+///   ASS, PGS, VobSub, DVB, and text tracks in other containers) VLC draws
+///   inside the picture; text tracks among those take the user's subtitle
+///   style through VLC's text renderer variables, set on the player (see
+///   `VLCTextLook`): size, colour, box, outline and position change live,
 ///   the font and shadow from the next video. Nothing reopens the stream.
 /// - No PiP/AirPlay, no buffered-range reporting, no automatic stream rebuild
 ///   (VLC reconnects HTTP itself via `:http-reconnect`).
@@ -77,6 +81,22 @@ public final class VLCEngine: PlaybackEngine {
     /// tracks change, because VLC auto-selects "default" tracks on its own.
     private var desiredSubtitleID: String?
     private var desiredAudioID: String?
+    /// Embedded track shown as the second line (one the overlay draws), nil for none.
+    private var desiredSecondaryID: String?
+    /// Text tracks read from the file for Bluebox's overlay (MKV and WebM), kept
+    /// across a Night Mode reopen of the same file.
+    private var textFeed: EmbeddedTextFeed?
+    private var textFeedURL: URL?
+    /// The file's track behind each VLC subtitle track id (see `feedTrack`).
+    private var fileTracks: [String: MatroskaTrack] = [:]
+    /// The track whose every line has been asked for (`embeddedSubtitleCues`).
+    private var wholeTrackRead: Int?
+    /// The lines drawn into the picture (libVLC's logo overlay) for Picture in Picture.
+    private var burnIn: SubtitleBurnIn?
+    private var burnInFile = 0
+    private var subtitleTask: Task<Void, Never>?
+    /// The snapshot position and when it was taken, to run the subtitle clock between VLC's updates.
+    private var clockMark: (position: TimeInterval, at: ContinuousClock.Instant)?
     /// A seek requested before the media became seekable, or the start point
     /// of media that was just opened (see `mediaOptions`).
     private var pendingSeek: TimeInterval?
@@ -123,11 +143,13 @@ public final class VLCEngine: PlaybackEngine {
         snapshot = PlaybackSnapshot()
         snapshot.outputGeneration = generation
         snapshot.drawsEmbeddedSubtitles = true
+        snapshot.delaysEmbeddedSubtitles = true
         snapshot.status = .loading
         self.resource = resource
         intendedPaused = true  // the session calls play() after load when it wants autoplay
         // A reopen (Night Mode) comes back on the same tracks; a new video starts on VLC's.
-        if reopen == nil { desiredSubtitleID = nil; desiredAudioID = nil }
+        if reopen == nil { desiredSubtitleID = nil; desiredAudioID = nil; desiredSecondaryID = nil }
+        prepareTextFeed(for: resource)
         pendingSeek = nil; ended = false; chaptersLoaded = false
         pendingSeekIsResume = startAt != nil
         resumeLengthDeadline = .now + .seconds(2)
@@ -359,6 +381,14 @@ public final class VLCEngine: PlaybackEngine {
         desiredSubtitleID = trackID.flatMap { id in player.subtitleTracks.contains { $0.id == id } ? id : nil }
         applyTrackSelection()
         snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
+        snapshot.embeddedSubtitleText = nil
+        updateOverlayText()
+    }
+
+    public func selectSecondaryEmbeddedSubtitle(_ trackID: String?) {
+        desiredSecondaryID = trackID
+        snapshot.secondaryEmbeddedSubtitleText = nil
+        updateOverlayText()
     }
 
     // MARK: Volume and audio delay
@@ -428,7 +458,7 @@ public final class VLCEngine: PlaybackEngine {
         }
         appliedLook = look; appliedTo = native
         // Alignment is read when the subtitle decoder starts: restart it on the same track.
-        if let old, old.align != look.align, let id = desiredSubtitleID,
+        if let old, old.align != look.align, let id = desiredSubtitleID, !overlayDraws(id),
            let track = player.subtitleTracks.first(where: { $0.id == id }) {
             player.selectedSubtitleTrack = nil
             player.selectedSubtitleTrack = track
@@ -446,12 +476,15 @@ public final class VLCEngine: PlaybackEngine {
         reloadTask?.cancel(); reloadTask = nil
         reopen = nil
         teardown()
+        textFeed = nil; textFeedURL = nil; fileTracks = [:]; wholeTrackRead = nil
     }
 
     /// Stops what's playing (also the first step of every load, including a reopen's).
     private func teardown() {
         eventTask?.cancel(); eventTask = nil
         tickTask?.cancel(); tickTask = nil
+        subtitleTask?.cancel(); subtitleTask = nil
+        clockMark = nil
         if resource != nil || player.state != .idle { player.stop() }
         resource = nil
         intendedPaused = true
@@ -620,15 +653,13 @@ public final class VLCEngine: PlaybackEngine {
     public func stepFrame(by count: Int) {
         guard resource != nil, count != 0 else { return }
         pause()
-        if count > 0 {
-            for _ in 0..<count { player.nextFrame() }
-            snapshot.position = Self.seconds(player.currentTime)
-        } else {
-            // VLC can only step forward; step back with an exact seek.
-            let fps = player.videoTracks.first(where: \.isSelected)?.frameRate ?? player.videoTracks.first?.frameRate ?? 24
-            let target = max(0, snapshot.position + Double(count) / max(fps, 1))
-            Task { await seek(to: target) }
-        }
+        // An exact seek a frame away, both ways. Not libVLC's next-frame: called
+        // while the pause is still settling, it left the input paused under a
+        // player that said it was playing, so Play never resumed it (the clock
+        // stood still and showed as buffering, even with the whole file in).
+        let fps = player.videoTracks.first(where: \.isSelected)?.frameRate ?? player.videoTracks.first?.frameRate ?? 24
+        let target = max(0, snapshot.position + Double(count) / max(fps, 1))
+        Task { await seek(to: target) }
     }
 
     public func captureFrame() async -> CGImage? {
@@ -672,6 +703,15 @@ public final class VLCEngine: PlaybackEngine {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let self, !Task.isCancelled else { return }
                 self.refresh()
+            }
+        }
+        subtitleTask?.cancel()
+        subtitleTask = Task { [weak self] in
+            // Often enough that a line comes and goes within a frame or two of its time.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let self, !Task.isCancelled else { return }
+                self.updateOverlayText()
             }
         }
     }
@@ -811,9 +851,12 @@ public final class VLCEngine: PlaybackEngine {
             MediaTrack(id: t.id, kind: .audio, label: Self.label(t, index: i), languageCode: t.language)
         }
         if audio != snapshot.audioTracks { snapshot.audioTracks = audio }
-        let subs = player.subtitleTracks.enumerated().map { i, t in
+        let subtitleTracks = player.subtitleTracks
+        rebuildTrackMap(subtitleTracks)
+        let subs = subtitleTracks.enumerated().map { i, t in
             MediaTrack(id: t.id, kind: .subtitle, label: Self.label(t, index: i), languageCode: t.language,
-                       isBitmap: Self.isBitmapSubtitle(codec: t.codecString), format: Self.subtitleFormat(codec: t.codecString))
+                       isBitmap: Self.isBitmapSubtitle(codec: t.codecString), format: Self.subtitleFormat(codec: t.codecString),
+                       drawnByBluebox: overlayDraws(t.id))
         }
         if subs != snapshot.embeddedSubtitles { snapshot.embeddedSubtitles = subs }
         snapshot.selectedAudioID = player.selectedAudioTrack?.id
@@ -825,8 +868,13 @@ public final class VLCEngine: PlaybackEngine {
     /// right never skips the audio (VLC can fall back to the file's default
     /// audio, another language, when tracks change).
     private func applyTrackSelection() {
-        if player.selectedSubtitleTrack?.id != desiredSubtitleID {
-            if let id = desiredSubtitleID {
+        rebuildTrackMap(player.subtitleTracks)
+        // A track Bluebox's overlay draws is off in VLC.
+        let overlay = overlayDraws(desiredSubtitleID)
+        let vlcSubtitleID = overlay ? nil : desiredSubtitleID
+        if snapshot.drawsEmbeddedSubtitles == overlay { snapshot.drawsEmbeddedSubtitles = !overlay }
+        if player.selectedSubtitleTrack?.id != vlcSubtitleID {
+            if let id = vlcSubtitleID {
                 if let track = player.subtitleTracks.first(where: { $0.id == id }) { player.selectedSubtitleTrack = track }
             } else if player.selectedSubtitleTrack != nil {
                 player.selectedSubtitleTrack = nil
@@ -836,6 +884,148 @@ public final class VLCEngine: PlaybackEngine {
            let track = player.audioTracks.first(where: { $0.id == id }) {
             player.selectedAudioTrack = track
         }
+    }
+
+    // MARK: Text tracks drawn by Bluebox
+
+    /// Starts reading the file's text tracks when it may be Matroska (kept for a reopen of the same file).
+    private func prepareTextFeed(for resource: PlaybackResource) {
+        if textFeedURL == resource.url, textFeed != nil { return }
+        textFeed = nil; textFeedURL = nil; fileTracks = [:]
+        let container = (resource.variant.container ?? resource.url.pathExtension).lowercased()
+        guard Self.matroskaContainers.contains(container),
+              let source = byteSource(for: resource.url, headers: resource.httpHeaders) else { return }
+        let feed = EmbeddedTextFeed(source: source)
+        feed.onChange = { [weak self] in self?.textFeedChanged() }
+        textFeed = feed
+        textFeedURL = resource.url
+        feed.start()
+    }
+
+    /// "" is a URL without an extension (some streams): worth a look at its first bytes.
+    static let matroskaContainers: Set<String> = ["mkv", "mk3d", "webm", ""]
+
+    /// The tracks were read, an ASS track's verdict came in, or new lines arrived.
+    private func textFeedChanged() {
+        guard resource != nil else { return }
+        applyTrackSelection()
+        publishTracks()
+        updateOverlayText()
+    }
+
+    /// The file's track behind a VLC subtitle track. VLC lists the file's
+    /// subtitle tracks in their order, after any closed captions it found in
+    /// the video; a list that doesn't line up (or a format that doesn't match)
+    /// leaves every track to VLC.
+    private func feedTrack(for vlcID: String?) -> MatroskaTrack? {
+        vlcID.flatMap { fileTracks[$0] }
+    }
+
+    /// Matches VLC's subtitle tracks to the file's (`fileTracks`), when either list changes.
+    private func rebuildTrackMap(_ tracks: [Track]) {
+        guard let feed = textFeed, !feed.failed, !feed.tracks.isEmpty else {
+            if !fileTracks.isEmpty { fileTracks = [:] }
+            return
+        }
+        let listed = tracks.map { (id: $0.id, format: Self.subtitleFormat(codec: $0.codecString)) }
+        var map: [String: MatroskaTrack] = [:]
+        for t in listed { map[t.id] = Self.matroskaTrack(for: t.id, listed: listed, fileTracks: feed.tracks) }
+        if map != fileTracks { fileTracks = map }
+    }
+
+    static func matroskaTrack(for vlcID: String, listed: [(id: String, format: String?)], fileTracks: [MatroskaTrack]) -> MatroskaTrack? {
+        let own = listed.filter { $0.format != "CC" }
+        guard !fileTracks.isEmpty, own.count == fileTracks.count, let i = own.firstIndex(where: { $0.id == vlcID }) else { return nil }
+        let track = fileTracks[i]
+        guard let codec = track.textCodec else { return track }
+        let expected = switch codec { case .srt: "SRT"; case .webVTT: "WebVTT"; case .ass, .ssa: "ASS" }
+        return own[i].format == expected ? track : nil
+    }
+
+    /// True when Bluebox's overlay draws this VLC track (and VLC doesn't).
+    private func overlayDraws(_ vlcID: String?) -> Bool {
+        guard let feed = textFeed, let track = feedTrack(for: vlcID), track.textCodec != nil else { return false }
+        return feed.verdict(track: track.number) == .bluebox
+    }
+
+    // MARK: Lines for the Lines page, and lines in the picture
+
+    public func embeddedSubtitleCues() -> [SubtitleCue] {
+        guard let feed = textFeed, let track = feedTrack(for: desiredSubtitleID), track.textCodec != nil else { return [] }
+        // A local file can give every line at once; a stream only what's read around the playhead.
+        if wholeTrackRead != track.number, textFeedURL?.isFileURL == true, let duration = snapshot.duration {
+            wholeTrackRead = track.number
+            feed.readAll(track: track.number, until: duration + 1)
+        }
+        return feed.cues(track: track.number)
+    }
+
+    /// Draws the lines into the video itself with libVLC's logo overlay (a
+    /// picture of the block, drawn by `SubtitleBurnIn` in the user's style),
+    /// so Picture in Picture shows them. Positioned in the video's pixels.
+    public func setSubtitleBurnIn(_ burnIn: SubtitleBurnIn?) {
+        guard burnIn != self.burnIn else { return }
+        self.burnIn = burnIn
+        let size = snapshot.presentationSize
+        guard let burnIn, size.width >= 16, let rendered = burnIn.render(frame: size),
+              let png = SubtitleBurnIn.png(rendered.image) else {
+            player.withLogo { $0.isEnabled = false }
+            return
+        }
+        // A new name each time: libVLC reloads the picture when the file setting changes.
+        burnInFile = (burnInFile + 1) % 2
+        let url = FileManager.default.temporaryDirectory.appending(path: "bluebox-subtitle-\(burnInFile).png")
+        guard (try? png.write(to: url)) != nil else {
+            player.withLogo { $0.isEnabled = false }
+            return
+        }
+        let origin = rendered.topLeft
+        player.withLogo { logo in
+            logo.setFile(url.path)
+            logo.position = -1  // x and y in the video's pixels
+            logo.x = Int(origin.x)
+            logo.y = Int(origin.y)
+            logo.opacity = 255
+            logo.isEnabled = true
+        }
+    }
+
+    /// Publishes the overlay's lines for the subtitle clock, and keeps the feed reading around it.
+    private func updateOverlayText() {
+        guard let feed = textFeed, !feed.failed, !feed.tracks.isEmpty, resource != nil else {
+            if snapshot.embeddedSubtitleText != nil { snapshot.embeddedSubtitleText = nil }
+            if snapshot.secondaryEmbeddedSubtitleText != nil { snapshot.secondaryEmbeddedSubtitleText = nil }
+            return
+        }
+        // The file's clock: VLC's delay moves lines later, so look them up earlier.
+        let t = subtitleClock() - subtitleDelay
+        let primary = feedTrack(for: desiredSubtitleID).flatMap { $0.textCodec == nil ? nil : $0 }
+        let secondary = feedTrack(for: desiredSecondaryID).flatMap { $0.textCodec == nil ? nil : $0 }
+        var wanted = Set([primary, secondary].compactMap { $0?.number })
+        // ASS tracks are only known to be plain once some lines are read: one at a
+        // time, so the second-line list can offer them.
+        if wanted.allSatisfy({ feed.verdict(track: $0) != .pending }),
+           let next = feed.tracks.first(where: { $0.textCodec?.isASS == true && feed.verdict(track: $0.number) == .pending }) {
+            wanted.insert(next.number)
+        }
+        feed.follow(tracks: wanted, at: t)
+        func line(_ track: MatroskaTrack?) -> String? {
+            guard let track, feed.verdict(track: track.number) == .bluebox else { return nil }
+            return feed.text(track: track.number, at: t)
+        }
+        let text = line(primary), second = line(secondary)
+        if snapshot.embeddedSubtitleText != text { snapshot.embeddedSubtitleText = text }
+        if snapshot.secondaryEmbeddedSubtitleText != second { snapshot.secondaryEmbeddedSubtitleText = second }
+    }
+
+    /// The playhead between VLC's updates: the last position plus the time
+    /// since, at the playback rate, while playing (never more than half a second on).
+    private func subtitleClock() -> TimeInterval {
+        let now = ContinuousClock.now
+        let position = snapshot.position
+        if clockMark?.position != position { clockMark = (position, now) }
+        guard snapshot.status == .playing, let mark = clockMark else { return position }
+        return mark.position + min(Self.seconds(now - mark.at), 0.5) * Double(snapshot.rate)
     }
 
     /// Picture subtitle codecs (VLC FourCCs): PGS, VobSub, DVB, XSUB, CVD/SVCD.

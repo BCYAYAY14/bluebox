@@ -2,6 +2,38 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.0.15 (30 October 2026)
+
+### Subtitles
+- Bluebox now draws plain subtitle tracks inside MKV and WebM files itself, instead of VLC. They follow every style change straight away, can be dragged and pinched, and can be the second line. Styled ASS (signs, karaoke) and picture subtitles from Blu-rays and DVDs stay with VLC.
+- Subtitle files that come with a torrent are listed under their language, tagged Torrent. One is picked for you when the video has no track in your language.
+- Subtitles show in Picture in Picture and on AirPlay, in your own style.
+- A Lines page beside Style and Timing lists every line with its time. Search it, or click a line to play from there.
+- Sync to the Audio, at the top of Timing, listens to the speech and lines the subtitles up for you, on your device. It asks for speech recognition the first time.
+- Hide Sound Cues, on the Subtitle Style page, leaves out [siren wailing], ♪ lyrics and speaker names.
+- Search Online looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match first. Subdl needs a free key in Settings › Subtitles, where each site can also be turned off.
+- Fixed a dark copy of the first letters showing behind VLC's subtitles.
+
+### Player
+- Skip Intro and Skip Recap show on their own for 8 seconds, then only while the controls are up. Return still skips. Next Episode at the credits is unchanged.
+- On the Mac, a click on the video plays or pauses. Double-click is still full screen.
+- New keys: ⇧← and ⇧→ go to the previous or next subtitle line, C turns subtitles off and back on (crop moves to ⇧C), 0–9 jump to 0–90%, and < > step a frame.
+- Fixed playback sticking on "Buffering" after stepping frame by frame, even with the whole file downloaded.
+
+### Updates (Mac)
+- Checking for, downloading and installing an update happens in place in Settings › About, with no popups. You see the size, What's New, progress with time left, and a clear reason if something fails. A background check shows a blue dot on the profile button instead of interrupting.
+- The updater installs only a Bluebox signed with Bluebox's release certificate, checks the download against GitHub's checksum, and puts the old version back if the new one fails its check.
+
+### Security
+- Sign-in links no longer sign you in. Bluebox doesn't send sign-in emails, so a link like that can only come from someone else.
+- Signing in to a different account asks what happens to this device's library before anything moves.
+- API keys sync between devices only with Sync API Keys on (Settings › Account), which is off by default. Remove Keys from Server deletes them from your Supabase project.
+- Links of add-ons you added by link, which often hold a debrid key, are kept in the Keychain, not in preferences or settings sync.
+- Remote control uses private channels only your account can join. If you run your own Supabase project, run Set Up again (or Check Setup) to add the new policies, then turn off Realtime › Settings › Allow public access.
+- A connect link opened from outside asks before pointing Bluebox at its server.
+- Very large numbers from an add-on can no longer crash the app.
+- SECURITY.md says how to report a vulnerability privately.
+
 ## 1.0.14 (30 October 2026)
 
 ### Mac

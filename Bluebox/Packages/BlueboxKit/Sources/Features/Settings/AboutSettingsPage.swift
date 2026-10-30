@@ -19,7 +19,7 @@ struct AboutSettingsPage: View {
                 .settingsRow("Version")
             }
 
-            UpdateSection()
+            UpdateCard()
 
             Section {
                 Text(app.account.isConfigured

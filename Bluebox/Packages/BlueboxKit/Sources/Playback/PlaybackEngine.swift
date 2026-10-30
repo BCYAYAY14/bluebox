@@ -47,16 +47,21 @@ public struct MediaTrack: Identifiable, Hashable, Sendable {
     /// The subtitle format as people know it ("SRT", "ASS", "PGS"), when known.
     /// Shown beside tracks of the same language so they can be told apart.
     public let format: String?
+    /// An embedded text track the engine hands to Bluebox's overlay (VLC with
+    /// SubRip, WebVTT and unstyled ASS in MKV): drawn in the user's style, and
+    /// usable as the second line.
+    public let drawnByBluebox: Bool
     public init(id: String, kind: Kind, label: String, languageCode: String?, isExternal: Bool = false, isBitmap: Bool = false,
-                format: String? = nil) {
+                format: String? = nil, drawnByBluebox: Bool = false) {
         self.id = id; self.kind = kind; self.label = label; self.languageCode = languageCode; self.isExternal = isExternal
-        self.isBitmap = isBitmap; self.format = format
+        self.isBitmap = isBitmap; self.format = format; self.drawnByBluebox = drawnByBluebox
     }
 
     /// ASS/SSA tracks in the video carry their own fonts, colours and
     /// positions, which the engine draws as the file says. (Bluebox draws
-    /// subtitle files itself, in the user's style.)
-    public var keepsOwnStyle: Bool { !isExternal && format == "ASS" }
+    /// subtitle files itself, in the user's style, and ASS tracks with no
+    /// styled lines.)
+    public var keepsOwnStyle: Bool { !isExternal && format == "ASS" && !drawnByBluebox }
 }
 
 /// Everything the UI needs to render player state, published as one value.
@@ -74,6 +79,9 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     /// Text of the selected embedded subtitle track at the current time, when
     /// the engine hands embedded text to Bluebox to draw (so it can be styled).
     public var embeddedSubtitleText: String?
+    /// Text of the embedded track chosen as the second line
+    /// (`selectSecondaryEmbeddedSubtitle`) at the current time.
+    public var secondaryEmbeddedSubtitleText: String?
     public var chapters: [Chapter] = []
     /// False for HLS, where AVFoundation can't apply picture adjustments.
     public var supportsVideoAdjustments = true
@@ -87,6 +95,11 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     /// True when the engine draws embedded subtitles itself and can delay them
     /// and restyle text tracks (VLC). AVPlayer hands the text to Bluebox instead.
     public var drawsEmbeddedSubtitles = false
+    /// True when `setEmbeddedSubtitleDelay` moves embedded subtitles, whoever
+    /// draws them (VLC: its own tracks and the text it hands to Bluebox).
+    public var delaysEmbeddedSubtitles = false
+    /// AirPlay is showing the video on another screen (AVPlayer).
+    public var isExternalPlaybackActive = false
     public init() {}
 }
 
@@ -108,6 +121,8 @@ public protocol PlaybackEngine: AnyObject {
     func setRate(_ rate: Float)
     func selectAudio(_ trackID: String?)
     func selectEmbeddedSubtitle(_ trackID: String?)
+    /// An embedded track to show as the second line (one with `drawnByBluebox`), nil for none.
+    func selectSecondaryEmbeddedSubtitle(_ trackID: String?)
     func stop()
     /// Applies brightness/contrast/etc. A no-op where unsupported.
     func setVideoAdjustments(_ adjustments: VideoAdjustments)
@@ -133,14 +148,24 @@ public protocol PlaybackEngine: AnyObject {
     func setAudioDelay(_ seconds: TimeInterval)
     /// True when `setAudioDelay` does something (VLC).
     var supportsAudioDelay: Bool { get }
+    /// Lines to draw into the picture itself (Picture in Picture, AirPlay),
+    /// nil for none. Called whenever the line or the style changes.
+    func setSubtitleBurnIn(_ burnIn: SubtitleBurnIn?)
+    /// The lines of the selected embedded text track the engine knows so far,
+    /// on the file's clock (VLC: read from the file around the playhead;
+    /// AVPlayer: the ones shown so far). For the Lines page and ⇧← ⇧→.
+    func embeddedSubtitleCues() -> [SubtitleCue]
 }
 
 public extension PlaybackEngine {
+    func selectSecondaryEmbeddedSubtitle(_ trackID: String?) {}
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {}
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {}
     func setVolume(_ volume: Float, muted: Bool) {}
     func setAudioDelay(_ seconds: TimeInterval) {}
     var supportsAudioDelay: Bool { false }
+    func setSubtitleBurnIn(_ burnIn: SubtitleBurnIn?) {}
+    func embeddedSubtitleCues() -> [SubtitleCue] { [] }
 }
 
 /// Engine details for the info panel. Every field is optional because each

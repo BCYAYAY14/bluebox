@@ -1,4 +1,5 @@
 import DesignSystem
+import Metadata
 import SwiftUI
 
 struct OpenSubtitlesSection: View {
@@ -45,5 +46,57 @@ struct OpenSubtitlesSection: View {
         working = true; message = nil
         defer { working = false }
         do { try await body() } catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
+    }
+}
+
+/// Search Online's sites: each on or off, and Subdl's key.
+struct SubtitleSitesSection: View {
+    @Environment(AppModel.self) private var app
+    @State private var key = ""
+    @State private var message: String?
+    @State private var working = false
+
+    var body: some View {
+        Section {
+            ForEach(SubtitleSite.allCases) { site in
+                Toggle(isOn: Binding(get: { app.enabledSubtitleSites.contains(site) },
+                                     set: { app.setSubtitleSite(site, enabled: $0) })) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(site.title)
+                        if let note = note(site) { Text(note).font(.caption).foregroundStyle(Palette.textSecondary) }
+                    }
+                }
+            }
+            .settingsRow("Search Online Sites")
+            if app.hasSubdlKey {
+                Button("Remove Subdl Key", role: .destructive) { app.removeSubdlKey() }
+            } else {
+                SecureField("Subdl API Key", text: $key).textContentType(.password)
+                    .settingsRow("Subdl API Key")
+                Button(working ? "Checking…" : "Save Subdl Key") { Task { await saveKey() } }
+                    .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty || working)
+            }
+            if let message { Text(message).font(.footnote).foregroundStyle(Palette.warning) }
+        } header: {
+            Text("Search Online")
+        } footer: {
+            Text("Search Online asks every site that's on at once and shows one list, the best match for the release first. Subdl needs a free API key from subdl.com › Panel › API.")
+        }
+    }
+
+    private func note(_ site: SubtitleSite) -> String? {
+        switch site {
+        case .openSubtitles: app.hasOpenSubtitlesKey ? nil : "Needs the API key above"
+        case .subdl: app.hasSubdlKey ? nil : "Needs an API key"
+        case .podnapisi: nil
+        case .jellyfin: app.canAsk(.jellyfin) || !app.enabledSubtitleSites.contains(.jellyfin) ? nil : "Add a Jellyfin server in Sources"
+        }
+    }
+
+    private func saveKey() async {
+        working = true; message = nil
+        defer { working = false }
+        do { try await app.saveSubdlKey(key); key = "" }
+        catch { message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
     }
 }

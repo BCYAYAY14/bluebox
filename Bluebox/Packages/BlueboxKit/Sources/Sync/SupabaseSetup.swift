@@ -242,11 +242,15 @@ public struct SupabaseProjectReport: Equatable, Sendable {
     public var confirmEmailRequired: Bool
     /// Set up before account settings: the library syncs, keys and settings don't.
     public var settingsTableMissing: Bool
+    /// Set up before private Realtime channels: remote control and instant sync
+    /// can't join until the realtime.messages policies are added.
+    public var realtimePrivateMissing: Bool
 
     public init(emailEnabled: Bool = true, signupsDisabled: Bool = false, confirmEmailRequired: Bool = false,
-                settingsTableMissing: Bool = false) {
+                settingsTableMissing: Bool = false, realtimePrivateMissing: Bool = false) {
         self.emailEnabled = emailEnabled; self.signupsDisabled = signupsDisabled
         self.confirmEmailRequired = confirmEmailRequired; self.settingsTableMissing = settingsTableMissing
+        self.realtimePrivateMissing = realtimePrivateMissing
     }
 
     /// Things the user should fix in the dashboard, or empty.
@@ -260,6 +264,9 @@ public struct SupabaseProjectReport: Equatable, Sendable {
         }
         if settingsTableMissing {
             w.append("API keys, add-ons and settings don't sync yet: this server is missing a newer table. Set it up again with an access token (it adds only what's missing), or run Backend/supabase/migrations/20261029000000_account_settings.sql in the SQL Editor.")
+        }
+        if realtimePrivateMissing {
+            w.append("Remote control and instant sync are off: this server doesn't have Bluebox's private-channel rules yet. Set it up again with an access token, or run Backend/supabase/migrations/20261030000000_realtime_private.sql in the SQL Editor. Then turn off Realtime › Settings › Allow public access.")
         }
         return w
     }
@@ -291,7 +298,17 @@ public enum SupabaseProjectProbe {
         if try await tableMissing("watch_progress", config, http) { throw SupabaseSetupError.tablesMissing }
         if try await tableMissing("profiles", config, http) { throw SupabaseSetupError.tablesOutdated }
         report.settingsTableMissing = try await tableMissing("account_settings", config, http)
+        report.realtimePrivateMissing = try await functionMissing("bluebox_realtime_private", config, http)
         return report
+    }
+
+    /// A function PostgREST doesn't know answers 404 with PGRST202.
+    static func functionMissing(_ name: String, _ config: SupabaseConfig, _ http: any HTTPClient) async throws -> Bool {
+        let (data, status) = try await get(config, "rest/v1/rpc/\(name)", timeout: 15, http: http)
+        let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? String
+        if code == "PGRST202" || status == 404 { return true }
+        if status >= 500 { throw SupabaseSetupError.server(status) }
+        return false
     }
 
     /// PostgREST says "no such table" with 404 and PGRST205 (or 42P01 on older

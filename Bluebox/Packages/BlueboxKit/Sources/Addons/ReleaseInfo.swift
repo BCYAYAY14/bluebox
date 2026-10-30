@@ -9,6 +9,7 @@
 //  languages, release group, size and seeders.
 //
 
+import Domain
 import Foundation
 
 /// What a release is, as far as its name and the add-on's text say.
@@ -445,7 +446,12 @@ public enum ReleaseNameParser {
         return stats
     }
 
+    /// The largest size believed: 1 PiB. Anything bigger is a typo or a hostile
+    /// add-on, and is ignored rather than allowed to overflow later arithmetic.
+    public static let maxSizeBytes: Int64 = 1 << 50
+
     /// Binary units: add-ons print sizes from byte counts divided by 1024.
+    /// Nil past `maxSizeBytes`.
     static func bytes(_ number: String, _ unit: String) -> Int64? {
         guard let value = Double(number.replacingOccurrences(of: ",", with: ".")) else { return nil }
         let scale: Double = switch unit.lowercased() {
@@ -454,7 +460,7 @@ public enum ReleaseNameParser {
         case "mb", "mib": 1_048_576
         default: 1_024
         }
-        return Int64(value * scale)
+        return SafeNumber.int64(roundingDown: value * scale, in: 0...maxSizeBytes)
     }
 
     static func sizeText(_ number: String, _ unit: String) -> String {

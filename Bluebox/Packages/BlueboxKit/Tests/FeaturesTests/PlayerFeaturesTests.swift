@@ -89,6 +89,29 @@ import Testing
         #expect(c.accept() == .playNext)
     }
 
+    @Test func skipIntroShowsAloneAtFirstThenWithTheControls() async {
+        let c = await controller([SkipSegment(kind: .intro, start: 60, end: 120, source: .chapters)])
+        c.shownAlone = 0.2
+        _ = c.update(position: 61, duration: 1400, introMode: .button, creditsMode: .button, hasNext: true,
+                     enabled: true, isScrubbing: false)
+        #expect(c.freshSince != nil)
+        #expect(c.pillShown(controlsShown: false))
+        try? await Task.sleep(for: .seconds(1))
+        #expect(c.freshSince == nil)
+        #expect(!c.pillShown(controlsShown: false))
+        #expect(c.pillShown(controlsShown: true))
+        // Still there to skip with Return while hidden.
+        #expect(c.offer != nil)
+    }
+
+    @Test func nextEpisodeStaysWithoutTheControls() async {
+        let c = await controller([SkipSegment(kind: .credits, start: 1300, end: nil, source: .chapters)])
+        _ = c.update(position: 1305, duration: 1400, introMode: .button, creditsMode: .button, hasNext: true,
+                     enabled: true, isScrubbing: false)
+        #expect(c.freshSince == nil)
+        #expect(c.pillShown(controlsShown: false))
+    }
+
     @Test func watchCreditsDismisses() async {
         let c = await controller([SkipSegment(kind: .credits, start: 1300, end: nil, source: .chapters)])
         _ = c.update(position: 1305, duration: 1400, introMode: .button, creditsMode: .button, hasNext: true,

@@ -63,6 +63,9 @@ enum SettingsSearchIndex {
         .init(title: "Subtitle Style", page: .subtitles, section: "Appearance", keywords: ["font", "size", "colour", "color", "outline", "shadow", "background", "position", "preset", "italic", "weight", "alignment"]),
         .init(title: "OpenSubtitles API Key", page: .subtitles, section: "Subtitle Search", keywords: ["search", "download"]),
         .init(title: "Search Automatically", page: .subtitles, section: "Subtitle Search", keywords: ["opensubtitles", "auto"]),
+        .init(title: "Subdl API Key", page: .subtitles, section: "Search Online", keywords: ["subdl", "subtitle sites", "search"]),
+        .init(title: "Search Online Sites", page: .subtitles, section: "Search Online",
+              keywords: ["opensubtitles", "subdl", "podnapisi", "jellyfin", "subtitle sites"]),
         // Picture
         .init(title: "Brightness", page: .picture, section: "Every Video Starts With", keywords: ["picture", "video", "dark", "light"]),
         .init(title: "Contrast", page: .picture, section: "Every Video Starts With", keywords: ["picture", "video"]),

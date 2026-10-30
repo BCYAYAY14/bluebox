@@ -20,6 +20,7 @@
 //    deadlines about 30 s of playback ahead of the playhead.
 //
 
+import Domain
 import Foundation
 #if canImport(LibTorrentEngine)
 import LibTorrentEngine
@@ -82,6 +83,22 @@ public struct TorrentCandidate: Sendable, Equatable {
         self.magnet = magnet
         self.fileIndex = fileIndex
         self.episode = episode
+    }
+}
+
+/// A subtitle file bundled in the torrent beside the video ("Subs/English.srt"),
+/// copied out once its pieces are in.
+public struct TorrentSubtitleFile: Sendable, Equatable {
+    /// Path inside the torrent.
+    public var path: String
+    /// A local copy of the file.
+    public var url: URL
+    public var name: SubtitleFileName
+    /// "srt", "ass", "vtt".
+    public var format: String
+
+    public init(path: String, url: URL, name: SubtitleFileName, format: String) {
+        self.path = path; self.url = url; self.name = name; self.format = format
     }
 }
 
@@ -245,11 +262,16 @@ public actor TorrentStreamer {
         try await start(candidates: [TorrentCandidate(magnet: magnet, fileIndex: fileIndex)], status: status).url
     }
 
+    /// How long past the prebuffer the bundled subtitle files may take.
+    static let subtitleGrace: Duration = .seconds(4)
+
     /// Fetches the candidates' metadata at the same time and streams the first
     /// that answers (preferring earlier ones that answer within a moment of it).
-    /// Returns the URL and the index of the candidate that plays.
+    /// Returns the URL, the index of the candidate that plays, and the
+    /// subtitle files bundled with the video that arrived by then.
     public func start(candidates: [TorrentCandidate],
-                      status: @escaping @Sendable (TorrentStreamStatus) -> Void) async throws -> (url: URL, chosen: Int) {
+                      status: @escaping @Sendable (TorrentStreamStatus) -> Void) async throws
+        -> (url: URL, chosen: Int, subtitles: [TorrentSubtitleFile]) {
         #if canImport(LibTorrentEngine)
         var parsed: [Entry] = []
         var seen = Set<String>()
@@ -298,14 +320,22 @@ public actor TorrentStreamer {
                 guard let stream else { return false }
                 return stream.span.haveBytes(in: range, have: stream.pieceSnapshot()) >= Int64(range.count)
             }))
+        // Bundled subtitle files are tiny: fetched alongside the prebuffer.
+        let subtitleFetch = Task { await Self.fetchSubtitles(for: stream) }
         do {
             try Task.checkCancellation()
             status(.starting(chosen: winner))
             try await prebuffer(stream, settings: settings, status: status)
             try Task.checkCancellation()
         } catch {
+            subtitleFetch.cancel()
             await stop()
             throw error
+        }
+        let subtitles = await Self.awaiting(subtitleFetch, upTo: Self.subtitleGrace) ?? []
+        if !subtitles.isEmpty {
+            metrics.event("subtitles", ["count": subtitles.count])
+            torrentLog.notice("stream: \(subtitles.count) subtitle file(s) in the torrent")
         }
         let readyAt = Date().timeIntervalSince(began)
         active?.readyAt = readyAt
@@ -316,7 +346,7 @@ public actor TorrentStreamer {
             guard let self else { return }
             await self.sampleLoop()
         }
-        return (url, winner)
+        return (url, winner, subtitles)
         #else
         throw TorrentStreamError.unavailableOnThisPlatform
         #endif
@@ -408,6 +438,56 @@ public actor TorrentStreamer {
     /// How long a better-ranked candidate gets to catch up once a worse one has answered.
     private static let raceGrace: TimeInterval = 1.0
 
+    static let maxSubtitleFiles = 40
+
+    /// Copies the stream's bundled subtitle files out of the torrent as their
+    /// pieces arrive (each read waits for its piece, with a deadline).
+    static func fetchSubtitles(for stream: TorrentStream) async -> [TorrentSubtitleFile] {
+        let files = stream.subtitleFiles
+        guard !files.isEmpty else { return [] }
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "bluebox-torrent-subtitles", directoryHint: .isDirectory)
+            .appending(path: stream.key, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let videoStem = (stream.fileName as NSString).deletingPathExtension
+        return await withTaskGroup(of: TorrentSubtitleFile?.self) { group in
+            for (i, f) in files.enumerated() {
+                group.addTask {
+                    let part = TorrentStream(handle: stream.handle, file: f.entry, offset: f.offset)
+                    let reader = UUID()
+                    var data = Data()
+                    do {
+                        while Int64(data.count) < part.length {
+                            let chunk = try await part.read(offset: Int64(data.count), maxLength: 1 << 20, reader: reader)
+                            if chunk.isEmpty { break }
+                            data.append(chunk)
+                        }
+                    } catch { return nil }
+                    // Several "English.srt" in different folders: numbered so none overwrites another.
+                    let url = folder.appending(path: "\(i)-\(f.entry.name)")
+                    guard (try? data.write(to: url)) != nil else { return nil }
+                    return TorrentSubtitleFile(path: f.entry.path, url: url, name: SubtitleFileName(f.entry.name, videoStem: videoStem),
+                                               format: f.entry.fileExtension)
+                }
+            }
+            var out: [TorrentSubtitleFile] = []
+            for await file in group { if let file { out.append(file) } }
+            return out.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        }
+    }
+
+    /// The task's value if it finishes within `limit`; nil (and cancelled) otherwise.
+    static func awaiting<T: Sendable>(_ task: Task<T, Never>, upTo limit: Duration) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await task.value }
+            group.addTask { try? await Task.sleep(for: limit); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            if first == nil { task.cancel() }
+            return first
+        }
+    }
+
     /// Adds every candidate, waits for metadata, keeps the winner's chosen
     /// file and releases the rest.
     private func race(_ entries: [Entry], settings: TorrentStreamSettings,
@@ -485,8 +565,14 @@ public actor TorrentStreamer {
         let preferred = entry.fileIndex ?? entry.magnet.selectedFiles.flatMap { $0.count == 1 ? $0.first : nil }
         guard let file = FileSelection.choose(files, preferred: preferred, episode: entry.episode),
               let offset = handle.files.first(where: { $0.index == file.index })?.offset else { return nil }
-        handle.setFilePriorities([NSNumber(value: file.index): NSNumber(value: Self.streamPriority)], user: user)
+        let subtitles = FileSelection.subtitles(for: file, in: files).prefix(Self.maxSubtitleFiles)
+        var priorities = [NSNumber(value: file.index): NSNumber(value: Self.streamPriority)]
+        for s in subtitles { priorities[NSNumber(value: s.index)] = NSNumber(value: Self.streamPriority) }
+        handle.setFilePriorities(priorities, user: user)
         let stream = TorrentStream(handle: handle, file: file, offset: offset)
+        stream.subtitleFiles = subtitles.compactMap { s in
+            handle.files.first(where: { $0.index == s.index }).map { (entry: s, offset: $0.offset) }
+        }
         let head = max(settings.minimumPrebufferBytes, stream.span.pieceLength)
         stream.requestStart(headBytes: head, tail: MediaLayout.unknown(fileLength: file.size, fallbackTail: 1024 * 1024).tail)
         StreamCache.touch(handle.infoHash)

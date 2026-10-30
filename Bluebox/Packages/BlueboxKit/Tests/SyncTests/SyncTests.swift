@@ -98,6 +98,7 @@ import TestingSupport
         let store: LibraryStore
         let engine: SyncEngine
         let auth: SupabaseAuth
+        var prefs: PreferencesStore? = nil
     }
 
     func device(_ server: FakeSupabase, username: String = "brian") async throws -> Device {
@@ -105,7 +106,8 @@ import TestingSupport
         let prefs = PreferencesStore(defaults: UserDefaults(suiteName: "sync.test.\(UUID().uuidString)")!)
         let auth = SupabaseAuth(config: FakeSupabase.config, http: server, secrets: MemorySecretStore())
         _ = try await auth.signIn(username: username, password: FakeSupabase.password)
-        return Device(store: store, engine: SyncEngine(auth: auth, config: FakeSupabase.config, http: server, store: store, prefs: prefs), auth: auth)
+        return Device(store: store, engine: SyncEngine(auth: auth, config: FakeSupabase.config, http: server, store: store, prefs: prefs),
+                      auth: auth, prefs: prefs)
     }
 
     let movie = Title(key: .movie(tmdbID: 1), kind: .movie, name: "One")
@@ -212,20 +214,63 @@ import TestingSupport
         #expect(server.count("POST /auth/v1/token") == 2)  // the sign-in, then one refresh
     }
 
-    @Test func newAccountUploadsWholeLocalLibrary() async throws {
+    /// Security review BB-01: a device that synced with one account moves
+    /// nothing into another until the user chooses.
+    @Test func anotherAccountGetsNothingUntilTheUserChooses() async throws {
         let server = FakeSupabase()
         let a = try await device(server)
         try await a.store.save(.fixture(movie.key, 600, at: 1_000))
+        try await a.store.setWatchlisted(show, true)
         try await a.engine.sync()
-        #expect(try await a.store.pendingUploads().isEmpty)
 
         await a.auth.signOut()
-        _ = try await a.auth.signIn(username: "other", password: FakeSupabase.password)
-        #expect(try await a.engine.sync().uploaded == 1)
+        let other = try await a.auth.signIn(username: "other", password: FakeSupabase.password)
+        await #expect(throws: SyncError.accountChanged(previous: "user-brian@bluebox.invalid")) { try await a.engine.sync() }
+        let check = try await device(server, username: "other")
+        try await check.engine.sync()
+        #expect(try await check.store.progress(for: movie.key) == nil)
+        #expect(try await check.store.watchlist().isEmpty)
 
+        // Chosen: add this device's library.
+        SyncEngine.approve(user: other.userID, prefs: a.prefs!)
+        #expect(try await a.engine.sync().uploaded == 2)
+        try await check.engine.sync()
+        #expect(try await check.store.progress(for: movie.key)?.position == 600)
+    }
+
+    @Test func choosingTheAccountsLibraryUploadsNothingFromThisDevice() async throws {
+        let server = FakeSupabase()
         let other = try await device(server, username: "other")
+        try await other.store.save(.fixture(.movie(tmdbID: 9), 60, at: 1_000))
         try await other.engine.sync()
-        #expect(try await other.store.progress(for: movie.key)?.position == 600)
+
+        let a = try await device(server)
+        try await a.store.save(.fixture(movie.key, 600, at: 1_000))
+        try await a.engine.sync()
+        await a.auth.signOut()
+        let session = try await a.auth.signIn(username: "other", password: FakeSupabase.password)
+        await #expect(throws: SyncError.accountChanged(previous: "user-brian@bluebox.invalid")) { try await a.engine.sync() }
+
+        try await a.store.eraseLibrary()
+        SyncEngine.adopt(user: session.userID, profileIDs: [], prefs: a.prefs!)
+        #expect(try await a.engine.sync().uploaded == 0)
+        #expect(try await a.store.progress(for: .movie(tmdbID: 9))?.position == 60)
+        #expect(try await a.store.progress(for: movie.key) == nil)
+        try await other.engine.sync()
+        #expect(try await other.store.progress(for: movie.key) == nil)
+    }
+
+    @Test func aDeviceThatNeverSyncedBringsItsLibraryIn() async throws {
+        let server = FakeSupabase()
+        let a = try await device(server)
+        try await a.store.save(.fixture(movie.key, 600, at: 1_000))
+        #expect(SyncEngine.previousAccount(a.prefs!) == nil)
+        #expect(try await a.engine.sync().uploaded == 1)
+        #expect(SyncEngine.previousAccount(a.prefs!) == "user-brian@bluebox.invalid")
+        // The same account again: no question.
+        await a.auth.signOut()
+        _ = try await a.auth.signIn(username: "brian", password: FakeSupabase.password)
+        try await a.engine.sync()
     }
 
     @Test func pullQueryQuotesCursorValues() async throws {

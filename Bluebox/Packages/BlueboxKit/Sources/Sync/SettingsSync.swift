@@ -12,6 +12,11 @@ import Persistence
 /// Values already on a device the first time it syncs are stamped with the
 /// epoch, so an account's settings win over a fresh device's, and a device's
 /// own keys reach an account that has none yet.
+///
+/// Keychain values (API keys, add-on links) sync only for an account that has
+/// Sync API Keys on (`keysEnabled(for:)`, off by default and per account, so a
+/// different account never receives them without its own yes). While it's off
+/// their changes are still stamped, so turning it on uploads the newest.
 public final class SettingsSync: @unchecked Sendable {
     struct Entry: Codable, Equatable {
         var updatedAt: Date
@@ -26,12 +31,19 @@ public final class SettingsSync: @unchecked Sendable {
     let profileKeySuffixes: [String]
     /// Keychain accounts that sync, as `secret.<account>` rows.
     let secretAccounts: Set<String>
+    /// Keychain account prefixes that sync too (add-on links, `addon.<id>`).
+    let secretAccountPrefixes: [String]
+    /// The accounts under those prefixes that exist now, for `adoptExisting`
+    /// (the Keychain can't be listed).
+    public var currentPrefixedSecretAccounts: (@Sendable () -> [String])?
 
     private let prefs: PreferencesStore
     private let secrets: any SecretStore
     private let lock = NSLock()
     private var entries: [String: Entry]
     private var suppressed = 0
+    /// The account being synced (`SyncEngine` sets it each pass).
+    private var user: String?
     private let now: @Sendable () -> Date
 
     /// A local change was recorded: sync soon.
@@ -42,10 +54,43 @@ public final class SettingsSync: @unchecked Sendable {
     static let profilePrefix = "bluebox.profile."
 
     public init(prefs: PreferencesStore, secrets: any SecretStore, preferenceKeys: Set<String>,
-                profileKeySuffixes: [String], secretAccounts: Set<String>, now: @escaping @Sendable () -> Date = { Date() }) {
+                profileKeySuffixes: [String], secretAccounts: Set<String>, secretAccountPrefixes: [String] = [],
+                now: @escaping @Sendable () -> Date = { Date() }) {
         self.prefs = prefs; self.secrets = secrets; self.now = now
         self.preferenceKeys = preferenceKeys; self.profileKeySuffixes = profileKeySuffixes; self.secretAccounts = secretAccounts
+        self.secretAccountPrefixes = secretAccountPrefixes
         entries = prefs.value([String: Entry].self, for: Self.ledgerKey) ?? [:]
+    }
+
+    // MARK: Sync API Keys
+
+    static func keysEnabledKey(_ user: String) -> String { "bluebox.settingsSync.keys.\(user.lowercased())" }
+
+    /// Whether this account has Sync API Keys on. Off until turned on for it.
+    public func keysEnabled(for user: String) -> Bool {
+        prefs.value(Bool.self, for: Self.keysEnabledKey(user)) ?? false
+    }
+
+    public func setKeysEnabled(_ on: Bool, for user: String) {
+        prefs.set(on, for: Self.keysEnabledKey(user))
+        if on { onLocalChange?() }
+    }
+
+    /// Called by `SyncEngine` at the start of each settings pass.
+    func begin(user: String) { lock.withLock { self.user = user } }
+
+    private var keysEnabledNow: Bool {
+        guard let user = lock.withLock({ user }) else { return false }
+        return keysEnabled(for: user)
+    }
+
+    /// Forgets when each Keychain value was stamped, after they were removed
+    /// from the server, so turning Sync API Keys on later uploads them again.
+    func forgetSecretStamps() {
+        lock.withLock {
+            entries = entries.filter { !$0.key.hasPrefix(Self.secretPrefix) }
+            saveLocked()
+        }
     }
 
     // MARK: Which keys
@@ -56,13 +101,19 @@ public final class SettingsSync: @unchecked Sendable {
         return profileKeySuffixes.contains { key.hasSuffix($0) }
     }
 
+    func syncsSecret(_ account: String) -> Bool {
+        secretAccounts.contains(account) || secretAccountPrefixes.contains { account.hasPrefix($0) && account.count > $0.count }
+    }
+
     /// The row key for a Keychain account, or nil if it doesn't sync.
     func remoteKey(secret account: String) -> String? {
-        secretAccounts.contains(account) ? Self.secretPrefix + account : nil
+        syncsSecret(account) ? Self.secretPrefix + account : nil
     }
 
     private func isSynced(_ remoteKey: String) -> Bool {
-        if remoteKey.hasPrefix(Self.secretPrefix) { return secretAccounts.contains(String(remoteKey.dropFirst(Self.secretPrefix.count))) }
+        if remoteKey.hasPrefix(Self.secretPrefix) {
+            return keysEnabledNow && syncsSecret(String(remoteKey.dropFirst(Self.secretPrefix.count)))
+        }
         return syncsPreference(remoteKey)
     }
 
@@ -120,8 +171,11 @@ public final class SettingsSync: @unchecked Sendable {
 
     /// Stamps values that were on this device before it synced settings (epoch, so the account's win).
     func adoptExisting() {
-        let keys = Set(preferenceKeys).union(prefs.keys(withPrefix: Self.profilePrefix).filter(syncsPreference))
-            .union(secretAccounts.map { Self.secretPrefix + $0 })
+        var keys = Set(preferenceKeys).union(prefs.keys(withPrefix: Self.profilePrefix).filter(syncsPreference))
+        if keysEnabledNow {
+            let accounts = secretAccounts.union((currentPrefixedSecretAccounts?() ?? []).filter(syncsSecret))
+            keys.formUnion(accounts.map { Self.secretPrefix + $0 })
+        }
         lock.withLock {
             var changed = false
             for key in keys where entries[key] == nil {
@@ -134,8 +188,10 @@ public final class SettingsSync: @unchecked Sendable {
     }
 
     /// Keys waiting to upload, with their current values (nil: removed).
+    /// Keychain values only while this account has Sync API Keys on.
     func pending() -> [SettingRow] {
-        let waiting = lock.withLock { entries.filter(\.value.needsSync) }
+        let keys = keysEnabledNow
+        let waiting = lock.withLock { entries.filter { $0.value.needsSync && (keys || !$0.key.hasPrefix(Self.secretPrefix)) } }
         return waiting.map { key, entry in
             let value = localValue(key)
             return SettingRow(key: key, value: value, is_removed: value == nil, updated_at: SyncTimestamp(entry.updatedAt).iso)

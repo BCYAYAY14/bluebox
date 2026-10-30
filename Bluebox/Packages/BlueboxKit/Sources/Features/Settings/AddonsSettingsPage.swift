@@ -10,18 +10,24 @@
 
 import Addons
 import DesignSystem
+import Persistence
 import SwiftUI
 
 extension AppModel {
     /// Removes an add-on at once, with Undo in a toast that puts it back where it was.
     func removeAddonUndoably(_ addon: InstalledAddon) {
         let index = addonSettings.addons.firstIndex { $0.id == addon.id }
+        let link = addonSettings.customLinks[addon.id]
         removeAddon(addon.id)
         showToast(AppToast("Removed \(addon.name)", actionTitle: "Undo") { [weak self] in
             guard let self else { return }
             var s = self.addonSettings
             guard !s.addons.contains(where: { $0.id == addon.id }) else { return }
             s.addons.insert(addon, at: min(index ?? s.addons.count, s.addons.count))
+            if let link {
+                try? self.secrets.write(link, for: SecretAccount.addonLink(addon.id))
+                s.customLinks[addon.id] = link
+            }
             self.setAddonSettings(s)
         })
     }
@@ -33,6 +39,10 @@ struct AddonsSettingsPage: View {
     @State private var link = ""
     @State private var adding = false
     @State private var addResult: (ok: Bool, message: String)?
+    /// An add-on whose link is being pasted (it came from another device without it).
+    @State private var linkFor: InstalledAddon?
+    @State private var pastedLink = ""
+    @State private var linkResult: (ok: Bool, message: String)?
 
     var body: some View {
         let settings = app.addonSettings
@@ -42,10 +52,27 @@ struct AddonsSettingsPage: View {
                     Text("No add-ons. Add one below.").foregroundStyle(Palette.textSecondary)
                 }
                 ForEach(settings.addons) { addon in
-                    AddonSettingsRow(addon: addon, health: health[addon.id],
-                                     isOn: Binding { addon.isEnabled } set: { app.setAddon(addon.id, enabled: $0) })
+                    if settings.needsLink(addon) {
+                        Button { pastedLink = ""; linkFor = addon } label: {
+                            HStack(spacing: Spacing.m) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(addon.name).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                                    Text("\(addon.hostLabel) · Its link isn't on this device").font(.caption)
+                                        .foregroundStyle(Palette.textSecondary).lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                                Text("Paste Link").foregroundStyle(Palette.brandBright)
+                            }
+                        }
                         .contextMenu { menu(addon) }
+                        .accessibilityIdentifier("pasteAddonLink")
+                    } else {
+                        AddonSettingsRow(addon: addon, health: health[addon.id],
+                                         isOn: Binding { addon.isEnabled } set: { app.setAddon(addon.id, enabled: $0) })
+                            .contextMenu { menu(addon) }
+                    }
                 }
+                if let linkResult { SettingsStatus(ok: linkResult.ok, message: linkResult.message) }
                 if settings.addons.count > 1 {
                     SettingsLink("Order and Remove", value: nil) { AddonOrderPage() }
                         .settingsRow("Add-on Order")
@@ -53,7 +80,9 @@ struct AddonsSettingsPage: View {
             } header: {
                 Text("Your Add-ons")
             } footer: {
-                Text("Every add-on that's on is asked at once; a slow one is skipped for a few minutes after repeated timeouts. When two releases are equally good, the add-on higher in the list wins.")
+                Text((settings.addons.contains(where: settings.needsLink)
+                      ? "Add-ons added by link keep their link in this device's Keychain, and it follows to your other devices only with Sync API Keys on (Settings › Account). "
+                      : "") + "Every add-on that's on is asked at once; a slow one is skipped for a few minutes after repeated timeouts. When two releases are equally good, the add-on higher in the list wins.")
             }
 
             Section {
@@ -78,7 +107,7 @@ struct AddonsSettingsPage: View {
             } header: {
                 Text("Add by Link")
             } footer: {
-                Text("Paste the link an add-on's configure page gives you (Install, or Copy Link). Bluebox reads its manifest and adds it if it offers streams for movies or series. The link can contain your settings for that add-on, so it's only shown by its host.")
+                Text("Paste the link an add-on's configure page gives you (Install, or Copy Link). Bluebox reads its manifest and adds it if it offers streams for movies or series. The link can contain your settings for that add-on, often a debrid key, so it's kept in the Keychain and only shown by its host.")
             }
 
             if !settings.availablePresets.isEmpty {
@@ -102,6 +131,25 @@ struct AddonsSettingsPage: View {
                     Text("Presets are set up from your debrid service and release settings, so changing those updates them.")
                 }
             }
+        }
+        .alert("Paste \(linkFor?.name ?? "the Add-on")'s Link", isPresented: Binding(get: { linkFor != nil }, set: { if !$0 { linkFor = nil } })) {
+            TextField("Add-on link", text: $pastedLink)
+                .autocorrectionDisabled()
+            Button("Add Link") {
+                guard let addon = linkFor else { return }
+                let text = pastedLink
+                Task {
+                    do {
+                        try await app.setAddonLink(addon.id, link: text)
+                        linkResult = (true, "\(addon.name) is ready.")
+                    } catch {
+                        linkResult = (false, (error as? LocalizedError)?.errorDescription ?? UserFacingError.message(for: error, context: .addons))
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Copy it from the add-on's configure page, or from a device that has it. It's kept in this device's Keychain.")
         }
         .task {
             // Health changes as searches run; refresh while the page is open.

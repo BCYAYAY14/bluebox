@@ -101,7 +101,6 @@ struct AccountSignInView: View {
 
     @ViewBuilder private var linkEvent: some View {
         switch app.account.linkEvent {
-        case .working: AccountWorkingText(text: "Signing in from the link…")
         case .failed(let why): AccountErrorText(text: why).accessibilityIdentifier("signInLinkError")
         default: EmptyView()
         }

@@ -67,3 +67,18 @@ import TestingSupport
         #expect(http.requests.isEmpty)
     }
 }
+
+@Suite struct CinemetaNumberTests {
+    private func meta(_ id: String) throws -> CinemetaMeta? {
+        try JSONDecoder().decode(CinemetaMetaResponse.self, from: Data(#"{"meta":{"id":"tt1","type":"movie","name":"X","moviedb_id":\#(id)}}"#.utf8)).meta
+    }
+
+    @Test func outOfRangeMovieDBIDsAreDropped() throws {
+        #expect(try meta("1399")?.moviedbID == 1399)
+        #expect(try meta(#""1399""#)?.moviedbID == 1399)
+        #expect(try meta("1e30")?.moviedbID == nil)
+        #expect(try meta(#""nan""#)?.moviedbID == nil)
+        #expect(try meta(#""-1e30""#)?.moviedbID == nil)
+        #expect(try meta("2.5")?.moviedbID == nil)
+    }
+}

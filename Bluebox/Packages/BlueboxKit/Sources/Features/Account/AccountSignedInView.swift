@@ -29,7 +29,9 @@ struct AccountOverview: View {
             statusValue(account).accessibilityIdentifier("syncStatus")
         }
         AccountInfoRow("What syncs",
-                       detail: "My List, watch progress and profiles. Downloads, sources, keys and playback settings stay on each device.")
+                       detail: account.syncsKeys
+                           ? "My List, watch progress, profiles, add-ons and settings, and your API keys. Downloads and sources stay on each device."
+                           : "My List, watch progress, profiles, add-ons and settings. API keys, downloads and sources stay on each device.")
         if case .failed(let why) = app.account.linkEvent {
             AccountErrorText(text: why).padding(.vertical, Spacing.m).accessibilityIdentifier("signInLinkError")
         }
@@ -45,6 +47,7 @@ struct AccountOverview: View {
                 Text("Your library stays on this device and in your project. Sign in again to resume syncing.")
             }
 
+        AccountKeySyncRows()
         AccountAddDeviceRows()
         AccountServerRows(confirmDisconnect: $confirmDisconnect)
         TraktRows()
@@ -71,6 +74,68 @@ struct AccountOverview: View {
     private func relative(_ date: Date, prefix: String = "Synced ") -> some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in
             Text(prefix + date.formatted(.relative(presentation: .named, unitsStyle: .wide)))
+        }
+    }
+}
+
+/// Sync API Keys: off by default and per account. Turning it on asks first and
+/// says exactly what leaves the Keychain, since the server stores it as plain text.
+struct AccountKeySyncRows: View {
+    @Environment(AppModel.self) private var app
+    @State private var confirmOn = false
+    @State private var confirmRemove = false
+    @State private var removing = false
+    @State private var removeResult: (ok: Bool, text: String)?
+
+    /// What Sync API Keys uploads (AppModel.syncedSecretAccounts, and add-on links).
+    static let syncedSecrets = ["TMDB token", "OMDb key", "OpenSubtitles key", "Debrid key",
+                                "Links of add-ons added by link (they often hold a debrid key)"]
+
+    var body: some View {
+        let account = app.account
+        AccountInfoRow(title: "Sync API Keys",
+                       detail: account.syncsKeys
+                           ? "On for \(account.accountName ?? "this account"). Stored as plain text on your server."
+                           : "Off: your API keys and add-on links stay in this device's Keychain. Each account has its own switch.") {
+            Toggle("Sync API Keys", isOn: Binding(get: { account.syncsKeys }, set: { on in
+                if on { confirmOn = true } else { account.setSyncsKeys(false) }
+            }))
+            .labelsHidden()
+            .tint(Palette.brand)
+            .accessibilityIdentifier("syncKeysSwitch")
+        }
+        .alert("Store Your API Keys on Your Server?", isPresented: $confirmOn) {
+            Button("Sync Keys") { account.setSyncsKeys(true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("These leave this device's Keychain and are saved as plain text in your Supabase project, where anyone with its dashboard or service key can read them:\n\n"
+                 + Self.syncedSecrets.joined(separator: "\n"))
+        }
+        AccountActionRow(title: "Remove keys from server",
+                         detail: "Deletes the keys and add-on links stored on your server, including any earlier versions uploaded. No device's Keychain changes.",
+                         destructive: true, working: removing) { confirmRemove = true }
+            .accessibilityIdentifier("removeKeysButton")
+            .confirmationDialog("Remove keys from your server?", isPresented: $confirmRemove, titleVisibility: .visible) {
+                Button("Remove Keys", role: .destructive) {
+                    removing = true
+                    Task {
+                        do {
+                            try await account.removeKeysFromServer()
+                            removeResult = (true, "Removed. Your keys are still on this device.")
+                        } catch {
+                            removeResult = (false, AccountModel.describe(error))
+                        }
+                        removing = false
+                    }
+                }
+            } message: {
+                Text("Sync API Keys turns off. Your keys stay in each device's Keychain.")
+            }
+        if let removeResult {
+            Group {
+                if removeResult.ok { AccountHelperText(text: removeResult.text, ok: true) } else { AccountErrorText(text: removeResult.text) }
+            }
+            .padding(.vertical, Spacing.m)
         }
     }
 }

@@ -332,7 +332,7 @@ public actor StremioSource: MediaSource {
         let report = status
         let label = names.count == 1 ? names[0] : "Trying \(names.count) releases at once"
         let chosenName = LockedValue(label)
-        let (url, chosen) = try await streamer.start(
+        let (url, chosen, subtitles) = try await streamer.start(
             candidates: torrents.map {
                 TorrentCandidate(magnet: $0.magnet!, fileIndex: $0.fileIndex,
                                  episode: key.episodeNumbers.map { EpisodeNumber(season: $0.season, episode: $0.episode) })
@@ -344,7 +344,16 @@ public actor StremioSource: MediaSource {
             report?(.torrent(torrentStatus, release: chosenName.get()))
         }
         let release = torrents.indices.contains(chosen) ? torrents[chosen] : torrents[0]
-        return (PlaybackResource(variant: variant(for: release, key: key), url: url), release)
+        return (PlaybackResource(variant: variant(for: release, key: key), url: url,
+                                 externalSubtitles: subtitles.map(Self.externalSubtitle)), release)
+    }
+
+    /// A subtitle file from the torrent, as the player lists it (under its
+    /// language, tagged Torrent: the id says where it's from).
+    static func externalSubtitle(_ file: TorrentSubtitleFile) -> ExternalSubtitle {
+        let fileName = (file.path as NSString).lastPathComponent
+        return ExternalSubtitle(id: ExternalSubtitle.torrentPrefix + file.path, url: file.url, languageCode: file.name.languageCode,
+                                label: file.name.label(fallback: fileName), format: file.format)
     }
 
     // MARK: Searching

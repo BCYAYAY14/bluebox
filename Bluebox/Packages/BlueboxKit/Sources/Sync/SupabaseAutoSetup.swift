@@ -346,9 +346,9 @@ public struct SupabaseAutoSetup: Sendable {
 
     private func createTables(_ ref: String) async throws -> DatabaseState {
         let before = DatabaseState(row: try await api.runQuery(ref, Self.stateQuery).first)
-        let sql: String
+        let sql: String?
         switch try Self.tablePlan(before) {
-        case .nothing: return before
+        case .nothing: sql = nil
         case .everything: sql = SupabaseSetupFiles.setupSQL
         case .profilesOnly:
             sql = [SupabaseSetupFiles.profilesMigrationSQL, SupabaseSetupFiles.accountSettingsMigrationSQL,
@@ -357,10 +357,15 @@ public struct SupabaseAutoSetup: Sendable {
         case .listsOnly: sql = SupabaseSetupFiles.listsMigrationSQL
         }
         do {
-            _ = try await api.runQuery(ref, sql)
+            if let sql { _ = try await api.runQuery(ref, sql) }
+            // The private-channel policies are safe to run again, so every set-up
+            // runs them: a project set up before them gets them here (setup.sql
+            // already has them for a new one).
+            if sql != SupabaseSetupFiles.setupSQL { _ = try await api.runQuery(ref, SupabaseSetupFiles.realtimePrivateMigrationSQL) }
         } catch ManagementAPIError.server(let status, let message) where (400..<500).contains(status) {
             throw Failure.sqlFailed(message ?? "error \(status)")
         }
+        guard sql != nil else { return before }
         let after = DatabaseState(row: try await api.runQuery(ref, Self.stateQuery).first)
         guard try Self.tablePlan(after) == .nothing else { throw Failure.sqlFailed("the tables still aren't there.") }
         return after

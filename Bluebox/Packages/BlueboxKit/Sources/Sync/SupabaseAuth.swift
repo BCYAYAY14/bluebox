@@ -22,14 +22,9 @@ public enum SyncError: Error, Equatable, Sendable, LocalizedError {
     case accountNotConfirmed
     case signupsDisabled
     case emailSignInDisabled
-    /// A sign-in link that expired or was already used.
-    case linkExpired
-    /// A sign-in link for another project, or one whose session the server no longer accepts.
-    case linkRejected
-    /// A sign-in link in a form Bluebox doesn't handle (PKCE `?code=`).
-    case linkUnsupported
-    /// Supabase reported a problem in the link itself.
-    case linkFailed(String)
+    /// This device last synced with another account (its user ID): nothing
+    /// syncs until the user chooses what happens to the device's library.
+    case accountChanged(previous: String)
 
     public var errorDescription: String? {
         switch self {
@@ -50,10 +45,7 @@ public enum SyncError: Error, Equatable, Sendable, LocalizedError {
             "This account was made while your server still asked for email confirmation. In Supabase, open Authentication › Users, delete it, then create it again here."
         case .signupsDisabled: "Your server doesn't allow new accounts. Sign in with the account you already have."
         case .emailSignInDisabled: "Username sign-in needs Supabase's Email provider. Turn on Authentication › Sign In / Providers › Email."
-        case .linkExpired: "That sign-in link has expired or was already used."
-        case .linkRejected: "That sign-in link isn't valid for the server Bluebox is connected to."
-        case .linkUnsupported: "That sign-in link uses a flow Bluebox doesn't support. Sign in with your username and password."
-        case .linkFailed(let description): "The sign-in link didn't work: \(description)"
+        case .accountChanged: "This device has another account's library. Choose what to do with it to start syncing."
         }
     }
 }
@@ -151,54 +143,6 @@ public actor SupabaseAuth {
         let s = try decodeSession(data)
         try setSession(s)
         return s
-    }
-
-    /// Finishes sign-in from an old sign-in email's link (`bluebox://auth-callback…`).
-    /// Bluebox no longer sends those emails; a link that's still around works or fails harmlessly.
-    @discardableResult
-    public func completeSignIn(_ callback: AuthCallback) async throws -> AuthSession {
-        switch callback {
-        case .failure(let code, let description):
-            let text = (code ?? "") + " " + description.lowercased()
-            if text.contains("otp_expired") || text.contains("expired") { throw SyncError.linkExpired }
-            throw SyncError.linkFailed(description)
-        case .pkceCode:
-            throw SyncError.linkUnsupported
-        case .tokenHash(let hash, let type):
-            var req = request("auth/v1/verify")
-            req.httpBody = try JSONEncoder().encode(["type": type, "token_hash": hash])
-            do {
-                let s = try decodeSession(try await sendAuth(req))
-                try setSession(s)
-                return s
-            } catch let f as AuthFailure {
-                if f.status == 429 { throw SyncError.rateLimited }
-                if (400..<500).contains(f.status) { throw SyncError.linkExpired }
-                throw f.syncError
-            }
-        case .session(let tokens):
-            // The fragment has no user: ask the project, which also proves the
-            // token was issued by the project this app is connected to.
-            var req = request("auth/v1/user")
-            req.httpMethod = "GET"
-            req.setValue(nil, forHTTPHeaderField: "Content-Type")
-            req.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
-            struct User: Decodable { let id: String; let email: String? }
-            let data: Data
-            do {
-                data = try await sendAuth(req)
-            } catch let f as AuthFailure {
-                if [401, 403, 404].contains(f.status) { throw SyncError.linkRejected }
-                throw f.syncError
-            }
-            guard let user = try? JSONDecoder().decode(User.self, from: data) else { throw SyncError.decoding("auth user") }
-            let expires = tokens.expiresAt.map { Date(timeIntervalSince1970: $0) }
-                ?? now().addingTimeInterval(tokens.expiresIn ?? 3600)
-            let s = AuthSession(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: expires,
-                                userID: user.id, email: user.email)
-            try setSession(s)
-            return s
-        }
     }
 
     /// Signs in with an Apple identity token (Sign in with Apple). `nonce` is

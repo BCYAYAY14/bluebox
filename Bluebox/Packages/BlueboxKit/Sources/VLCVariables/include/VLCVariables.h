@@ -10,6 +10,7 @@
 /// renderer re-reads some on every frame. Returns false when the player
 /// doesn't look like libVLC 4's (nothing is set then).
 bool bluebox_vlc_set_integer(void *media_player, const char *name, int64_t value);
+bool bluebox_vlc_set_float(void *media_player, const char *name, float value);
 bool bluebox_vlc_set_bool(void *media_player, const char *name, bool value);
 bool bluebox_vlc_set_string(void *media_player, const char *name, const char *value);
 

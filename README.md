@@ -64,7 +64,12 @@ brew install xcodegen
 cd Bluebox && xcodegen generate && open Bluebox.xcodeproj
 ```
 
-Pick the **Bluebox-iOS** or **Bluebox-macOS** scheme. Set your own team under Signing & Capabilities, or change `DEVELOPMENT_TEAM` in `project.yml`. The torrent engine ships prebuilt, with its wrapper's source in `Packages/BlueboxKit/LibTorrent/LibTorrentEngine`.
+Pick the **Bluebox-iOS** or **Bluebox-macOS** scheme. Set your own team under Signing & Capabilities, or change `DEVELOPMENT_TEAM` in `project.yml`. The torrent engine ships prebuilt, with its wrapper's source in `Packages/BlueboxKit/LibTorrent/LibTorrentEngine`. To build it yourself (libtorrent 2.1, checksum-verified, for iOS, the iOS Simulator and macOS):
+
+```bash
+brew install cmake ninja boost
+cd Bluebox && scripts/build-libtorrent.sh
+```
 
 Nothing needs a key to build. A TMDB token, OMDb ratings and the rest are entered in the app's Settings (without TMDB, Bluebox uses Cinemeta). For built-in Supabase or Trakt defaults, copy `Config/Example.xcconfig` to `Config/Secrets.xcconfig` and fill it in.
 
@@ -74,7 +79,7 @@ Run the tests with:
 cd Bluebox/Packages/BlueboxKit && swift test
 ```
 
-Pull requests are welcome.
+Pull requests are welcome. To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Good to know
 

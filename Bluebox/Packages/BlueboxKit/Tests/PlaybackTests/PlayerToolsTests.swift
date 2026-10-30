@@ -161,6 +161,33 @@ import Testing
         #expect(s.subtitleText == "Embedded line")
     }
 
+    /// VLC hands plain text tracks in an MKV to Bluebox: one can be the second
+    /// line, and the delay still moves them (the engine applies it).
+    @Test func embeddedTextTrackAsSecondLine() async throws {
+        let engine = MockEngine()
+        let s = session(engine)
+        await s.start(movie, resource: resource())
+        var snap = engine.snapshot
+        snap.embeddedSubtitles = [MediaTrack(id: "s0", kind: .subtitle, label: "English", languageCode: "en", format: "SRT", drawnByBluebox: true),
+                                  MediaTrack(id: "s1", kind: .subtitle, label: "Français", languageCode: "fr", format: "ASS", drawnByBluebox: true),
+                                  MediaTrack(id: "s2", kind: .subtitle, label: "Signs", languageCode: "en", format: "ASS")]
+        snap.delaysEmbeddedSubtitles = true
+        engine.snapshot = snap
+        #expect(!snap.embeddedSubtitles[1].keepsOwnStyle && snap.embeddedSubtitles[2].keepsOwnStyle)
+
+        s.selectSubtitle(.embedded("s0"))
+        s.selectSecondarySubtitle("s1")
+        #expect(engine.secondaryEmbeddedSelection == "s1")
+        #expect(s.secondarySubtitleID == "s1")
+        engine.snapshot.embeddedSubtitleText = "Hello"
+        engine.snapshot.secondaryEmbeddedSubtitleText = "Bonjour"
+        #expect(s.subtitleText == "Hello" && s.secondarySubtitleText == "Bonjour")
+        #expect(s.canAdjustSubtitleTiming)
+
+        s.selectSecondarySubtitle(nil)
+        #expect(engine.secondaryEmbeddedSelection == nil && s.secondarySubtitleText == nil)
+    }
+
     @Test func adjustmentsReachTheEngine() async {
         final class Spy: MockEngine { var applied: VideoAdjustments?; override func setVideoAdjustments(_ a: VideoAdjustments) { applied = a } }
         let engine = Spy()

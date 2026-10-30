@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.0.15",
+          "buildVersion": "16",
+          "date": "2026-10-30T07:29:49Z",
+          "localizedDescription": "Subtitles\n• Bluebox now draws plain subtitle tracks inside MKV and WebM files itself, instead of VLC.\n• Subtitle files that come with a torrent are listed under their language, tagged Torrent.\n• Subtitles show in Picture in Picture and on AirPlay, in your own style.\n• A Lines page beside Style and Timing lists every line with its time.\n• Sync to the Audio, at the top of Timing, listens to the speech and lines the subtitles up for you, on your device.\n• Hide Sound Cues, on the Subtitle Style page, leaves out [siren wailing], ♪ lyrics and speaker names.\n• Search Online looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match first.\n• Fixed a dark copy of the first letters showing behind VLC's subtitles.\n\nPlayer\n• Skip Intro and Skip Recap show on their own for 8 seconds, then only while the controls are up.\n• On the Mac, a click on the video plays or pauses.\n• New keys: ⇧← and ⇧→ go to the previous or next subtitle line, C turns subtitles off and back on (crop moves to ⇧C), 0–9 jump to 0–90%, and < > step a frame.\n• Fixed playback sticking on \"Buffering\" after stepping frame by frame, even with the whole file downloaded.\n\nUpdates (Mac)\n• Checking for, downloading and installing an update happens in place in Settings › About, with no popups.\n• The updater installs only a Bluebox signed with Bluebox's release certificate, checks the download against GitHub's checksum, and puts the old version back if the new one fails its check.\n\nSecurity\n• Sign-in links no longer sign you in.\n• Signing in to a different account asks what happens to this device's library before anything moves.\n• API keys sync between devices only with Sync API Keys on (Settings › Account), which is off by default.\n• Links of add-ons you added by link, which often hold a debrid key, are kept in the Keychain, not in preferences or settings sync.\n• Remote control uses private channels only your account can join.\n• A connect link opened from outside asks before pointing Bluebox at its server.\n• Very large numbers from an add-on can no longer crash the app.\n• SECURITY.md says how to report a vulnerability privately.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.15/Bluebox-1.0.15.ipa",
+          "size": 29336735,
+          "sha256": "3a09eeb7c8cf15b5e93aae0651ffa01816ffc38bf60cafb7c1360e6e1115d952",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.0.14",
           "buildVersion": "15",
           "date": "2026-10-30T03:28:31Z",
@@ -79,14 +89,15 @@
         "entitlements": [],
         "privacy": {
           "NSLocalNetworkUsageDescription": "Bluebox connects to media servers on your local network that you add in Settings.",
-          "NSPhotoLibraryAddUsageDescription": "Bluebox saves video frames you capture with Snapshot to your photo library."
+          "NSPhotoLibraryAddUsageDescription": "Bluebox saves video frames you capture with Snapshot to your photo library.",
+          "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.0.14",
-      "versionDate": "2026-10-30T03:28:31Z",
-      "versionDescription": "Mac\n• Installing from the DMG: a new window, Bluebox's black and blue with an arrow from the app to Applications, the version, and what to do if macOS won't open Bluebox the first time.\n\nEpisodes\n• A watched episode shows a full blue bar under its picture, the same as one you've started, instead of a WATCHED tag.\n\nFixed\n• Updating from inside the Mac app failed with \"hdiutil: attach failed - Operation not permitted\".\n• After an update installed, the old Bluebox never quit, so the new one never opened.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.14/Bluebox-1.0.14.ipa",
-      "size": 28861197
+      "version": "1.0.15",
+      "versionDate": "2026-10-30T07:29:49Z",
+      "versionDescription": "Subtitles\n• Bluebox now draws plain subtitle tracks inside MKV and WebM files itself, instead of VLC.\n• Subtitle files that come with a torrent are listed under their language, tagged Torrent.\n• Subtitles show in Picture in Picture and on AirPlay, in your own style.\n• A Lines page beside Style and Timing lists every line with its time.\n• Sync to the Audio, at the top of Timing, listens to the speech and lines the subtitles up for you, on your device.\n• Hide Sound Cues, on the Subtitle Style page, leaves out [siren wailing], ♪ lyrics and speaker names.\n• Search Online looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match first.\n• Fixed a dark copy of the first letters showing behind VLC's subtitles.\n\nPlayer\n• Skip Intro and Skip Recap show on their own for 8 seconds, then only while the controls are up.\n• On the Mac, a click on the video plays or pauses.\n• New keys: ⇧← and ⇧→ go to the previous or next subtitle line, C turns subtitles off and back on (crop moves to ⇧C), 0–9 jump to 0–90%, and < > step a frame.\n• Fixed playback sticking on \"Buffering\" after stepping frame by frame, even with the whole file downloaded.\n\nUpdates (Mac)\n• Checking for, downloading and installing an update happens in place in Settings › About, with no popups.\n• The updater installs only a Bluebox signed with Bluebox's release certificate, checks the download against GitHub's checksum, and puts the old version back if the new one fails its check.\n\nSecurity\n• Sign-in links no longer sign you in.\n• Signing in to a different account asks what happens to this device's library before anything moves.\n• API keys sync between devices only with Sync API Keys on (Settings › Account), which is off by default.\n• Links of add-ons you added by link, which often hold a debrid key, are kept in the Keychain, not in preferences or settings sync.\n• Remote control uses private channels only your account can join.\n• A connect link opened from outside asks before pointing Bluebox at its server.\n• Very large numbers from an add-on can no longer crash the app.\n• SECURITY.md says how to report a vulnerability privately.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.0.15/Bluebox-1.0.15.ipa",
+      "size": 29336735
     }
   ],
   "news": []

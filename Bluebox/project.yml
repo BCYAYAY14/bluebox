@@ -57,6 +57,8 @@ targets:
         # resumes torrent downloads (AppModel.downloadResumeTaskID).
         BGTaskSchedulerPermittedIdentifiers: [app.bluebox.refresh.episodes, app.bluebox.downloads.resume]
         NSUserActivityTypes: [app.bluebox.watch]
+        # Sync to the Audio (Features/Player/SubtitleAudioSync.swift): on-device speech recognition of the soundtrack.
+        NSSpeechRecognitionUsageDescription: "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         # The Downloads Live Activity (Features/DownloadsPresence.swift). Needs no entitlement.
         NSSupportsLiveActivities: true
         NSPhotoLibraryAddUsageDescription: Bluebox saves video frames you capture with Snapshot to your photo library.
@@ -138,6 +140,8 @@ targets:
       path: Apps/macOS/Info.plist
       properties:
         NSUserActivityTypes: [app.bluebox.watch]
+        # Sync to the Audio (Features/Player/SubtitleAudioSync.swift): on-device speech recognition of the soundtrack.
+        NSSpeechRecognitionUsageDescription: "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         SupabaseURL: $(SUPABASE_URL)
         SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
         TraktClientID: $(TRAKT_CLIENT_ID)
@@ -185,6 +189,10 @@ targets:
     platform: macOS
     sources:
       - Apps/macOSUpdater
+    dependencies:
+      # The signature check on the new app (Packages/BlueboxKit/Sources/UpdateVerification).
+      - package: BlueboxKit
+        product: UpdateVerification
     settings:
       base:
         PRODUCT_NAME: BlueboxUpdater

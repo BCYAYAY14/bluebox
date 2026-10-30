@@ -56,6 +56,8 @@ public final class AppSettings {
     public var preferredAudioLanguage: String? { didSet { save(preferredAudioLanguage, ProfileSettingKey.audioLanguage(profileID)) } }
     public var defaultSubtitleDelay: Double { didSet { save(defaultSubtitleDelay, PreferenceKey.defaultSubtitleDelay) } }
     public var autoSearchSubtitles: Bool { didSet { save(autoSearchSubtitles, PreferenceKey.autoSearchSubtitles) } }
+    /// Search Online sites turned off in Settings › Subtitles (`SubtitleSite` raw values).
+    public var subtitleSitesOff: [String] { didSet { save(subtitleSitesOff, PreferenceKey.subtitleSitesOff) } }
     /// The older on/off switch for streaming on cellular. Kept (and its key) in step
     /// with `mobileData.streaming`: off is the same as Never.
     public var allowCellularStreaming: Bool {
@@ -142,6 +144,7 @@ public final class AppSettings {
         preferredAudioLanguage = prefs.value(String.self, for: ProfileSettingKey.audioLanguage(profileID))
         defaultSubtitleDelay = prefs.value(Double.self, for: PreferenceKey.defaultSubtitleDelay) ?? 0
         autoSearchSubtitles = prefs.value(Bool.self, for: PreferenceKey.autoSearchSubtitles) ?? false
+        subtitleSitesOff = prefs.value([String].self, for: PreferenceKey.subtitleSitesOff) ?? []
         let allowCellular = prefs.value(Bool.self, for: PreferenceKey.allowCellularStreaming) ?? true
         allowCellularStreaming = allowCellular
         playLaunchIntro = prefs.value(Bool.self, for: PreferenceKey.launchIntro) ?? true
@@ -180,6 +183,7 @@ public final class AppSettings {
         load(PreferenceKey.upNextCountdown, 10, into: \.upNextCountdown)
         load(PreferenceKey.defaultSubtitleDelay, 0.0, into: \.defaultSubtitleDelay)
         load(PreferenceKey.autoSearchSubtitles, false, into: \.autoSearchSubtitles)
+        load(PreferenceKey.subtitleSitesOff, [String](), into: \.subtitleSitesOff)
         load(PreferenceKey.allowCellularStreaming, true, into: \.allowCellularStreaming)
         load(PreferenceKey.launchIntro, true, into: \.playLaunchIntro)
         load(PlayerFeatureKey.skipIntro, SkipSegmentPlanner.Mode.button, into: \.skipIntroMode)
@@ -248,6 +252,7 @@ public final class AppSettings {
         preferredAudioLanguage = nil
         defaultSubtitleDelay = 0
         autoSearchSubtitles = false
+        subtitleSitesOff = []
         allowCellularStreaming = true
         playLaunchIntro = true
         skipIntroMode = .button

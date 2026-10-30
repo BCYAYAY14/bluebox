@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import UpdateVerification
 
 let log = Logger(subsystem: "app.bluebox", category: "updater")
 
@@ -11,21 +12,22 @@ let log = Logger(subsystem: "app.bluebox", category: "updater")
 /// Must match `BlueboxUpdaterProtocol` in Features/UpdateInstaller.swift.
 @objc(BlueboxUpdaterProtocol) protocol BlueboxUpdaterProtocol {
     /// Copies the DMG the app downloaded (an open file, since this service
-    /// can't count on reaching the app's container by path), mounts it, checks
-    /// the Bluebox.app inside it, and swaps it in for the app at `appPath`.
-    /// Then, once process `pid` has quit, opens the new one. Replies nil, or
-    /// what went wrong.
-    func install(dmg: FileHandle, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
+    /// can't count on reaching the app's container by path), checks it against
+    /// GitHub's `sha256:` digest when there is one, mounts it, checks the
+    /// Bluebox.app inside it is signed by Bluebox's release certificate, and
+    /// swaps it in for the app at `appPath`. Then, once process `pid` has quit,
+    /// opens the new one. Replies nil, or what went wrong.
+    func install(dmg: FileHandle, sha256: String?, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void)
 }
 
 final class Updater: NSObject, BlueboxUpdaterProtocol {
-    static let bundleID = "app.bluebox.Bluebox.mac"
+    static let bundleID = UpdateVerification.bundleID
 
-    func install(dmg: FileHandle, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
+    func install(dmg: FileHandle, sha256: String?, appPath: String, relaunchAfter pid: Int32, reply: @escaping (String?) -> Void) {
         nonisolated(unsafe) let reply = reply
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try Self.install(dmg: dmg, app: URL(fileURLWithPath: appPath))
+                try Self.install(dmg: dmg, sha256: sha256, app: URL(fileURLWithPath: appPath))
                 Self.relaunch(appPath, after: pid)
                 log.notice("installed; relaunching after \(pid, privacy: .public) quits")
                 reply(nil)
@@ -39,7 +41,7 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
 
     struct UpdateError: Error { let message: String }
 
-    static func install(dmg handle: FileHandle, app: URL) throws {
+    static func install(dmg handle: FileHandle, sha256: String?, app: URL) throws {
         let fm = FileManager.default
         log.notice("installing over \(app.path, privacy: .public)")
         let folder = app.deletingLastPathComponent()
@@ -63,10 +65,16 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
         } catch {
             throw UpdateError(message: "Bluebox couldn't read the download: \(error.localizedDescription) Nothing was changed.")
         }
+        do {
+            try UpdateVerification.verifyDigest(of: dmg, expected: sha256)
+        } catch let failure as UpdateVerification.Failure {
+            throw UpdateError(message: failure.message + " Nothing was changed.")
+        }
         let mount = work.appending(path: "mount", directoryHint: .isDirectory)
         log.notice("mounting")
-        try run("/usr/bin/hdiutil", "attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen", "-noverify",
-                "-mountpoint", mount.path, timeout: 90)
+        // hdiutil checks the image's own checksums (no -noverify).
+        try run("/usr/bin/hdiutil", "attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen",
+                "-mountpoint", mount.path, timeout: 180)
         defer { try? run("/usr/bin/hdiutil", "detach", mount.path, "-force", timeout: 30) }
 
         let new = mount.appending(path: "Bluebox.app")
@@ -78,10 +86,26 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
         try? fm.removeItem(at: staged)
         log.notice("copying")
         try run("/usr/bin/ditto", new.path, staged.path, timeout: 120)
+        // The copy is what gets installed, so the copy is what's checked: signed
+        // by Bluebox's release certificate, and not older than this app.
+        log.notice("verifying")
+        do {
+            try UpdateVerification.verifySignature(of: staged)
+            try UpdateVerification.checkNotOlder(staged, than: app)
+        } catch let failure as UpdateVerification.Failure {
+            try? fm.removeItem(at: staged)
+            throw UpdateError(message: failure.message + " Nothing was changed.")
+        }
+        // Only now that the signature is known to be Bluebox's: the release
+        // certificate is self-signed and not notarized, so Gatekeeper would
+        // refuse to open a quarantined copy.
         try? run("/usr/bin/xattr", "-dr", "com.apple.quarantine", staged.path)
         log.notice("swapping")
+        let backupName = ".Bluebox-previous.app"
+        let backup = folder.appending(path: backupName)
+        try? fm.removeItem(at: backup)
         do {
-            _ = try fm.replaceItemAt(app, withItemAt: staged)
+            _ = try fm.replaceItemAt(app, withItemAt: staged, backupItemName: backupName, options: .withoutDeletingBackupItem)
         } catch {
             try? fm.removeItem(at: staged)
             let code = ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)?.code ?? (error as NSError).code
@@ -89,6 +113,24 @@ final class Updater: NSObject, BlueboxUpdaterProtocol {
                 throw UpdateError(message: "macOS didn't let Bluebox replace itself. Turn on Bluebox in System Settings › Privacy & Security › App Management, then try again. Nothing was changed.")
             }
             throw UpdateError(message: "Bluebox couldn't replace itself: \(error.localizedDescription) Nothing was changed.")
+        }
+        // The swapped-in app is checked once more; if it fails, the old one goes back.
+        do {
+            try UpdateVerification.verifySignature(of: app)
+        } catch {
+            log.error("installed copy failed verification; restoring the previous version")
+            if fm.fileExists(atPath: backup.path) { _ = try? fm.replaceItemAt(app, withItemAt: backup) }
+            throw UpdateError(message: "The installed copy didn't verify, so the previous Bluebox was put back.")
+        }
+        // The previous version goes to the Trash, so it can be put back by hand.
+        if fm.fileExists(atPath: backup.path) {
+            do {
+                var trashed: NSURL?
+                try fm.trashItem(at: backup, resultingItemURL: &trashed)
+                if let trashed { try? fm.moveItem(at: trashed as URL, to: (trashed as URL).deletingLastPathComponent().appending(path: "Bluebox (previous version).app")) }
+            } catch {
+                try? fm.removeItem(at: backup)
+            }
         }
     }
 

@@ -1,9 +1,11 @@
 import Domain
 import Foundation
 
-/// The remote-control channel: Supabase Realtime broadcast, one topic per
-/// account (`bluebox-remote:<user id>`), so only devices signed in to the
-/// same account hear each other. Phoenix over `URLSessionWebSocketTask`, like
+/// The remote-control channel: Supabase Realtime broadcast, one private topic
+/// per account (`bluebox-remote:<user id>`). Private means Realtime checks the
+/// realtime.messages policies (migrations/20261030000000_realtime_private.sql)
+/// on join and on every broadcast, so only devices signed in to the same
+/// account can hear or send; the user ID in the topic is not the protection. Phoenix over `URLSessionWebSocketTask`, like
 /// `RealtimeListener`, which it borrows the socket URL and heartbeat from.
 ///
 /// Broadcast isn't stored: a message sent while nobody listens is gone. The
@@ -120,7 +122,7 @@ public actor RemoteChannel {
 
     // MARK: Protocol
 
-    /// Per account: the user ID is only known to that account's sessions.
+    /// Per account; the policies, not the ID, keep other accounts out.
     static func topic(userID: String) -> String { "realtime:bluebox-remote:\(userID.lowercased())" }
 
     static func joinMessage(topic: String, token: String, ref: String) -> [String: Any] {
@@ -128,7 +130,7 @@ public actor RemoteChannel {
             "topic": topic, "event": "phx_join", "ref": ref, "join_ref": ref,
             "payload": [
                 "config": ["broadcast": ["self": false, "ack": false], "presence": ["key": ""],
-                           "postgres_changes": [Any]()] as [String: Any],
+                           "postgres_changes": [Any](), "private": true] as [String: Any],
                 "access_token": token,
             ] as [String: Any],
         ]

@@ -68,6 +68,8 @@ import Testing
         #expect(join["event"] as? String == "phx_join")
         let config = try #require((join["payload"] as? [String: Any])?["config"] as? [String: Any])
         #expect((config["broadcast"] as? [String: Any])?["self"] as? Bool == false)
+        // Private: Realtime checks the realtime.messages policies (security review BB-03).
+        #expect(config["private"] as? Bool == true)
         _ = try JSONSerialization.data(withJSONObject: join)
 
         let payload = try RemoteMessage.hello(from: "phone").jsonObject()

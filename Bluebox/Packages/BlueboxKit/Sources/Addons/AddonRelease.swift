@@ -163,6 +163,10 @@ public enum AddonError: LocalizedError, Sendable, Equatable {
     /// The add-on must be configured on its website first.
     case needsConfiguration(String)
     case alreadyInstalled(String)
+    /// The answer was bigger than `AddonClient.maxResponseBytes`.
+    case responseTooLarge
+    /// A pasted link for an add-on on another host than the one it replaces.
+    case wrongAddonHost(String)
 
     public var errorDescription: String? {
         switch self {
@@ -176,6 +180,8 @@ public enum AddonError: LocalizedError, Sendable, Equatable {
         case .noStreams(let name): "\(name) doesn't offer streams for movies or series, so it can't find releases."
         case .needsConfiguration(let name): "\(name) needs setting up on its website first. Configure it there, then paste the link it gives you."
         case .alreadyInstalled(let name): "\(name) is already in your add-ons."
+        case .responseTooLarge: "The add-on sent far more data than a list of streams needs, so Bluebox ignored it."
+        case .wrongAddonHost(let host): "That link is for another add-on. Paste this add-on's link from \(host)."
         }
     }
 }

@@ -105,6 +105,8 @@ struct SubtitlesSettingsPage: View {
 
             OpenSubtitlesSection()
 
+            SubtitleSitesSection()
+
             Section {
                 Toggle("Search Automatically", isOn: $settings.autoSearchSubtitles)
                     .disabled(!app.hasOpenSubtitlesKey)

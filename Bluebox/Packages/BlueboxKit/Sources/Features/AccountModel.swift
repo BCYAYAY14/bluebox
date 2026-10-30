@@ -17,16 +17,34 @@ public final class AccountModel {
         case failed(String)
     }
 
-    /// The outcome of opening a `bluebox://connect` link (or an old
+    /// The outcome of opening a `bluebox://connect` link (or a refused
     /// `bluebox://auth-callback` sign-in link), for the banner and the account page.
     public enum LinkEvent: Equatable {
-        case working
-        case signedIn(String)
         /// Connecting to the server in a link from another device.
         case connecting
         /// Connected from a link: sign in next. The server's host.
         case connected(String)
         case failed(String)
+    }
+
+    /// A device that last synced with another account, waiting for the user
+    /// to say what happens to its library (security review BB-01). Nothing
+    /// syncs meanwhile.
+    public struct AccountChange: Equatable {
+        /// The account this device last synced with ("another account" if unknown).
+        public var previousName: String
+        public var newName: String
+        public var myList: Int
+        public var continueWatching: Int
+        public var profiles: Int
+    }
+
+    public enum AccountChangeChoice {
+        /// Remove this device's copy of the old library; the new account's comes down.
+        case useAccountLibrary
+        /// Upload this device's library into the new account.
+        case addDeviceLibrary
+        case signOut
     }
 
     /// Checking the connected project for its tables and email settings.
@@ -42,6 +60,7 @@ public final class AccountModel {
     public private(set) var email: String?
     public private(set) var status: Status = .idle
     public private(set) var linkEvent: LinkEvent?
+    public private(set) var accountChange: AccountChange?
     /// Changed when something outside Settings (a connect link) wants
     /// Settings › Account shown. RootView opens it.
     public internal(set) var openRequest: UUID?
@@ -51,6 +70,10 @@ public final class AccountModel {
     /// Reads the observed `server` (set together with `auth`), so views update on connect and disconnect.
     public var isConfigured: Bool { server != nil }
     public var isSignedIn: Bool { email != nil }
+    /// The signed-in account's user ID.
+    public private(set) var userID: String?
+    /// Sync API Keys for the signed-in account (`SettingsSync.keysEnabled(for:)`).
+    public private(set) var syncsKeys = false
 
     @ObservationIgnored private var auth: SupabaseAuth?
     @ObservationIgnored private var engine: SyncEngine?
@@ -74,6 +97,8 @@ public final class AccountModel {
     @ObservationIgnored var onAccountCreated: @MainActor () -> Void = {}
     /// Called after any sign-in, so automatic setup can forget its token.
     @ObservationIgnored var onSignedIn: @MainActor () -> Void = {}
+    /// Erases this device's library and profiles, for `.useAccountLibrary`.
+    @ObservationIgnored var onUseAccountLibrary: @MainActor () async -> Void = {}
     /// Called with the settings keys another device changed, after they're written here.
     @ObservationIgnored var onSettingsChanged: @MainActor ([String]) -> Void = { _ in }
     /// API keys, add-ons and settings that follow the account.
@@ -131,6 +156,8 @@ public final class AccountModel {
         self.config = config
         server = config?.url
         email = nil
+        accountChange = nil
+        setUser(nil)
         status = .idle
         setupCheck = .idle
         lastSynced = config.flatMap { prefs.value(Date.self, for: Self.lastSyncedKey($0)) }
@@ -149,11 +176,13 @@ public final class AccountModel {
                 Task { @MainActor in
                     guard let self, self.auth === auth else { return }
                     self.email = session.map { $0.email ?? "Signed in" }
+                    self.setUser(session?.userID)
                 }
             }
             let session = await auth.currentSession
             guard let self, self.auth === auth else { return }
             self.email = session.map { $0.email ?? "Signed in" }
+            self.setUser(session?.userID)
         }
     }
 
@@ -213,35 +242,84 @@ public final class AccountModel {
         isConfigured && (Bundle.main.object(forInfoDictionaryKey: "AppleSignInEnabled") as? String)?.uppercased() == "YES"
     }
 
-    // MARK: Email links
+    // MARK: Changing accounts
 
-    /// Handles a `bluebox://auth-callback` URL from an old sign-in email.
-    /// Bluebox no longer sends those; a link still in an inbox signs in or
-    /// fails with a message. Returns false for URLs that aren't sign-in links.
-    @discardableResult
-    public func handleOpenURL(_ url: URL) -> Bool {
-        guard let callback = AuthCallback(url: url) else { return false }
-        Task { await completeSignIn(callback) }
-        return true
+    /// What the user chose for a device that last synced with another account.
+    public func resolveAccountChange(_ choice: AccountChangeChoice) async {
+        guard accountChange != nil, let userID else { return }
+        accountChange = nil
+        switch choice {
+        case .addDeviceLibrary:
+            SyncEngine.approve(user: userID, prefs: prefs)
+            await syncNow()
+        case .useAccountLibrary:
+            await onUseAccountLibrary()
+            SyncEngine.adopt(user: userID, profileIDs: profiles.allIDs(), prefs: prefs)
+            await syncNow()
+        case .signOut:
+            await signOut()
+        }
     }
 
-    func completeSignIn(_ callback: AuthCallback) async {
-        guard let auth else {
-            showLinkEvent(.failed("Connect your server in Settings › Account & Sync, then sign in with your username and password."))
-            return
-        }
-        showLinkEvent(.working)
-        do {
-            let session = try await auth.completeSignIn(callback)
-            guard self.auth === auth else { return }  // switched projects meanwhile
-            let address = session.email ?? "Signed in"
-            didSignIn(address)
-            showLinkEvent(.signedIn(BlueboxUsername.username(fromEmail: address) ?? address))
-            await syncNow()
-        } catch {
-            guard self.auth === auth else { return }
-            showLinkEvent(.failed(Self.describe(error)))
-        }
+    private func makeAccountChange(previous: String) async -> AccountChange {
+        let names = prefs.value([String: String].self, for: Self.accountNamesKey) ?? [:]
+        let store = store
+        let myList = (try? await store.watchlist().count) ?? 0
+        let watching = (try? await store.continueWatching(limit: 1000).count) ?? 0
+        return AccountChange(previousName: names[previous.lowercased()] ?? "another account", newName: accountName ?? "this account",
+                             myList: myList, continueWatching: watching, profiles: profiles.active().count)
+    }
+
+    /// User ID → account name, so the question can say whose library this is.
+    static let accountNamesKey = "bluebox.sync.accountNames"
+
+    private func rememberAccountName() {
+        guard let userID, let accountName else { return }
+        var names = prefs.value([String: String].self, for: Self.accountNamesKey) ?? [:]
+        guard names[userID.lowercased()] != accountName else { return }
+        names[userID.lowercased()] = accountName
+        prefs.set(names, for: Self.accountNamesKey)
+    }
+
+    // MARK: Sync API Keys
+
+    private func setUser(_ id: String?) {
+        if userID != id { userID = id }
+        let keys = id.map { settingsSync?.keysEnabled(for: $0) ?? false } ?? false
+        if syncsKeys != keys { syncsKeys = keys }
+    }
+
+    /// Turns Sync API Keys on or off for the signed-in account (Settings asks
+    /// first, listing what leaves the Keychain). Off is the default, and each
+    /// account has its own switch.
+    public func setSyncsKeys(_ on: Bool) {
+        guard let userID, let settingsSync else { return }
+        settingsSync.setKeysEnabled(on, for: userID)
+        syncsKeys = on
+        if on { scheduleSync(after: .milliseconds(200)) }
+    }
+
+    /// Deletes the keys and add-on links this account has on the server
+    /// (uploaded by earlier versions, or before the switch was turned off).
+    /// No device's Keychain changes. Sync API Keys turns off first, so a sync
+    /// running meanwhile can't put them back.
+    public func removeKeysFromServer() async throws {
+        guard let engine else { throw SyncError.notConfigured }
+        setSyncsKeys(false)
+        try await engine.removeSecretsFromServer()
+    }
+
+    // MARK: Sign-in links
+
+    /// Refuses a `bluebox://auth-callback` URL with a message. Bluebox never
+    /// asks for sign-in emails, so such a link, with tokens or without, wasn't
+    /// started here and mustn't change who's signed in (security review BB-01).
+    /// Returns false for URLs that aren't sign-in links.
+    @discardableResult
+    public func handleOpenURL(_ url: URL) -> Bool {
+        guard AuthCallback.matches(url) else { return false }
+        showLinkEvent(.failed(AuthCallback.refusal))
+        return true
     }
 
     public func dismissLinkEvent() {
@@ -252,10 +330,10 @@ public final class AccountModel {
     func showLinkEvent(_ event: LinkEvent) {
         linkEventDismissal?.cancel()
         linkEvent = event
-        guard event != .working, event != .connecting else { return }
+        guard event != .connecting else { return }
         // Success fades on its own; errors stay a while longer so they can be read.
         let delay: Duration = switch event {
-        case .signedIn, .connected: .seconds(4)
+        case .connected: .seconds(4)
         default: .seconds(10)
         }
         linkEventDismissal = Task { [weak self] in
@@ -288,12 +366,22 @@ public final class AccountModel {
 
     // MARK: Sync
 
+    /// Pushes anything waiting first (up to 8 seconds), so nothing made on
+    /// this account is left behind if another account's library replaces it.
     public func signOut() async {
         pending?.cancel()
         stopRealtime()
+        if let engine, isSignedIn, accountChange == nil {
+            let push = Task { _ = try? await engine.sync() }
+            let deadline = Task { try? await Task.sleep(for: .seconds(8)); push.cancel() }
+            await push.value
+            deadline.cancel()
+        }
         signedOutOnPurpose = true
         await auth?.signOut()
         email = nil
+        setUser(nil)
+        accountChange = nil
         status = .idle
     }
 
@@ -378,10 +466,16 @@ public final class AccountModel {
             if !report.settingsChanged.isEmpty { onSettingsChanged(report.settingsChanged) }
             if report.applied > 0 { onRemoteChanges() }
             guard self.auth === auth else { return }  // switched projects meanwhile
+            rememberAccountName()
             let date = now()
             status = .synced(date)
             lastSynced = date
             prefs.set(date, for: Self.lastSyncedKey(config))
+        } catch SyncError.accountChanged(let previous) {
+            guard self.auth === auth else { return }
+            status = .idle
+            let change = await makeAccountChange(previous: previous)
+            if accountChange != change { accountChange = change }
         } catch SyncError.signedOut {
             guard self.auth === auth else { return }
             // Signing out on purpose while a sync was running isn't an error.

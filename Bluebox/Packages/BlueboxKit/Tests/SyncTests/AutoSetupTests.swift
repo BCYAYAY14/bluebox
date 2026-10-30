@@ -217,6 +217,19 @@ final class StepLog: @unchecked Sendable {
         #expect(http.projects[0].tables && !http.projects[0].profilesOnlyMissing && !http.projects[0].settingsMissing)
     }
 
+    /// The private-channel policies (security review BB-03) are safe to run
+    /// again, so a project that's otherwise up to date gets them too.
+    @Test func anUpToDateProjectGetsTheRealtimePolicies() async throws {
+        var old = FakeSupabaseManagement.Project(ref: "olderblueboxaaaaaaaa", name: "Bluebox", status: "ACTIVE_HEALTHY")
+        old.tables = true
+        let http = FakeSupabaseManagement(projects: [old])
+        _ = try await setup(http).run(.automatic) { _ in }
+        let sql = queries(http)
+        #expect(sql.contains(SupabaseSetupFiles.realtimePrivateMigrationSQL))
+        #expect(!sql.contains(SupabaseSetupFiles.setupSQL) && !sql.contains(SupabaseSetupFiles.listsMigrationSQL))
+        #expect(http.projects[0].realtimePrivate)
+    }
+
     @Test func aProjectFromBeforeListsGetsOnlyTheFourthMigration() async throws {
         var old = FakeSupabaseManagement.Project(ref: "olderblueboxaaaaaaaa", name: "Bluebox", status: "ACTIVE_HEALTHY")
         old.tables = true; old.listsMissing = true

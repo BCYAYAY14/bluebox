@@ -282,7 +282,7 @@ struct CinemetaMeta: Decodable, Sendable {
         trailers = try? c.decodeIfPresent([Trailer].self, forKey: .trailers)
         trailerStreams = try? c.decodeIfPresent([TrailerStream].self, forKey: .trailerStreams)
         videos = try? c.decodeIfPresent([Lenient<Video>].self, forKey: .videos)
-        moviedbID = string(.moviedbID).flatMap(Double.init).map { Int($0) }
+        moviedbID = string(.moviedbID).flatMap { SafeNumber.int64($0, in: 1...Int64(Int32.max)) }.map { Int($0) }
     }
 }
 

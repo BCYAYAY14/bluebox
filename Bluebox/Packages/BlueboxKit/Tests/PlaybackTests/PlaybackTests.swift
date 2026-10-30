@@ -38,6 +38,8 @@ class MockEngine: PlaybackEngine {
     func setRate(_ rate: Float) { snapshot.rate = rate }
     func selectAudio(_ trackID: String?) { snapshot.selectedAudioID = trackID }
     func selectEmbeddedSubtitle(_ trackID: String?) { embeddedSelection = trackID }
+    var secondaryEmbeddedSelection: String?
+    func selectSecondaryEmbeddedSubtitle(_ trackID: String?) { secondaryEmbeddedSelection = trackID }
     func stop() { snapshot.status = .idle }
     func setVideoAdjustments(_ adjustments: VideoAdjustments) {}
     var volume: Float = 1
@@ -46,6 +48,7 @@ class MockEngine: PlaybackEngine {
     func setVolume(_ volume: Float, muted: Bool) { self.volume = volume; self.muted = muted }
     func setAudioDelay(_ seconds: TimeInterval) { audioDelay = seconds }
     var supportsAudioDelay: Bool { true }
+    func setSubtitleBurnIn(_ burnIn: SubtitleBurnIn?) {}
 
     /// Simulates playback reaching a position.
     func advance(to t: TimeInterval) { snapshot.position = t }

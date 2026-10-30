@@ -76,6 +76,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Bluebox listens to the film&apos;s soundtrack on this device to line subtitles up with the speech (Sync to the Audio).</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>app.bluebox.watch</string>
