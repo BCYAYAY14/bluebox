@@ -839,7 +839,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
                 launch(id, resource: resource)
             } catch {
                 guard lock.withLock({ starting.contains(id) }) else { return }
-                fail(id, "Couldn't reach the source: \(error.localizedDescription)")
+                fail(id, error is DebridLinkError ? error.localizedDescription : "Couldn't reach the source: \(error.localizedDescription)")
             }
         }
     }
@@ -983,6 +983,22 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: resumeURL(id))
             return
         }
+        let received = (try? location.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+        if let problem = Self.placeholderProblem(finalURL: task.response?.url ?? task.currentRequest?.url,
+                                                 receivedBytes: received, expectedBytes: r.origin.sizeBytes) {
+            // A debrid add-on's notice clip (or something far too small to be
+            // the release): not a finished download.
+            try? FileManager.default.removeItem(at: location)
+            lock.withLock {
+                tasks[id] = nil
+                live[id] = nil
+                records[id]?.receivedBytes = 0
+                records[id]?.expectedBytes = r.origin.sizeBytes
+                records[id]?.state = .failed(DebridLinkError(problem).localizedDescription)
+            }
+            try? FileManager.default.removeItem(at: resumeURL(id))
+            return
+        }
         let name = "\(Self.safeName(id)).\(Self.fileExtension(container: r.origin.container, response: task.response))"
         let dest = directory.appending(path: name)
         try? FileManager.default.removeItem(at: dest)
@@ -1008,6 +1024,15 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return pendingSubtitles.removeValue(forKey: id) ?? []
         }
         if !subs.isEmpty { Task { await self.saveSubtitles(subs, for: id) } }
+    }
+
+    /// Why a finished transfer isn't the release: its link ended at an
+    /// add-on's notice clip, or it is under `DebridPlaceholder.minimumFraction`
+    /// of the size the source gave. Nil when it looks right or there's no size to go by.
+    static func placeholderProblem(finalURL: URL?, receivedBytes: Int64?, expectedBytes: Int64?) -> DebridProblem? {
+        if let finalURL, let named = DebridPlaceholder.problem(for: finalURL) { return named }
+        guard let expectedBytes, expectedBytes > 0, let receivedBytes else { return nil }
+        return DebridPlaceholder.problem(totalBytes: receivedBytes, expectedBytes: expectedBytes)
     }
 
     static func fileExtension(container: String?, response: URLResponse?) -> String {

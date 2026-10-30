@@ -54,6 +54,7 @@ public actor StremioSource: MediaSource {
     private let client: AddonClient
     private let health: AddonHealthMonitor
     private let choices: any ShowChoiceStore
+    private let prober: any LinkProber
     private var status: (@Sendable (AddonPlaybackStatus) -> Void)?
     /// Set while on mobile data: caps quality and limits torrents (Settings › Mobile Data).
     private var mobileData: MobileDataRanking?
@@ -84,12 +85,14 @@ public actor StremioSource: MediaSource {
     public init(settings: AddonSettings, debridKey: String,
                 imdbID: @escaping @Sendable (MediaKey) async -> String?,
                 client: AddonClient = AddonClient(),
-                choices: any ShowChoiceStore = UserDefaultsShowChoiceStore()) {
+                choices: any ShowChoiceStore = UserDefaultsShowChoiceStore(),
+                prober: any LinkProber = URLSessionLinkProber()) {
         self.settings = settings
         self.debridKey = debridKey
         self.imdbID = imdbID
         self.client = client
         self.choices = choices
+        self.prober = prober
         self.health = AddonHealthMonitor()
         self.streamer = TorrentStreamer(settings: settings.streamSettings)
     }
@@ -181,6 +184,9 @@ public actor StremioSource: MediaSource {
                 remember(played.release, for: key)
                 return played.resource
             } catch let error as TorrentStreamError where error.suggestsFallback {
+                lastError = error
+            } catch let error as DebridLinkError where error.problem.isPerRelease {
+                // This release isn't ready or can't stream; the next one may.
                 lastError = error
             }
         }
@@ -308,6 +314,21 @@ public actor StremioSource: MediaSource {
         return nil
     }
 
+    /// Throws `DebridLinkError` when a debrid release's link leads to one of
+    /// the add-ons' notice clips (an expired plan, not cached yet, a limit)
+    /// rather than the video. Torrents and links that can't be checked pass.
+    public func check(_ release: AddonRelease) async throws {
+        guard let url = release.url else { return }
+        try await check(url, expectedBytes: release.sizeBytes)
+    }
+
+    /// `check(_:)` for a saved debrid link (a queued download's variant ID).
+    public func check(_ url: URL, expectedBytes: Int64?) async throws {
+        try await DebridLinkCheck.verify(url, expectedBytes: expectedBytes, service: debridServiceName, prober: prober)
+    }
+
+    private var debridServiceName: String? { settings.debrid == .none ? nil : settings.debrid.title }
+
     /// Stops the torrent that is streaming, if any. `waitForTeardown` waits
     /// until libtorrent has saved its resume data (on quit).
     public func stopStreaming(waitForTeardown: Bool = false) async {
@@ -324,6 +345,7 @@ public actor StremioSource: MediaSource {
         if let url = first.url {
             status?(.trying(release: first.fileName))
             await streamer.stop()
+            try await check(first)
             return (PlaybackResource(variant: variant(for: first, key: key), url: url), first)
         }
         let torrents = group.filter { $0.magnet != nil }
@@ -443,7 +465,7 @@ public actor StremioSource: MediaSource {
         for release in releases { known[release.id] = release }
     }
 
-    /// Asks TorBox or Premiumize about hashes it hasn't been asked about.
+    /// Asks TorBox, Premiumize or Debrid-Link about hashes it hasn't been asked about.
     private func checkDebridCache(_ releases: [AddonRelease]) async {
         guard settings.checkDebridCache, settings.debrid.canCheckCache, hasDebrid else { return }
         let hashes = Set(releases.filter(\.isDebrid).compactMap(\.contentHash)).filter { debridCached[$0] == nil }

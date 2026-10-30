@@ -166,7 +166,7 @@ struct ToolTile: View {
                 Image(systemName: symbol).font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(isOn ? Palette.brandBright : Palette.textPrimary)
                     .frame(height: 18)
-                Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.85)
+                Text(ui: title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.85)
                     .padding(.top, 3)
                 Text(value).font(.caption2.weight(.medium)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
                     .foregroundStyle(isOn ? Palette.brandBright : Palette.textSecondary)
@@ -502,7 +502,7 @@ struct SoundToggle: View {
                 .foregroundStyle(isOn ? Palette.brandBright : Palette.textSecondary)
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.subheadline.weight(.semibold))
+                Text(ui: title).font(.subheadline.weight(.semibold))
                 Text(detail).font(.caption).foregroundStyle(Palette.textSecondary)
             }
             Spacer(minLength: Spacing.s)
@@ -716,7 +716,7 @@ struct PlayerStatsOverlay: View {
 
     private func row(_ title: String, _ value: String?) -> some View {
         HStack {
-            Text(title).foregroundStyle(Palette.textSecondary)
+            Text(ui: title).foregroundStyle(Palette.textSecondary)
             Spacer(minLength: Spacing.s)
             Text(value ?? "–").fontWeight(.medium).lineLimit(1)
         }

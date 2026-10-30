@@ -35,6 +35,10 @@ public final class FeatureServices {
     public private(set) var episodesRevision = 0
     /// Set when a notification is opened: the root view shows this title (and episode).
     public var openRequest: OpenRequest?
+    /// Set by a widget's, Spotlight's or Siri's link: the root view shows this tab.
+    public var tabRequest: TabRequest?
+    /// A query for Search to show, from a link; Search clears it once shown.
+    public var searchRequest: String?
     @ObservationIgnored var tracker: EpisodeTrackerState {
         didSet { prefs.set(tracker, for: Keys.tracker) }
     }
@@ -46,6 +50,12 @@ public final class FeatureServices {
     @ObservationIgnored public let debridLibrary: DebridLibrarySource
     /// Bumped when the debrid library reloads or its service changes.
     public private(set) var debridRevision = 0
+    /// The debrid account's name and plan, read when the key or service changes (DebridPlanStatus.swift).
+    public internal(set) var debridAccount: DebridAccount?
+    /// Settings › Torrents & Debrid › Remind Before the Plan Ends.
+    public var remindBeforeDebridPlanEnds: Bool {
+        didSet { prefs.set(remindBeforeDebridPlanEnds, for: Keys.debridPlanReminder) }
+    }
 
     // MARK: Scrobbling
 
@@ -57,6 +67,7 @@ public final class FeatureServices {
         static let autoplayPreviews = "bluebox.previews.autoplay"
         static let newEpisodeSettings = "bluebox.newEpisodes.settings"
         static let tracker = "bluebox.newEpisodes.state"
+        static let debridPlanReminder = "bluebox.debrid.planReminder"
     }
 
     /// Re-reads the settings another device can change (settings sync).
@@ -73,6 +84,7 @@ public final class FeatureServices {
         autoplayPreviews = prefs.value(Bool.self, for: Keys.autoplayPreviews) ?? true
         newEpisodeSettings = prefs.value(NewEpisodeSettings.self, for: Keys.newEpisodeSettings) ?? NewEpisodeSettings()
         tracker = prefs.value(EpisodeTrackerState.self, for: Keys.tracker) ?? EpisodeTrackerState()
+        remindBeforeDebridPlanEnds = prefs.value(Bool.self, for: Keys.debridPlanReminder) ?? true
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let expensive = path.isExpensive, constrained = path.isConstrained, offline = path.status != .satisfied
             Task { @MainActor in

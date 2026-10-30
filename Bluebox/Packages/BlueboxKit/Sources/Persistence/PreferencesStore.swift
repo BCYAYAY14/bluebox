@@ -61,6 +61,10 @@ public enum PreferenceKey {
     public static let directURLs = "bluebox.directURLs"
     /// [TorrentSource.Item]: torrents the user added and their catalog matches.
     public static let torrents = "bluebox.torrents"
+    /// [String: MatchOverride] (MediaSources): Fix Match choices for local and
+    /// debrid files, by "source/variant". On this device only: folder variant
+    /// IDs come from this device's paths.
+    public static let matchOverrides = "bluebox.matchOverrides"
     public static let addons = "bluebox.addons"
     public static let pausedTorrentDownloads = "bluebox.pausedTorrentDownloads"
     /// `DownloadSettings` (Downloads): concurrency, Wi‑Fi only, delete after watching…

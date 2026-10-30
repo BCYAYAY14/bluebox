@@ -11,7 +11,9 @@ struct SourcesSettingsPage: View {
     @State private var links: [DirectURLSource.Item] = []
     @State private var importingFolder = false
     @State private var addingLink = false
-    @State private var addingServer = false
+    @State private var addingServer: JellyfinSource.Flavour?
+    @State private var addingWebDAV = false
+    @State private var addingPlex = false
     @State private var confirmRemoveServer: SourceRow?
 
     struct SourceRow: Identifiable {
@@ -59,16 +61,38 @@ struct SourcesSettingsPage: View {
                         Button("Test Connection") { Task { await test(row.id) } }
                         if row.kind == .localFolder {
                             Button("Remove", role: .destructive) { removeFolder(row) }
-                        } else if row.kind == .jellyfin {
+                        } else if [.jellyfin, .emby, .webdav, .plex].contains(row.kind) {
                             Button("Remove…", role: .destructive) { confirmRemoveServer = row }
                         }
                     }
                 }
                 Button("Add Folder…") { importingFolder = true }
                     .settingsRow("Add Folder")
-                Button("Add Jellyfin Server…") { addingServer = true }
+                Button("Add Jellyfin Server…") { addingServer = .jellyfin }
                     .accessibilityIdentifier("addJellyfinButton")
                     .settingsRow("Add Jellyfin Server")
+                Button("Add Emby Server…") { addingServer = .emby }
+                    .accessibilityIdentifier("addEmbyButton")
+                    .settingsRow("Add Emby Server")
+                Button("Add Plex Server…") { addingPlex = true }
+                    .accessibilityIdentifier("addPlexButton")
+                    .settingsRow("Add Plex Server")
+                Button("Add WebDAV Folder…") { addingWebDAV = true }
+                    .accessibilityIdentifier("addWebDAVButton")
+                    .settingsRow("Add WebDAV Folder")
+                // VLC could play smb:// but not list a share, and downloads and subtitles can't read it, so
+                // SMB isn't a source; this says what works instead.
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SMB Shares")
+                    #if os(macOS)
+                    Text("Bluebox can't open SMB (Windows) shares by itself. Connect to the share in Finder with Go › Connect to Server, then add it with Add Folder. Or turn on WebDAV on the NAS and add that.")
+                        .font(.caption).foregroundStyle(Palette.textSecondary)
+                    #else
+                    Text("Bluebox can't open SMB (Windows) shares by itself. Turn on WebDAV on the NAS or computer sharing them, then add it with Add WebDAV Folder.")
+                        .font(.caption).foregroundStyle(Palette.textSecondary)
+                    #endif
+                }
+                .settingsRow("SMB Shares")
                 Button("Test All Sources") { Task { for s in sources { await test(s.id) } } }
                     .settingsRow("Test All Sources")
             } header: {
@@ -114,20 +138,22 @@ struct SourcesSettingsPage: View {
         }
         .task(id: app.sourcesRevision) { await loadSources() }
         .fileImporter(isPresented: $importingFolder, allowedContentTypes: [.folder]) { result in
-            guard case .success(let url) = result else { return }
-            Task {
-                do { try await app.addLocalFolder(url) }
-                catch { app.alert = AppAlert(title: "Couldn't add folder", message: UserFacingError.message(for: error)) }
+            switch result {
+            case .success(let url): Task { await app.addFolderReporting(url) }
+            case .failure(let error): app.alert = AppAlert(title: "Couldn't add folder", message: UserFacingError.message(for: error))
             }
         }
         .sheet(isPresented: $addingLink) { AddLinkSheet { await loadSources() } }
-        .sheet(isPresented: $addingServer) { AddJellyfinSheet() }
+        .sheet(item: $addingServer) { AddMediaServerSheet(flavour: $0) }
+        .sheet(isPresented: $addingWebDAV) { AddWebDAVSheet() }
+        .sheet(isPresented: $addingPlex) { AddPlexSheet() }
         .confirmationDialog("Remove \(confirmRemoveServer?.name ?? "this server")?",
                             isPresented: Binding(get: { confirmRemoveServer != nil }, set: { if !$0 { confirmRemoveServer = nil } }),
                             titleVisibility: .visible, presenting: confirmRemoveServer) { row in
             Button("Remove", role: .destructive) { Task { await app.removeSource(row.id); await loadSources() } }
-        } message: { _ in
-            Text("Bluebox forgets its sign-in. To add it again, you'll need your username and password.")
+        } message: { row in
+            Text(ui: row.kind == .plex ? "Bluebox forgets its sign-in. To add it again, you'll need to sign in to Plex."
+                 : "Bluebox forgets its sign-in. To add it again, you'll need your username and password.")
         }
     }
 
@@ -350,9 +376,13 @@ struct AddTorrentSheet: View {
     }
 }
 
-struct AddJellyfinSheet: View {
+/// Signs in to a Jellyfin or Emby server. They take the same details; the
+/// differences (Emby's `/emby` path and its own auth headers) are handled by
+/// `JellyfinSource` once the server says which it is.
+struct AddMediaServerSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    let flavour: JellyfinSource.Flavour
     @State private var server = ""
     @State private var username = ""
     @State private var password = ""
@@ -378,9 +408,11 @@ struct AddJellyfinSheet: View {
                 if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
                 Text("Bluebox signs in once and keeps only the server's access token, in your Keychain. Use https:// for servers outside your home network.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
+                Text("What you watch here and on the server's own apps stays in step: watched, unwatched and where you stopped.")
+                    .font(.footnote).foregroundStyle(Palette.textSecondary)
             }
             .formStyle(.grouped)
-            .navigationTitle("Add Jellyfin Server")
+            .navigationTitle(flavour == .emby ? Text("Add Emby Server") : Text("Add Jellyfin Server"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -397,10 +429,153 @@ struct AddJellyfinSheet: View {
         working = true; error = nil
         defer { working = false }
         do {
-            try await app.addJellyfin(server: server, username: username, password: password)
+            try await app.addMediaServer(flavour, server: server, username: username, password: password)
             dismiss()
         } catch SourceError.unauthorized {
             error = "The server didn't accept that username and password."
+        } catch {
+            self.error = UserFacingError.message(for: error)
+        }
+    }
+}
+
+struct AddWebDAVSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var server = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var error: String?
+    @State private var working = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("https://nas.example.com/dav/Movies", text: $server)
+                    #if os(iOS)
+                    .keyboardType(.URL).textInputAutocapitalization(.never)
+                    #endif
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("webdavServerField")
+                TextField("Username", text: $username)
+                    .textContentType(.username)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $password).textContentType(.password)
+                if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
+                Text("A folder of videos on a NAS, Nextcloud or other WebDAV server. Its subfolders are scanned and matched to the catalog by file name. The password is kept in your Keychain. Use https:// for servers outside your home network.")
+                    .font(.footnote).foregroundStyle(Palette.textSecondary)
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add WebDAV Folder")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(working ? "Connecting…" : "Add") { Task { await save() } }
+                        .disabled(server.isEmpty || username.isEmpty || working)
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 320)
+        .preferredColorScheme(.dark)
+    }
+
+    private func save() async {
+        working = true; error = nil
+        defer { working = false }
+        do {
+            try await app.addWebDAV(server: server, username: username, password: password)
+            dismiss()
+        } catch SourceError.unauthorized {
+            error = "The server didn't accept that username and password."
+        } catch {
+            self.error = UserFacingError.message(for: error)
+        }
+    }
+}
+
+/// Plex sign-in: plex.tv in the browser (finds the server by itself), or a
+/// server address and token typed in.
+struct AddPlexSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var server = ""
+    @State private var token = ""
+    @State private var pin: PlexSource.PIN?
+    /// Waiting on plex.tv; closing the sheet stops it.
+    @State private var signIn: Task<Void, Never>?
+    @State private var error: String?
+    @State private var working = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if let pin {
+                        HStack { ProgressView().controlSize(.small); Text("Waiting for you to allow Bluebox on plex.tv…").font(.footnote) }
+                        LabeledContent("Code", value: pin.code)
+                        Button("Open plex.tv Again") { openURL(pin.authURL) }
+                    } else {
+                        Button("Sign In with Plex…") { signIn = Task { await signInWithPlex() } }
+                            .disabled(working)
+                            .accessibilityIdentifier("plexSignInButton")
+                    }
+                } footer: {
+                    Text("Opens plex.tv in your browser. Bluebox finds your server and keeps only its access token, in your Keychain.")
+                }
+                Section {
+                    TextField("https://plex.example.com:32400", text: $server)
+                        #if os(iOS)
+                        .keyboardType(.URL).textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("plexServerField")
+                    SecureField("X-Plex-Token", text: $token)
+                    Button(working && pin == nil ? "Connecting…" : "Connect") { Task { await connect() } }
+                        .disabled(server.isEmpty || token.isEmpty || working)
+                } header: {
+                    Text("Or Enter the Server")
+                } footer: {
+                    Text("Use https:// for servers outside your home network.")
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add Plex Server")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 360)
+        .preferredColorScheme(.dark)
+        .onDisappear { signIn?.cancel() }
+    }
+
+    private func signInWithPlex() async {
+        working = true; error = nil
+        defer { working = false; pin = nil }
+        do {
+            let pin = try await app.startPlexSignIn()
+            self.pin = pin
+            openURL(pin.authURL)
+            if try await app.finishPlexSignIn(pin) { dismiss() } else { error = "Plex sign-in timed out. Try again." }
+        } catch is CancellationError {
+        } catch {
+            self.error = UserFacingError.message(for: error)
+        }
+    }
+
+    private func connect() async {
+        working = true; error = nil
+        defer { working = false }
+        do {
+            try await app.addPlex(server: server, token: token)
+            dismiss()
+        } catch SourceError.unauthorized {
+            error = "The server didn't accept that token."
         } catch {
             self.error = UserFacingError.message(for: error)
         }

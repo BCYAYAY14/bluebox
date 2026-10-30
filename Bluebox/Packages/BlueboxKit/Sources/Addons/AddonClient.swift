@@ -3,10 +3,11 @@
 //  Bluebox
 //
 //  Written for Bluebox from public documentation: the Stremio add-on SDK's
-//  protocol (docs/protocol.md). Fetches manifests and stream lists over
-//  HTTPS, each with its own deadline, and asks several add-ons at once,
-//  answering as soon as the results are good enough while slower add-ons
-//  finish in the background.
+//  protocol (docs/protocol.md and docs/api/requests/defineCatalogHandler.md).
+//  Fetches manifests, stream lists and catalogs over HTTPS, each with its
+//  own deadline, and asks several add-ons at once for streams, answering
+//  as soon as the results are good enough while slower add-ons finish in the
+//  background.
 //
 
 import Foundation
@@ -105,13 +106,47 @@ public struct AddonClient: Sendable {
 
     public static func validate(_ manifest: AddonManifest) throws {
         if manifest.behaviorHints?.configurationRequired == true { throw AddonError.needsConfiguration(manifest.name) }
-        guard !manifest.streamTypes.isEmpty else { throw AddonError.noStreams(manifest.name) }
+        // One with only catalogs (lists for Home) is welcome too; it's never asked for streams.
+        guard !manifest.streamTypes.isEmpty || !manifest.homeCatalogs.isEmpty else { throw AddonError.noStreams(manifest.name) }
     }
 
     /// One add-on's streams for a movie or episode.
     public func streams(_ addon: ResolvedAddon, request: StreamRequest, timeout: TimeInterval) async throws -> StreamResponse {
         let data = try await get(request.url(base: addon.base), timeout: timeout)
         return try StreamParser.parse(data, addonID: addon.id, addonName: addon.name)
+    }
+
+    /// One page of an add-on's catalog: `{base}/catalog/{type}/{id}.json`, or
+    /// `…/{id}/genre=Action&skip=100.json` with extras. Items that don't
+    /// decode are left out.
+    public func catalog(base: URL, type: String, id: String, extra: [String: String] = [:],
+                        timeout: TimeInterval = 10) async throws -> [AddonMetaItem] {
+        let data = try await get(AddonCatalogPath.url(base: base, resource: "catalog", type: type, id: id, extra: extra),
+                                 timeout: timeout)
+        do {
+            return try JSONDecoder().decode(AddonMetaItem.CatalogResponse.self, from: data).metas?.compactMap(\.value) ?? []
+        } catch {
+            throw AddonError.unexpectedResponse
+        }
+    }
+}
+
+/// Catalog URLs. IDs and extra values are percent-encoded, so a
+/// "kitsu:1" or a genre with a slash stays one path segment.
+public enum AddonCatalogPath {
+    static let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~:"))
+    static let allowedValue = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+
+    public static func url(base: URL, resource: String, type: String, id: String, extra: [String: String] = [:]) -> URL {
+        let encode = { (s: String, set: CharacterSet) in s.addingPercentEncoding(withAllowedCharacters: set) ?? s }
+        var path = base.absoluteString
+        while path.hasSuffix("/") { path.removeLast() }
+        path += "/\(resource)/\(encode(type, allowed))/\(encode(id, allowed))"
+        // The protocol's order isn't fixed; sorted keeps cache keys and URLs stable.
+        let extras = extra.filter { !$0.value.isEmpty }.sorted { $0.key < $1.key }
+            .map { "\(encode($0.key, allowedValue))=\(encode($0.value, allowedValue))" }.joined(separator: "&")
+        if !extras.isEmpty { path += "/" + extras }
+        return URL(string: path + ".json") ?? base
     }
 }
 

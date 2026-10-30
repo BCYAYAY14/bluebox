@@ -51,7 +51,7 @@ public final class AccountModel {
     public enum SetupCheck: Equatable {
         case idle
         case checking
-        case ok(warnings: [String])
+        case ok(warnings: [String], scripts: [SupabaseSetupScript] = [])
         case failed(String, needsSetupSQL: Bool)
     }
 
@@ -97,6 +97,10 @@ public final class AccountModel {
     @ObservationIgnored var onAccountCreated: @MainActor () -> Void = {}
     /// Called after any sign-in, so automatic setup can forget its token.
     @ObservationIgnored var onSignedIn: @MainActor () -> Void = {}
+    /// Sign-out couldn't upload this many changes: ask whether to sign out anyway.
+    @ObservationIgnored var onSignOutBlocked: @MainActor (Int) -> Void = { _ in }
+    /// How long sign-out waits for the last push.
+    @ObservationIgnored var signOutPushLimit: Double = 8
     /// Erases this device's library and profiles, for `.useAccountLibrary`.
     @ObservationIgnored var onUseAccountLibrary: @MainActor () async -> Void = {}
     /// Called with the settings keys another device changed, after they're written here.
@@ -352,7 +356,7 @@ public final class AccountModel {
         do {
             let report = try await SupabaseProjectProbe.check(config, http: http)
             guard self.config == config else { return }
-            setupCheck = .ok(warnings: report.warnings)
+            setupCheck = .ok(warnings: report.warnings, scripts: report.scripts)
         } catch {
             guard self.config == config else { return }
             setupCheck = .failed(Self.describe(error), needsSetupSQL: (error as? SupabaseSetupError)?.needsSetupSQL ?? false)
@@ -361,22 +365,29 @@ public final class AccountModel {
 
     /// Records a check made while connecting, so its warnings show straight away.
     func recordSetupCheck(_ report: SupabaseProjectReport) {
-        setupCheck = .ok(warnings: report.warnings)
+        setupCheck = .ok(warnings: report.warnings, scripts: report.scripts)
     }
 
     // MARK: Sync
 
     /// Pushes anything waiting first (up to 8 seconds), so nothing made on
     /// this account is left behind if another account's library replaces it.
-    public func signOut() async {
+    /// If changes are still waiting after that (offline, server down), asks
+    /// through `onSignOutBlocked` and stays signed in; `force` signs out anyway.
+    public func signOut(force: Bool = false) async {
         pending?.cancel()
-        stopRealtime()
-        if let engine, isSignedIn, accountChange == nil {
+        if !force, let engine, isSignedIn, accountChange == nil {
             let push = Task { _ = try? await engine.sync() }
-            let deadline = Task { try? await Task.sleep(for: .seconds(8)); push.cancel() }
+            let deadline = Task { try? await Task.sleep(for: .seconds(signOutPushLimit)); push.cancel() }
             await push.value
             deadline.cancel()
+            let waiting = await engine.pendingChangeCount()
+            if waiting > 0 {
+                onSignOutBlocked(waiting)
+                return
+            }
         }
+        stopRealtime()
         signedOutOnPurpose = true
         await auth?.signOut()
         email = nil
@@ -449,6 +460,22 @@ public final class AccountModel {
                            onState: @escaping @Sendable (RemoteChannel.State) -> Void) -> RemoteChannel? {
         guard let auth, let config, isSignedIn else { return nil }
         return RemoteChannel(config: config, auth: auth, onMessage: onMessage, onState: onState)
+    }
+
+    /// This device's own server, for a party code typed without a link.
+    var partyConfig: SupabaseConfig? { config }
+
+    /// How to reach a Watch Party room on `project` (nil: this device's own
+    /// server): this account's sign-in when it's the same project, otherwise
+    /// a guest sign-in kept in memory for the party's length.
+    func partyAccess(project: SupabaseConfig?) async throws -> (SupabaseConfig, @Sendable () async throws -> String) {
+        guard let target = project ?? config else { throw SyncError.notConfigured }
+        if let auth, let config, target.url == config.url, await auth.currentSession != nil {
+            return (config, { try await auth.accessToken() })
+        }
+        let guest = SupabaseAuth(config: target, http: http, secrets: MemorySecretStore())
+        try await guest.signInAnonymously()
+        return (target, { try await guest.accessToken() })
     }
 
     private func stopRealtime() {

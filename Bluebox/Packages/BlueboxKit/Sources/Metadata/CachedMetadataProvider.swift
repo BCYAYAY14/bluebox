@@ -50,6 +50,19 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
         return await bridge.key(for: key, toTMDB: tmdb)
     }
 
+    // MARK: Add-on catalogs
+
+    /// An answer from elsewhere (an add-on's catalog), kept as long as the
+    /// lists and shared between callers like them.
+    public func cached<T: Sendable>(_ cacheKey: String, fetch: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await store.value("other:\(cacheKey)", lifetime: lifetimes.lists, fetch: fetch)
+    }
+
+    /// `titles` without the ones the profile's limit leaves out of lists.
+    public func allowed(_ titles: [Title]) -> [Title] {
+        filtered(Page(items: titles, page: 1, totalPages: 1)).items
+    }
+
     // MARK: Maturity
 
     private let filterLock = NSLock()
@@ -134,7 +147,7 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
         return TitleDetail(title: detail.title, tagline: detail.tagline, runtimeMinutes: detail.runtimeMinutes, genres: detail.genres,
                            cast: detail.cast, crew: detail.crew, logo: detail.logo, seasons: detail.seasons,
                            related: detail.related.filter { filter.allows($0, certification: known[$0.key]) },
-                           certification: detail.certification, imdbID: detail.imdbID)
+                           certification: detail.certification, imdbID: detail.imdbID, collection: detail.collection)
     }
 
     /// A title's detail still in memory, without asking (Home's next-episode
@@ -325,6 +338,15 @@ extension CachedMetadataProvider: MetadataExtras {
             try await extras.filmography(personID: personID)
         }
     }
+
+    public func collection(id: Int) async throws -> FilmCollection {
+        guard let extras else { throw MetadataError.notFound }
+        let c = try await store.value("collection:\(id)", lifetime: lifetimes.detail) { try await extras.collection(id: id) }
+        guard let filter = contentFilter else { return c }
+        let known = filterLock.withLock { certifications }
+        return FilmCollection(id: c.id, name: c.name, overview: c.overview, poster: c.poster, backdrop: c.backdrop,
+                              parts: c.parts.filter { filter.allows($0, certification: known[$0.key]) })
+    }
 }
 
 extension TitleDetail {
@@ -335,7 +357,7 @@ extension TitleDetail {
                             genreIDs: t.genreIDs, voteAverage: t.voteAverage, poster: t.poster, backdrop: t.backdrop)
         return TitleDetail(title: renamed, tagline: tagline, runtimeMinutes: runtimeMinutes, genres: genres, cast: cast,
                            crew: crew, logo: logo, seasons: seasons, related: related, certification: certification,
-                           imdbID: imdbID ?? key.imdbID)
+                           imdbID: imdbID ?? key.imdbID, collection: collection)
     }
 }
 

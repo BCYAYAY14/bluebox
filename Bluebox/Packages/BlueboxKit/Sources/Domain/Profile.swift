@@ -22,15 +22,19 @@ public struct Profile: Codable, Sendable, Hashable, Identifiable {
     /// The oldest certification this profile may see. Kept on this device
     /// (the sync schema has no column for it), like the PIN.
     public var maturity: MaturityRating
-    /// A Kids profile: marked in the picker, capped at 7+, and limited to
-    /// family titles where the certification isn't known.
+    /// A Kids profile: marked in the picker, capped at 7+, limited to family
+    /// titles where the certification isn't known, and Settings asks for a PIN.
     public var isKids: Bool
+    /// Allow Unrated Titles in the editor: whether a title with no known
+    /// certification may play under a limit. nil follows the default, which is
+    /// off for Kids and on for the rest. Kept on this device, like `maturity`.
+    public var allowsUnrated: Bool?
 
     public init(id: String, name: String, symbol: String = "person.fill", color: Int = 0, isRemoved: Bool = false,
-                updatedAt: Date, maturity: MaturityRating = .all, isKids: Bool = false) {
+                updatedAt: Date, maturity: MaturityRating = .all, isKids: Bool = false, allowsUnrated: Bool? = nil) {
         self.id = id; self.name = name; self.symbol = symbol; self.color = color
         self.isRemoved = isRemoved; self.updatedAt = updatedAt
-        self.maturity = maturity; self.isKids = isKids
+        self.maturity = maturity; self.isKids = isKids; self.allowsUnrated = allowsUnrated
     }
 
     public var isDefault: Bool { id == Self.defaultID }
@@ -38,18 +42,24 @@ public struct Profile: Codable, Sendable, Hashable, Identifiable {
     /// The limit in force: a Kids profile never goes above 7+.
     public var effectiveMaturity: MaturityRating { isKids ? min(maturity, .age7) : maturity }
 
+    /// A limit or Kids: Settings and this profile's own editor ask for a PIN.
+    public var isRestricted: Bool { isKids || maturity != .all }
+
+    /// Whether unrated titles play under this profile's limit (`allowsUnrated`, or its default).
+    public var effectiveAllowsUnrated: Bool { allowsUnrated ?? !isKids }
+
     /// What catalogue and search rows may show for this profile; nil shows everything.
     public var contentFilter: ContentFilter? {
         let limit = effectiveMaturity
         guard limit != .all || isKids else { return nil }
-        return ContentFilter(maximum: limit, familyOnlyWhenUnrated: isKids)
+        return ContentFilter(maximum: limit, familyOnlyWhenUnrated: isKids, blocksUnrated: !effectiveAllowsUnrated)
     }
 
     public static func makeDefault(name: String = "Me") -> Profile {
         Profile(id: defaultID, name: name, updatedAt: Date(timeIntervalSince1970: 0))
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, symbol, color, isRemoved, updatedAt, maturity, isKids }
+    private enum CodingKeys: String, CodingKey { case id, name, symbol, color, isRemoved, updatedAt, maturity, isKids, allowsUnrated }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -62,6 +72,7 @@ public struct Profile: Codable, Sendable, Hashable, Identifiable {
         // Added with Kids profiles: older stored profiles have neither.
         maturity = try c.decodeIfPresent(MaturityRating.self, forKey: .maturity) ?? .all
         isKids = try c.decodeIfPresent(Bool.self, forKey: .isKids) ?? false
+        allowsUnrated = try c.decodeIfPresent(Bool.self, forKey: .allowsUnrated)
     }
 }
 
@@ -161,12 +172,16 @@ public struct ContentFilter: Sendable, Hashable {
     /// Kids: a title with no known certification shows only when its genres
     /// are Family, Animation or Kids.
     public var familyOnlyWhenUnrated: Bool
+    /// A title page or Play with no known certification is refused (Kids, unless
+    /// Allow Unrated Titles is on). Rows still go by `familyOnlyWhenUnrated`,
+    /// since list results rarely carry a certification.
+    public var blocksUnrated: Bool
 
     /// TMDB genre IDs that count as family viewing (movie and TV lists).
     public static let familyGenres: Set<Int> = [10751, 16, 10762]
 
-    public init(maximum: MaturityRating, familyOnlyWhenUnrated: Bool = false) {
-        self.maximum = maximum; self.familyOnlyWhenUnrated = familyOnlyWhenUnrated
+    public init(maximum: MaturityRating, familyOnlyWhenUnrated: Bool = false, blocksUnrated: Bool = false) {
+        self.maximum = maximum; self.familyOnlyWhenUnrated = familyOnlyWhenUnrated; self.blocksUnrated = blocksUnrated
     }
 
     /// Whether `title` may show, given its certification if one is known.
@@ -180,7 +195,7 @@ public struct ContentFilter: Sendable, Hashable {
 
     /// Whether a title page with this certification may play.
     public func allows(certification: String?) -> Bool {
-        guard let certification, let age = MaturityRating.minimumAge(forCertification: certification) else { return true }
+        guard let certification, let age = MaturityRating.minimumAge(forCertification: certification) else { return !blocksUnrated }
         return maximum == .all || age <= maximum.rawValue
     }
 }

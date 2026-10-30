@@ -517,10 +517,10 @@ private struct ListEditorHost: ViewModifier {
                         .transition(.opacity)
                     ListEditorCard(request: request)
                         .id(request.id)
-                        .transition(reduceMotion ? .opacity : .scale(scale: 0.96).combined(with: .opacity))
+                        .transition(Motion.pop(reduceMotion, scale: 0.96))
                 }
             }
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: app.listEditor?.id)
+            .animation(Motion.popover(reduceMotion), value: app.listEditor?.id)
         }
     }
 }

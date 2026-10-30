@@ -4,11 +4,20 @@ import Foundation
 import Metadata
 import Testing
 
-/// Answers the handful of Jellyfin endpoints Bluebox uses.
+/// Answers the handful of Jellyfin (or, as `flavour` says, Emby) endpoints Bluebox uses.
 final class FakeJellyfin: HTTPClient, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var requests: [URLRequest] = []
     var password = "secret"
+    var flavour = JellyfinSource.Flavour.jellyfin
+    /// An Emby server that only answers under `/emby`.
+    var onlyUnderEmbyPath = false
+    /// Jellyfin 10.9 and later: played state only at `UserPlayedItems/{id}`.
+    var onlyNewPlayedRoute = false
+    /// A proxy in front of Emby that turns DELETE away.
+    var refusesDelete = false
+    /// This user's state per item ID, as `UserData` sends it.
+    var userData: [String: [String: Any]] = [:]
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         lock.withLock { requests.append(request) }
@@ -19,19 +28,40 @@ final class FakeJellyfin: HTTPClient, @unchecked Sendable {
     private func json(_ o: Any) -> Data { try! JSONSerialization.data(withJSONObject: o) }
 
     private func handle(_ r: URLRequest) -> (Int, Data) {
-        let path = r.url!.path
+        var path = r.url!.path
+        if onlyUnderEmbyPath {
+            guard path.hasPrefix("/emby/") else { return (404, Data()) }
+            path.removeFirst("/emby".count)
+        }
         let q = Dictionary(uniqueKeysWithValues: (URLComponents(url: r.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-        let auth = r.value(forHTTPHeaderField: "Authorization") ?? ""
+        // Jellyfin reads `Authorization`; Emby reads `X-Emby-Authorization`, with the token alone in `X-Emby-Token`.
+        let auth: String, signedIn: Bool
+        switch flavour {
+        case .jellyfin:
+            auth = r.value(forHTTPHeaderField: "Authorization") ?? ""
+            signedIn = auth.contains("Token=\"tok\"")
+        case .emby:
+            guard r.value(forHTTPHeaderField: "Authorization") == nil else { return (400, Data()) }
+            auth = r.value(forHTTPHeaderField: "X-Emby-Authorization") ?? ""
+            signedIn = r.value(forHTTPHeaderField: "X-Emby-Token") == "tok"
+        }
         guard auth.hasPrefix("MediaBrowser Client=\"Bluebox\""), auth.contains("DeviceId=\"dev-1\"") else { return (400, Data()) }
+        // The public info is asked for before the client knows which server it is.
+        if path == "/System/Info/Public" {
+            return flavour == .emby ? (200, json(["ServerName": "Den", "Version": "4.8.10.0"]))
+                                    : (200, json(["ServerName": "Living Room", "Version": "10.10.0", "ProductName": "Jellyfin Server"]))
+        }
+        if path.hasPrefix("/Users/u1/PlayedItems/") || path.hasPrefix("/UserPlayedItems/") {
+            guard signedIn else { return (401, Data()) }
+            return played(r, path: path, query: q)
+        }
         switch path {
-        case "/System/Info/Public":
-            return (200, json(["ServerName": "Living Room", "Version": "10.10.0"]))
         case "/Users/AuthenticateByName":
             let body = (try? JSONSerialization.jsonObject(with: r.httpBody ?? Data())) as? [String: String]
             guard body?["Pw"] == password else { return (401, Data()) }
             return (200, json(["AccessToken": "tok", "User": ["Id": "u1", "Name": "Brian"]]))
         case "/Items":
-            guard auth.contains("Token=\"tok\""), q["userId"] == "u1" else { return (401, Data()) }
+            guard signedIn, q["userId"] == "u1" else { return (401, Data()) }
             if q["includeItemTypes"] == "Series" {
                 return (200, json(["Items": [["Id": "s1", "Name": "Show", "Type": "Series", "ProviderIds": ["Tmdb": "1399"]],
                                              ["Id": "s2", "Name": "Obscure", "Type": "Series", "ProviderIds": [:]]],
@@ -49,12 +79,42 @@ final class FakeJellyfin: HTTPClient, @unchecked Sendable {
                  "MediaSources": [["Id": "ms3", "Container": "mov,mp4,m4a"]]],
                 ["Id": "x", "Name": "No media", "Type": "Movie"],
             ]
-            return (200, json(["Items": items, "TotalRecordCount": items.count]))
-        case "/Sessions/Playing/Stopped":
-            return (204, Data())
+            var withState = items.map { item -> [String: Any] in
+                var item = item
+                if q["enableUserData"] == "true", let id = item["Id"] as? String { item["UserData"] = lock.withLock { userData[id] } ?? [:] }
+                return item
+            }
+            if let ids = q["ids"]?.split(separator: ",").map(String.init) {
+                withState = withState.filter { ids.contains($0["Id"] as? String ?? "") }
+            }
+            return (200, json(["Items": withState, "TotalRecordCount": withState.count]))
+        case "/Sessions/Playing/Progress", "/Sessions/Playing/Stopped":
+            return signedIn ? (204, Data()) : (401, Data())
         default:
             return (404, Data())
         }
+    }
+
+    private func played(_ r: URLRequest, path: String, query: [String: String]) -> (Int, Data) {
+        var path = path
+        if path.hasPrefix("/UserPlayedItems/") {
+            guard flavour == .jellyfin, query["userId"] == "u1" else { return (404, Data()) }
+        } else if onlyNewPlayedRoute {
+            return (404, Data())
+        }
+        let viaPost = path.hasSuffix("/Delete")
+        if viaPost { path.removeLast("/Delete".count) }
+        let id = String(path.split(separator: "/").last ?? "")
+        let played: Bool
+        switch r.httpMethod {
+        case "POST": played = !viaPost
+        case "DELETE":
+            if refusesDelete { return (405, Data()) }
+            played = false
+        default: return (405, Data())
+        }
+        lock.withLock { userData[id] = ["Played": played, "PlaybackPositionTicks": 0] }
+        return (200, json(["Played": played]))
     }
 }
 

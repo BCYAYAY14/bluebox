@@ -173,6 +173,24 @@ public struct SubtitleTimeline: Sendable, Hashable {
         return Array(cues[max(0, idx - before)..<min(cues.count, idx + after)])
     }
 
+    /// When a line next comes or goes after `playerTime`, on the player's clock.
+    public func nextChange(after playerTime: TimeInterval, offset: SubtitleOffset = .init()) -> TimeInterval? {
+        let t = offset.cueTime(forPlayerTime: playerTime)
+        // The next start after t, and the earliest end after t among lines already started.
+        var lo = 0, hi = cues.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if cues[mid].start <= t { lo = mid + 1 } else { hi = mid }
+        }
+        var next = lo < cues.count ? cues[lo].start : TimeInterval.infinity
+        var i = lo - 1
+        while i >= 0, latestEnd[i] > t {
+            if cues[i].end > t { next = min(next, cues[i].end) }
+            i -= 1
+        }
+        return next.isFinite ? offset.playerTime(forCueTime: next) : nil
+    }
+
     public func text(at playerTime: TimeInterval, offset: SubtitleOffset = .init()) -> String? {
         let c = cues(at: playerTime, offset: offset)
         return c.isEmpty ? nil : c.map(\.text).joined(separator: "\n")

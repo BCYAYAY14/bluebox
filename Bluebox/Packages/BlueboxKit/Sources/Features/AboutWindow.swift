@@ -78,6 +78,7 @@ private struct AboutButtonStyle: ButtonStyle {
             .overlay(Capsule().strokeBorder(Palette.edge))
             .contentShape(Capsule())
             .onHover { hovering = $0 }
+            .animation(Motion.hover, value: hovering)
     }
 }
 

@@ -22,6 +22,7 @@ struct DownloadsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.usesTopNav) private var usesTopNav
     @Environment(\.selectTab) private var selectTab
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shelves = DownloadShelves.make([])
     /// Any download at all, finished or not (the empty state otherwise).
     @State private var hasDownloads = false
@@ -82,7 +83,7 @@ struct DownloadsView: View {
             Color.clear.frame(height: Spacing.xxl)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .animation(Motion.standard(false), value: shelves.ids)
+        .animation(Motion.standard(reduceMotion), value: shelves.ids)
         .reportsHeaderScroll()
         .background { DownloadsChangeObserver { await reload() } }
         .blueboxScreen()
@@ -157,7 +158,7 @@ struct DownloadsView: View {
     @ViewBuilder private func shelf<Content: View>(_ title: String, inset: CGFloat,
                                                     @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            Text(title).font(Typography.rowTitle).accessibilityAddTraits(.isHeader)
+            Text(ui: title).font(Typography.rowTitle).accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, inset)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Spacing.m) { content() }
@@ -634,11 +635,6 @@ enum DownloadActions {
             switch r.state {
             case .completed:
                 BlueboxMenuButton("Play", systemImage: "play.fill") { Task { await app.playDownloadChecked(r) } }
-                if app.canOpenDownloadsInInfuse {
-                    BlueboxMenuButton("Open in Infuse", systemImage: "arrow.up.forward.app") {
-                        Task { await app.playDownloadChecked(r, inInfuse: true) }
-                    }
-                }
             case .downloading, .queued:
                 BlueboxMenuButton("Pause", systemImage: "pause.fill") { app.pauseDownload(r) }
             case .paused:
@@ -653,6 +649,11 @@ enum DownloadActions {
                 BlueboxMenuButton("Download Next 3 Episodes", systemImage: "square.stack.3d.down.forward") {
                     Task { await app.downloadNextEpisodesAnnounced(after: key, showTitle: r.title) }
                 }
+            }
+        }
+        if r.state == .completed {
+            ExternalPlayerMenuSection(players: app.externalPlayersForDownloads) { player in
+                Task { await app.playDownloadChecked(r, in: player) }
             }
         }
         BlueboxMenuSection {
@@ -671,10 +672,8 @@ enum DownloadActions {
         switch r.state {
         case .completed:
             Button { Task { await app.playDownloadChecked(r) } } label: { Label("Play", systemImage: "play.fill") }
-            if app.canOpenDownloadsInInfuse {
-                Button { Task { await app.playDownloadChecked(r, inInfuse: true) } } label: {
-                    Label("Open in Infuse", systemImage: "arrow.up.forward.app")
-                }
+            ExternalPlayerContextMenu(players: app.externalPlayersForDownloads) { player in
+                Task { await app.playDownloadChecked(r, in: player) }
             }
         case .downloading, .queued:
             Button { app.pauseDownload(r) } label: { Label("Pause", systemImage: "pause") }

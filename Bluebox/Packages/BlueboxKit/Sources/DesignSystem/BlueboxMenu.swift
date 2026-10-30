@@ -321,7 +321,7 @@ private struct BlueboxMenuHost: ViewModifier {
                             }
                         }
                     }
-                    .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: presenter.active?.id)
+                    .animation(Motion.popover(reduceMotion), value: presenter.active?.id)
                 }
                 .ignoresSafeArea()
             }
@@ -609,7 +609,7 @@ private struct MenuRow: View {
             HStack(spacing: 10) {
                 if leadingColumn { leading.frame(width: iconWidth) }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.title).font(font).lineLimit(1)
+                    Text(ui: item.title).font(font).lineLimit(1)
                     if let subtitle = item.subtitle {
                         Text(subtitle).font(.caption).foregroundStyle(Palette.textTertiary).lineLimit(1)
                     }
@@ -761,7 +761,7 @@ private struct MenuAlertRow: View {
                 Text(alert.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let message = alert.message {
-                    Text(message).font(.caption).foregroundStyle(Palette.textSecondary)
+                    Text(ui: message).font(.caption).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let title = alert.actionTitle, let action = alert.action {
@@ -769,7 +769,7 @@ private struct MenuAlertRow: View {
                         dismiss()
                         action()
                     } label: {
-                        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.brandBright)
+                        Text(ui: title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.brandBright)
                             .frame(minHeight: 28).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

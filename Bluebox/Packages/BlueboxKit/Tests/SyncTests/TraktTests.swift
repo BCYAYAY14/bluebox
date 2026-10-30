@@ -107,6 +107,30 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
                 if add, let r = m["rating"] as? Int { movieRatings[id] = (r, m["rated_at"] as? String ?? "") } else { movieRatings[id] = nil }
             }
             return (201, json([:]))
+        case ("GET", "/users/me/lists"):
+            return (200, json(customLists.map { ["name": $0.name, "privacy": "private", "ids": ["trakt": $0.id, "slug": "s\($0.id)"]] }))
+        case ("POST", "/users/me/lists"):
+            let id = (customLists.map(\.id).max() ?? 100) + 1
+            customLists.append((id, body["name"] as? String ?? "", []))
+            listBodies.append(body)
+            return (201, json(["name": body["name"] ?? "", "privacy": body["privacy"] ?? "", "ids": ["trakt": id, "slug": "s\(id)"]]))
+        case (_, let p) where p.hasPrefix("/users/me/lists/"):
+            let parts = p.split(separator: "/")  // users, me, lists, id, items[, remove]
+            guard parts.count >= 5, let id = Int(parts[3]), let i = customLists.firstIndex(where: { $0.id == id }) else { return (404, Data()) }
+            if method == "GET" {
+                return (200, json(customLists[i].items.map {
+                    ["type": $0.type, $0.type: ["title": $0.title, "year": 2020, "ids": ["tmdb": $0.tmdb]]]
+                } + [["type": "person", "person": ["name": "Somebody", "ids": ["trakt": 1]]]]))
+            }
+            let add = parts.count == 5
+            for (field, type) in [("movies", "movie"), ("shows", "show")] {
+                for item in body[field] as? [[String: Any]] ?? [] {
+                    guard let tmdb = (item["ids"] as? [String: Any])?["tmdb"] as? Int else { continue }
+                    customLists[i].items.removeAll { $0.type == type && $0.tmdb == tmdb }
+                    if add { customLists[i].items.append((type, tmdb, "Added \(tmdb)")) }
+                }
+            }
+            return (201, json([:]))
         case ("POST", let p) where p.hasPrefix("/scrobble/"):
             if failScrobbles { return (503, Data()) }
             scrobbles.append((String(p.dropFirst("/scrobble/".count)), body))
@@ -121,6 +145,8 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
     private(set) var removalBodies: [[String: Any]] = []
     private(set) var scrobbles: [(action: String, body: [String: Any])] = []
     var failScrobbles = false
+    var customLists: [(id: Int, name: String, items: [(type: String, tmdb: Int, title: String)])] = []
+    private(set) var listBodies: [[String: Any]] = []
 }
 
 @Suite struct WatchlistReconcileTests {
@@ -205,6 +231,82 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
         try await sync.sync()
         #expect(try await store.watchlist().map(\.key) == [.movie(tmdbID: 10)])
         #expect(server.watchlist.map(\.tmdb) == [10])
+    }
+
+    // MARK: Custom lists
+
+    @Test func listsDontSyncUnlessTurnedOn() async throws {
+        let server = FakeTrakt()
+        let (client, sync, store, _) = try Self.make(server)
+        try await Self.connect(client)
+        try await store.createList(name: "Halloween")
+        try await sync.sync()
+        #expect(server.entries("GET /users/me/lists").isEmpty && server.customLists.isEmpty)
+    }
+
+    @Test func listsAreCreatedOnTraktThenMergeBothWays() async throws {
+        let server = FakeTrakt()
+        let (client, sync, store, prefs) = try Self.make(server)
+        try await Self.connect(client)
+        prefs.set(true, for: TraktSync.syncListsKey)
+        let list = try await store.createList(name: "Halloween")
+        let local = Title(key: .movie(tmdbID: 30), kind: .movie, name: "Local Movie")
+        try await store.setOnList(local, listID: list.id, true)
+
+        try await sync.sync()
+        #expect(server.customLists.count == 1 && server.customLists[0].name == "Halloween")
+        #expect(server.listBodies.first?["privacy"] as? String == "private")
+        #expect(server.customLists[0].items.map(\.tmdb) == [30])
+
+        // Added on Trakt → added here; removed here → removed on Trakt.
+        server.customLists[0].items.append(("show", 20, "Remote Show"))
+        try await sync.sync()
+        #expect(Set(try await store.entries(in: list.id).map(\.key)) == [.movie(tmdbID: 30), .series(tmdbID: 20)])
+        #expect(try await store.entries(in: list.id).first { $0.key == .series(tmdbID: 20) }?.title.name == "Remote Show")
+        try await store.setOnList(local, listID: list.id, false)
+        try await sync.sync()
+        #expect(server.customLists[0].items.map(\.tmdb) == [20])
+
+        // Removed on Trakt → removed here. Still the one Trakt list.
+        server.customLists[0].items.removeAll()
+        try await sync.sync()
+        #expect(try await store.entries(in: list.id).isEmpty)
+        #expect(server.customLists.count == 1)
+    }
+
+    @Test func aListOfTheSameNameOnTraktIsAdoptedAndAddsOnly() async throws {
+        let server = FakeTrakt()
+        server.customLists = [(5, "Halloween", [("movie", 10, "Remote Movie")])]
+        let (client, sync, store, prefs) = try Self.make(server)
+        try await Self.connect(client)
+        prefs.set(true, for: TraktSync.syncListsKey)
+        let list = try await store.createList(name: "Halloween")
+        try await store.setOnList(Title(key: .movie(tmdbID: 30), kind: .movie, name: "Local"), listID: list.id, true)
+
+        try await sync.sync()
+        #expect(server.listBodies.isEmpty)  // nothing created
+        #expect(Set(server.customLists[0].items.map(\.tmdb)) == [10, 30])
+        #expect(Set(try await store.entries(in: list.id).map(\.key)) == [.movie(tmdbID: 10), .movie(tmdbID: 30)])
+    }
+
+    @Test func deletingAListOnEitherSideNeverDeletesTheOther() async throws {
+        let server = FakeTrakt()
+        let (client, sync, store, prefs) = try Self.make(server)
+        try await Self.connect(client)
+        prefs.set(true, for: TraktSync.syncListsKey)
+        let kept = try await store.createList(name: "Kept")
+        let gone = try await store.createList(name: "Gone Here")
+        try await store.setOnList(Title(key: .movie(tmdbID: 30), kind: .movie, name: "Local"), listID: kept.id, true)
+        try await sync.sync()
+        #expect(server.customLists.count == 2)
+
+        // Deleted on Trakt: made again, and nothing here is removed.
+        server.customLists.removeAll { $0.name == "Kept" }
+        try await store.removeList(gone.id)
+        try await sync.sync()
+        #expect(Set(server.customLists.map(\.name)) == ["Kept", "Gone Here"])
+        #expect(server.customLists.first { $0.name == "Kept" }?.items.map(\.tmdb) == [30])
+        #expect(try await store.entries(in: kept.id).map(\.key) == [.movie(tmdbID: 30)])
     }
 
     @Test func historyImportsWatchedAndPushesNewlyFinished() async throws {

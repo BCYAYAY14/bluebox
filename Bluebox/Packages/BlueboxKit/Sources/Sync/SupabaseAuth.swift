@@ -160,6 +160,21 @@ public actor SupabaseAuth {
         }
     }
 
+    /// Signs in as a nameless guest (Watch Together on someone else's project).
+    /// Needs the project's "Allow anonymous sign-ins".
+    @discardableResult
+    public func signInAnonymously() async throws -> AuthSession {
+        var req = request("auth/v1/signup")
+        req.httpBody = Data("{}".utf8)
+        do {
+            let s = try decodeSession(try await send(req))
+            try setSession(s)
+            return s
+        } catch SyncError.server(let status, _) where [400, 403, 422].contains(status) {
+            throw SyncError.server(status: status, message: "This Bluebox server doesn't let guests join. Its owner can turn on anonymous sign-ins in Supabase.")
+        }
+    }
+
     /// A valid access token, refreshing first if it is about to expire.
     public func accessToken() async throws -> String {
         guard let s = session else { throw SyncError.signedOut }

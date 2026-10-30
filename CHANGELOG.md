@@ -2,6 +2,62 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.0 (31 October 2026)
+
+### Watch Party
+- Start a party from Play's ▾ or any title's right-click menu, and watch in step with friends on your Bluebox server. Friends join with a link, or with a code in File › Join a Party….
+- A chat beside the video on the Mac and iPad, and over or under it on iPhone, with replies, mentions and quick reactions that float up over everyone's video.
+- A lobby with ready checks and a 3, 2, 1. Everyone's own copy is found before it starts, and the party pauses while someone catches up.
+- Up next and a party queue, Step Away and Catch Up, and host tools to lock the party, hand it over or end it.
+
+### Remote control
+- A new remote on iPhone, with a touch pad, and it controls the whole Mac app: browse, open a title and play, not just the player.
+- Seeking from the remote works, and the audio and subtitle buttons answer at once. Commands are confirmed and resent if lost, and the remote shows whether it's connected.
+- Play On sends what you pick to the Mac.
+
+### Finding things to watch
+- Your add-ons' own catalogs can be rows on Home, each with a See All page and its own switch.
+- Collection pages: a title's "Part of …" row opens the whole collection, with Play All, Download All and Add All to My List.
+- Search understands years ("dune 2021"), Esc and ✕ clear it, Clear Filters appears when a filter is on, and Clear All has Undo. Search history can be turned off in Settings › Privacy.
+- Widgets for Continue Watching and Up Next, Siri and Shortcuts, and your library in Spotlight.
+
+### Sources
+- Plex and WebDAV folders. Emby joins Jellyfin, and watched progress now syncs both ways with both.
+- Importing files and folders works again: a folder that moves is kept with an error instead of vanishing, more video types are found, dropping several items imports them all, and there's File › Open… (⌘O).
+- Fix Match corrects a file Bluebox matched to the wrong title.
+- AllDebrid and Debrid-Link have the cloud library and cache check. Settings shows how many days your debrid plan has left, with a reminder three days before it ends.
+- When a debrid service sends its error clip instead of the film, Bluebox says why and offers to open the service or pick another release.
+
+### Playback
+- Open Videos In: play in VLC, IINA, mpv or Infuse on the Mac, and Infuse, VLC, Outplayer, nPlayer, SenPlayer or VidHub on iPhone and iPad.
+- AirPlay under VLC explains why it's greyed out and offers a release AirPlay can play.
+- The next episode is found in the background, so it starts sooner.
+- On iPhone, swipe to seek, and up and down for brightness and volume.
+
+### Kids and accounts
+- Settings, and editing your own restricted profile, ask for the PIN. Kids profiles block unrated titles unless Allow Unrated is on.
+- Signing out warns you when changes haven't been uploaded yet, and a failed Undo offers Try Again.
+- Trakt custom lists can sync (off by default).
+
+### Look and language
+- Choose Bluebox's colour from ten. The app icon and Dock icon follow it.
+- Bluebox in Spanish, French, German, Italian, Brazilian Portuguese, Japanese, Korean and Simplified Chinese, chosen in Settings › Language.
+- Settings is grouped into sections, with a line under each page's title saying what's there.
+- One set of animations throughout, which respect Reduce Motion.
+
+## 1.1.2 (30 October 2026)
+
+### Subtitles
+- Sync to the Audio no longer crashes Bluebox the first time it asks to use speech recognition.
+- Sync to the Audio is quicker and surer. It listens to up to three parts of the film, getting the next ready while it works on the last, and stops after two if they agree. It also knows the names and unusual words in the subtitles before it listens.
+- A sync carries on when you close the card, and the player tells you when it's done, with Undo.
+- Subtitle files keep their timing at any speed. At 2× and above, lines used to come up late, and short ones could be missed.
+- A line no longer flashes up early and disappears again for a moment, and lines in the video without an end time no longer sit on top of the next one.
+
+### Playback
+- With the system player, voices keep their pitch at every speed from 0.25× to 4×, instead of going silent below 0.5× and above 2×.
+- The messages over the video (volume, speed, skipped intro, saved frame) have the player cards' look, with an icon, a level bar for volume, and Undo set apart. Pressing a key again updates the message instead of bringing it in again.
+
 ## 1.1.1 (30 October 2026)
 
 ### Playback

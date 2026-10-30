@@ -87,6 +87,16 @@ private func date(_ year: Int) -> Date {
                                    onList: false, watched: false, downloaded: false, canShare: false, removable: true)
         #expect(a.groups == [[.resume, .playNext], [.addToList, .addToLists, .markWatched, .download], [.goToShow], [.removeFromRow]])
     }
+
+    @Test func watchPartyRidesWithPlay() {
+        // Start a Party sits under Play; hosting one, it becomes Add to Party Queue; a guest gets neither.
+        let start = QuickActions.build(kind: .movie, onList: false, watched: false, downloaded: false, canShare: false, party: .start)
+        #expect(start.groups.first == [.play, .startParty])
+        let host = QuickActions.build(kind: .series, onList: false, watched: false, downloaded: false, canShare: false, party: .addToQueue)
+        #expect(host.groups.first == [.play, .addToParty])
+        let guest = QuickActions.build(kind: .movie, onList: false, watched: false, downloaded: false, canShare: false, party: .none)
+        #expect(guest.groups.first == [.play])
+    }
 }
 
 @Suite struct SearchSectionsTests {

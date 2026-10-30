@@ -114,15 +114,31 @@ public struct TitleDetail: Hashable, Codable, Sendable {
     public let certification: String?
     /// IMDb ID (`tt…`), used to look up external ratings.
     public let imdbID: String?
+    /// The franchise a film belongs to (TMDB only).
+    public let collection: CollectionRef?
 
     public init(
         title: Title, tagline: String? = nil, runtimeMinutes: Int? = nil, genres: [Genre] = [],
         cast: [CreditPerson] = [], crew: [CreditPerson] = [], logo: Artwork? = nil,
-        seasons: [SeasonSummary] = [], related: [Title] = [], certification: String? = nil, imdbID: String? = nil
+        seasons: [SeasonSummary] = [], related: [Title] = [], certification: String? = nil, imdbID: String? = nil,
+        collection: CollectionRef? = nil
     ) {
         self.title = title; self.tagline = tagline; self.runtimeMinutes = runtimeMinutes; self.genres = genres
         self.cast = cast; self.crew = crew; self.logo = logo; self.seasons = seasons; self.related = related
-        self.certification = certification; self.imdbID = imdbID
+        self.certification = certification; self.imdbID = imdbID; self.collection = collection
+    }
+}
+
+/// A film's franchise as its page names it: "Part of the Alien Collection".
+public struct CollectionRef: Hashable, Codable, Sendable, Identifiable {
+    /// TMDB collection ID.
+    public let id: Int
+    public let name: String
+    public let poster: Artwork?
+    public let backdrop: Artwork?
+
+    public init(id: Int, name: String, poster: Artwork? = nil, backdrop: Artwork? = nil) {
+        self.id = id; self.name = name; self.poster = poster; self.backdrop = backdrop
     }
 }
 

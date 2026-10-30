@@ -64,6 +64,9 @@ final class TitleDetailModel {
             self.error = error
         }
         await refreshProgress(app)
+        // A Jellyfin or Emby server may know of watching since its library last
+        // loaded; anything newer bumps libraryRevision, which redraws the page.
+        Task { [key = title.key] in await app.refreshServerProgress(for: key) }
         sizeEstimate.fallbackBytesPerMinute = SeasonSizeEstimate.typicalBytesPerMinute(resolution: app.addonSettings.preferredResolution)
         if title.kind == .series, selectedSeason == nil {
             // Once you've started the show, the page opens on the episode you're
@@ -182,6 +185,8 @@ struct TitleDetailView: View {
     @Environment(\.isDownloaded) private var isDownloaded
     @State private var model: TitleDetailModel
     @State private var releaseItem: ReleaseRequest?
+    /// Play's ▾ (or a right-click on Play): Start a Party, Releases….
+    @State private var playMenuOpen = false
     @State private var tab: Tab
     @State private var overviewExpanded = false
     @State private var showingSeasons = false
@@ -247,6 +252,8 @@ struct TitleDetailView: View {
         }
         .blueboxScreen()
         #if os(iOS)
+        // "Play on" a Mac: the page opens there too, so the room sees what you're looking at.
+        .onAppear { app.remote.follow(.title(model.title.key)) }
         .fullScreenCover(isPresented: $showingSeasons) {
             seasonList.presentationBackground(.clear)
         }
@@ -364,6 +371,7 @@ struct TitleDetailView: View {
                 overview(compact: true)
                 creditsSummary
                 genresLine
+                collectionRow
                 // Four columns across a phone; past that the last ones fold into More.
                 actionTiles(columns: 4)
                     .padding(.top, Spacing.xs)
@@ -412,7 +420,11 @@ struct TitleDetailView: View {
                     actionTiles(columns: 5)
                 }
                 .frame(maxWidth: 640, alignment: .leading)
-                genresLine.frame(maxWidth: 320, alignment: .leading)
+                VStack(alignment: .leading, spacing: Spacing.m) {
+                    genresLine
+                    collectionRow
+                }
+                .frame(maxWidth: 320, alignment: .leading)
             }
             .padding(.horizontal, inset)
         }
@@ -493,7 +505,7 @@ struct TitleDetailView: View {
     /// The action tiles, always in the order My List, Rate, Trailer, Share,
     /// More (DECISIONS.md, UI review 2). Remind Me, Mark Watched and Releases
     /// live under More.
-    private enum ActionTile: Hashable { case myList, rate, trailer, share, remind, watched, releases }
+    private enum ActionTile: Hashable { case myList, rate, trailer, share, remind, watched, releases, openIn }
 
     /// The tiles that get a column of their own when there's room, in order.
     private var leadingTiles: [ActionTile] {
@@ -509,6 +521,7 @@ struct TitleDetailView: View {
         if model.offersReminder { tiles.append(.remind) }
         if model.title.kind == .movie { tiles.append(.watched) }
         if app.addonSettings.isEnabled, primaryKey != nil { tiles.append(.releases) }
+        if isPlayable, primaryKey != nil, !ExternalPlayer.installed.isEmpty { tiles.append(.openIn) }
         return tiles
     }
 
@@ -551,6 +564,7 @@ struct TitleDetailView: View {
         case .remind: RemindMeButton(title: model.display, tile: true).modifier(TileFrame())
         case .watched: watchedTile
         case .releases: releasesTile
+        case .openIn: EmptyView()  // only ever under More
         }
     }
 
@@ -598,6 +612,11 @@ struct TitleDetailView: View {
             case .trailer:
                 guard let trailer = model.trailer else { continue }
                 entries += BlueboxMenuButton("Trailer", systemImage: "play.rectangle") { playingTrailer = trailer }.entries
+            case .openIn:
+                guard let k = primaryKey else { continue }
+                entries += ExternalPlayerMenuSection(players: ExternalPlayer.installed) { player in
+                    Task { await app.play(nowPlayingItem(for: k), in: player) }
+                }.entries
             case .myList, .rate:
                 continue
             }
@@ -759,9 +778,60 @@ struct TitleDetailView: View {
         return model.target?.isResume == true ? model.target?.key : nil
     }
 
+    /// Play, with its ▾ beside it: Start a Party (or, hosting one, Add to
+    /// Party Queue) and Releases… — the same things a right-click on Play offers.
     private func primaryButton(fullWidth: Bool) -> some View {
-        // Above the profile's maturity limit: say so instead of Play.
-        let blocked = !app.allowsCertification(model.detail?.certification)
+        let blocked = model.detail != nil && !app.allowsCertification(model.detail?.certification)
+        let enabled = isPlayable && !blocked
+        return HStack(spacing: 2) {
+            playButton(fullWidth: fullWidth)
+                .blueboxMenu(isPresented: $playMenuOpen, title: "Play Options") { playMenuEntries }
+                #if os(macOS)
+                .overlay { SecondaryClickCatcher { if enabled { playMenuOpen = true } } }
+                #else
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in if enabled { playMenuOpen = true } })
+                #endif
+            BlueboxMenu("Play Options") {
+                playMenuEntries
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(enabled ? Color.black : Palette.textTertiary)
+                    .frame(width: 38, height: 44)
+                    .background(enabled ? Color.white : Palette.elevated,
+                                in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            }
+            .disabled(!enabled)
+            .redacted(reason: isCheckingAvailability ? .placeholder : [])
+            .accessibilityLabel("Play Options")
+            .accessibilityIdentifier("playOptions")
+        }
+    }
+
+    @BlueboxMenuBuilder private var playMenuEntries: [BlueboxMenuEntry] {
+        if let key = primaryKey {
+            if app.party?.isHost == true {
+                BlueboxMenuButton("Add to Party Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                    app.addToParty(nowPlayingItem(for: key))
+                }
+            } else {
+                BlueboxMenuButton("Start a Party", systemImage: "person.2.fill",
+                                  subtitle: "Watch in step with friends, with a chat") {
+                    Task { await app.startParty(nowPlayingItem(for: key)) }
+                }
+            }
+            if app.addonSettings.isEnabled {
+                BlueboxMenuButton("Releases…", systemImage: "list.bullet.rectangle") {
+                    releaseItem = ReleaseRequest(item: nowPlayingItem(for: key))
+                }
+            }
+        }
+    }
+
+    private func playButton(fullWidth: Bool) -> some View {
+        // Above the profile's maturity limit (or unrated on Kids): say so instead of Play.
+        let blocked = model.detail != nil && !app.allowsCertification(model.detail?.certification)
         let label: String = {
             if blocked { return "Not on \(app.currentProfile.name)\u{2019}s Profile" }
             if isCheckingAvailability { return "Play" }
@@ -782,6 +852,11 @@ struct TitleDetailView: View {
         .redacted(reason: isCheckingAvailability ? .placeholder : [])
         .accessibilityIdentifier("playButton")
         .keyboardShortcut(.defaultAction)
+        .remoteFocusable("play", label: label, cornerRadius: Radius.control) {
+            guard isPlayable, !blocked else { return }
+            if model.title.kind == .movie { Task { await play(key: model.title.key, resume: true, fromHeader: true) } }
+            else if let t = model.target { Task { await play(key: t.key, resume: true, fromHeader: true) } }
+        }
     }
 
     /// - Parameter fromHeader: Play or Start Over in the header: the header's
@@ -912,6 +987,11 @@ struct TitleDetailView: View {
             .font(.footnote)
             .lineLimit(1)
         }
+    }
+
+    /// "Part of …" for a film in a collection (TMDB only).
+    @ViewBuilder private var collectionRow: some View {
+        if let ref = model.detail?.collection { CollectionRow(ref: ref) }
     }
 
     // MARK: Tabs
@@ -1331,7 +1411,7 @@ private struct TileLabel: View {
                 .font(.title3.weight(.regular)).frame(height: 24)
                 .foregroundStyle(highlighted ? Palette.brandBright : Palette.textPrimary)
                 .contentTransition(.symbolEffect(.replace))
-            Text(title).font(.caption2.weight(.medium)).foregroundStyle(Palette.textSecondary).lineLimit(1)
+            Text(ui: title).font(.caption2.weight(.medium)).foregroundStyle(Palette.textSecondary).lineLimit(1)
         }
         .frame(minWidth: 64, minHeight: 52)
         .padding(.vertical, Spacing.xs)

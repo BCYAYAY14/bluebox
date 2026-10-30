@@ -50,7 +50,7 @@ public struct BlueboxPicker<Value: Hashable>: View {
             .accessibilityLabel(title)
             .accessibilityValue(current?.title ?? "")
         } label: {
-            Text(title)
+            Text(ui: title)
         }
     }
 

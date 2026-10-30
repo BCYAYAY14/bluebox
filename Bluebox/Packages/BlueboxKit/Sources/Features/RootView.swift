@@ -10,11 +10,15 @@ public enum Route: Hashable {
     /// A series page opened on one episode (its season, scrolled to it), e.g. from a new-episode alert.
     case episode(Title, MediaKey)
     case genre(Genre, TitleKind)
+    /// One of an add-on's catalogs, from its Home row's See All.
+    case addonCatalog(addonID: String, catalogID: String)
     /// A person's page (TMDB person ID).
     case person(Int)
+    /// A film collection's page ("Part of …" on a film's page).
+    case collection(CollectionRef)
     /// Everyone in a title's credits, by department.
     case castCrew(TitleCredits)
-    /// Your debrid cloud (Real-Debrid, Premiumize or TorBox).
+    /// Your debrid cloud (Real-Debrid, Premiumize, TorBox, AllDebrid or Debrid-Link).
     case debridLibrary
     /// "See All" from Home's rows (iPhone, where these aren't tabs).
     case continueWatching
@@ -85,7 +89,9 @@ struct RouteDestination: View {
         case .title(let t): TitleDetailView(title: t)
         case .episode(let t, let key): TitleDetailView(title: t, focus: key)
         case .genre(let g, let kind): GenreView(genre: g, kind: kind)
+        case .addonCatalog(let addonID, let catalogID): AddonCatalogView(addonID: addonID, catalogID: catalogID)
         case .person(let id): PersonView(personID: id)
+        case .collection(let ref): CollectionView(ref: ref)
         case .castCrew(let credits): CastCrewListView(credits: credits)
         case .debridLibrary: DebridLibraryView()
         case .continueWatching: LibraryView(section: .watching, fixed: true)
@@ -114,7 +120,8 @@ struct SidebarSource: Identifiable, Hashable {
         switch kind {
         case .localFolder: "folder"
         case .directURL: "link"
-        case .jellyfin: "server.rack"
+        case .jellyfin, .emby, .plex: "server.rack"
+        case .webdav: "externaldrive.connected.to.line.below"
         case .publicCatalog: "film.stack"
         case .torrent: "arrow.down.to.line.circle"
         case .downloads: "arrow.down.circle"
@@ -197,7 +204,7 @@ public struct RootView: View {
         .environment(\.showProfilePicker, ProfilePickerAction {
             profilePickerIsGate = false
             pickerPIN = nil
-            withAnimation(.smooth(duration: 0.35)) { showsProfilePicker = true }
+            withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
         })
         .environment(\.openSettingsPage, OpenSettingsPageAction { route in openSettings(route: route) })
         .environment(\.notePlayOrigin, NotePlayOriginAction { pendingPlayOrigin = $0 })
@@ -224,7 +231,7 @@ public struct RootView: View {
         .onChange(of: app.profilePickerRequest) {
             profilePickerIsGate = false
             pickerPIN = nil
-            withAnimation(.smooth(duration: 0.35)) { showsProfilePicker = true }
+            withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
         }
         // ⌃⌘1–4, the Profiles menu and the profile menu's avatars: locked
         // profiles ask for their PIN in the picker; the rest switch in place.
@@ -234,7 +241,7 @@ public struct RootView: View {
             if app.isLocked(request.profileID) {
                 profilePickerIsGate = false
                 pickerPIN = request.profileID
-                withAnimation(.smooth(duration: 0.35)) { showsProfilePicker = true }
+                withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
             } else {
                 Task { await flight.rebuild(reduceMotion: reduceMotion) { await app.switchProfile(to: request.profileID) } }
             }
@@ -268,9 +275,14 @@ public struct RootView: View {
         .task { PlaybackEngines.prewarm() }  // libVLC's first setup is slow; do it before Play
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await app.syncAll() } }
+            if phase == .background { app.lockSettings() }  // a restricted profile's Settings asks for the PIN again
             app.account.setInForeground(phase == .active)
         }
         .task { app.account.setInForeground(scenePhase == .active) }
+        #if os(macOS)
+        // The Mac's "background": another app in front.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in app.lockSettings() }
+        #endif
         // MARK: Remote and menu bar hooks (RemoteControlViews.swift, MenuBarDownloads.swift)
         .modifier(RemoteControlHost())
         .onChange(of: app.downloadsOpenRequest) { tab = .downloads }
@@ -278,6 +290,12 @@ public struct RootView: View {
         .preferredColorScheme(.dark)
         // A tapped new-episode alert: show that title (and episode) on the current tab.
         .task(id: app.features.openRequest?.id) { openRequested() }
+        // The remote asked to go somewhere (Home, Search, a title, back).
+        .task(id: app.remoteNavigation?.id) { await remoteNavigated() }
+        // What the remote's touch pad shows as this Mac's page.
+        .onChange(of: remotePageTitle, initial: true) { _, title in app.remoteFocus.screenTitle = title }
+        // My List or Search from a widget, Spotlight or Siri.
+        .task(id: app.features.tabRequest?.id) { tabRequested() }
         // A connect link from another device: Settings › Account, to sign in.
         .task(id: app.account.openRequest) {
             guard app.account.openRequest != nil else { return }
@@ -302,12 +320,18 @@ public struct RootView: View {
         .modifier(UnifiedTitlebar(hidden: app.activePlayer != nil))
         .modifier(MacPlayerHost(session: app.activePlayer) { launchLayer })
         #endif
+        // Releases… from an alert (a debrid link that led to a notice clip).
+        .sheet(item: $app.releasePickerRequest) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true) }
         // A magnet, .torrent or video opened from outside: one sheet with Play.
         .modifier(ExternalOpenPresenter())
+        // Join a Party…, and a party being joined before its player opens (WatchPartyViews.swift).
+        .modifier(PartyHost())
         #if os(macOS)
         // Drop a magnet, .torrent, video or folder anywhere on the window.
         .modifier(ExternalDropTarget())
         #endif
+        // File › Open… (⌘O) and My Sources' Open Files…: videos, folders and .torrent files.
+        .openFilesImporter(isPresented: Bindable(app).pickingFiles)
         // Last, so on Mac the dialog draws over the player too.
         .modifier(AppAlertPresenter(isFrontmost: alertsShowHere))
         #if DEBUG
@@ -349,6 +373,57 @@ public struct RootView: View {
         let route: Route = request.episode.map { .episode(request.title, $0) } ?? .title(request.title)
         paths[tab, default: []].append(route)
         if app.activePlayer != nil { Task { await app.closePlayer() } }
+    }
+
+    /// Goes to `app.features.tabRequest`'s tab, at its first page; Search
+    /// takes the query along (`SearchView` reads `searchRequest`).
+    private func tabRequested() {
+        guard let request = app.features.tabRequest else { return }
+        app.features.tabRequest = nil
+        if let query = request.search { app.features.searchRequest = query }
+        tab = request.tab
+        normalizeTab(compact: isCompact)
+        paths[tab] = []
+    }
+
+    /// Carries out `app.remoteNavigation`, then clears it. Going anywhere but
+    /// back closes the player, as a tapped alert does; back closes it too, or
+    /// leaves the current page.
+    private func remoteNavigated() async {
+        guard let request = app.remoteNavigation else { return }
+        app.remoteNavigation = nil
+        if app.activePlayer != nil {
+            await app.closePlayer()
+            if request.destination == .back { return }
+        }
+        switch request.destination {
+        case .home:
+            tab = .home
+            paths[.home] = []
+        case .search(let query):
+            tab = .search
+            paths[.search] = []
+            app.remoteSearchText = query
+        case .title(let key):
+            guard let title = await app.title(for: key) else { return }
+            if tab == .search || tab == .downloads { tab = .home }
+            if case .title(let shown) = paths[tab]?.last, shown.key == title.key { return }
+            paths[tab, default: []].append(.title(title))
+        case .back:
+            if !(paths[tab] ?? []).isEmpty { paths[tab]?.removeLast() }
+        }
+    }
+
+    /// "Home", "Search", or the title open on the current tab.
+    private var remotePageTitle: String {
+        if case .title(let t) = paths[tab]?.last { return t.name }
+        if case .episode(let t, _) = paths[tab]?.last { return t.name }
+        return switch tab {
+        case .search: String(localized: "Search")
+        case .downloads: String(localized: "Downloads")
+        case .home: String(localized: "Home")
+        default: String(localized: "Library")
+        }
     }
 
     /// Shows the debrid library on the current tab (from Search or Downloads, on My List).
@@ -839,6 +914,7 @@ private struct MacPlayerHost<Launch: View>: ViewModifier {
 struct ProfileMenu: View {
     @Environment(AppModel.self) private var app
     @Environment(\.profileSwitchFlight) private var flight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var size: CGFloat = 26
     var showsChevron = false
     let openSettings: (SettingsPage?) -> Void
@@ -868,7 +944,7 @@ struct ProfileMenu: View {
                                 .frame(width: 9, height: 9)
                                 .overlay(Circle().strokeBorder(Palette.chrome, lineWidth: 2).padding(-2))
                                 .offset(x: 3, y: -3)
-                                .transition(.scale.combined(with: .opacity))
+                                .transition(Motion.pop(reduceMotion, scale: 0.3))
                                 .accessibilityIdentifier("syncDot")
                         } else if updater.hasUnseenUpdate {
                             // Blue: a new Bluebox the daily check found. The menu says which.
@@ -876,10 +952,13 @@ struct ProfileMenu: View {
                                 .frame(width: 9, height: 9)
                                 .overlay(Circle().strokeBorder(Palette.chrome, lineWidth: 2).padding(-2))
                                 .offset(x: 3, y: -3)
-                                .transition(.scale.combined(with: .opacity))
+                                .transition(Motion.pop(reduceMotion, scale: 0.3))
                                 .accessibilityIdentifier("updateDot")
                         }
                     }
+                    // The dot pops in when sync stops or an update turns up, rather than appearing mid-frame.
+                    .animation(Motion.snappy(reduceMotion), value: issues.isEmpty)
+                    .animation(Motion.snappy(reduceMotion), value: updater.hasUnseenUpdate)
                 if showsChevron {
                     Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.textSecondary)
                 }
@@ -955,6 +1034,17 @@ private struct ProfileMenuPanel: ViewModifier {
                         app.requestProfileSwitch(to: p.id)
                     }
                 })
+            }
+            BlueboxMenuSection {
+                if app.party != nil {
+                    BlueboxMenuButton("Leave Party", systemImage: "rectangle.portrait.and.arrow.right") { Task { await app.leaveParty() } }
+                } else {
+                    #if os(macOS)
+                    BlueboxMenuButton("Join a Party…", systemImage: "person.2.fill", shortcut: "⇧⌘J") { app.partyJoin = PartyJoinRequest() }
+                    #else
+                    BlueboxMenuButton("Join a Party", systemImage: "person.2.fill") { app.partyJoin = PartyJoinRequest() }
+                    #endif
+                }
             }
             BlueboxMenuSection {
                 if profiles.count > 1 {
@@ -1061,7 +1151,8 @@ struct AppAlertPresenter: ViewModifier {
 
 /// Bluebox's own alert: a solid black card over a dimmed page, a heavy
 /// title, the message in grey, and OK (with Try Again, in white, when the
-/// alert can retry). Return picks the white button, Esc is OK.
+/// alert can retry), or the alert's own buttons, stacked. Return picks the
+/// white button, Esc is OK (or Cancel).
 struct AppAlertDialog: View {
     let alert: AppAlert
     let dismiss: () -> Void
@@ -1076,11 +1167,11 @@ struct AppAlertDialog: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Spacing.xl) {
                 VStack(alignment: .leading, spacing: Spacing.s) {
-                    Text(alert.title)
+                    Text(ui: alert.title)
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(Palette.textPrimary)
                         .accessibilityAddTraits(.isHeader)
-                    Text(alert.message)
+                    Text(ui: alert.message)
                         .font(.callout)
                         .foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1101,6 +1192,54 @@ struct AppAlertDialog: View {
     }
 
     @ViewBuilder private var buttons: some View {
+        if alert.actions.contains(where: { $0.role != nil }) {
+            // A decision: only its own buttons.
+            VStack(spacing: Spacing.s) {
+                ForEach(alert.actions.indices, id: \.self) { i in
+                    decisionButton(alert.actions[i])
+                }
+            }
+            .accessibilityIdentifier("appAlertButtons")
+        } else if !alert.actions.isEmpty {
+            VStack(spacing: Spacing.s) {
+                ForEach(alert.actions.indices, id: \.self) { i in
+                    let action = alert.actions[i]
+                    if i == 0 {
+                        Button { dismiss(); action.perform() } label: { Text(ui: action.title) }
+                            .buttonStyle(PrimaryButtonStyle(fullWidth: true))
+                            .keyboardShortcut(.defaultAction)
+                    } else {
+                        Button { dismiss(); action.perform() } label: { Text(ui: action.title) }
+                            .buttonStyle(SecondaryButtonStyle(fullWidth: true))
+                    }
+                }
+                Button("OK") { dismiss() }
+                    .buttonStyle(SecondaryButtonStyle(fullWidth: true))
+                    .keyboardShortcut(.cancelAction)
+            }
+            .accessibilityIdentifier("appAlertButtons")
+        } else {
+            plainButtons
+        }
+    }
+
+    @ViewBuilder private func decisionButton(_ action: AppAlert.Action) -> some View {
+        switch action.role {
+        case .primary:
+            Button { dismiss(); action.perform() } label: { Text(ui: action.title) }
+                .buttonStyle(PrimaryButtonStyle(fullWidth: true))
+                .keyboardShortcut(.defaultAction)
+        case .cancel:
+            Button { dismiss(); action.perform() } label: { Text(ui: action.title) }
+                .buttonStyle(SecondaryButtonStyle(fullWidth: true))
+                .keyboardShortcut(.cancelAction)
+        case .secondary, nil:
+            Button { dismiss(); action.perform() } label: { Text(ui: action.title) }
+                .buttonStyle(SecondaryButtonStyle(fullWidth: true))
+        }
+    }
+
+    @ViewBuilder private var plainButtons: some View {
         HStack(spacing: Spacing.s) {
             if let retry = alert.retry {
                 Button("OK") { dismiss() }

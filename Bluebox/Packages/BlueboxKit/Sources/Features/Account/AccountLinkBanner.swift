@@ -18,10 +18,10 @@ struct AccountLinkBanner: ViewModifier {
                 banner(event)
                     .padding(.top, Spacing.s)
                     .padding(.horizontal, Spacing.l)
-                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    .transition(Motion.slide(from: .top, reduceMotion))
             }
         }
-        .animation(.smooth(duration: 0.35), value: app.account.linkEvent)
+        .animation(Motion.standard(reduceMotion), value: app.account.linkEvent)
         .modifier(AccountChangePrompt())
         .modifier(ConnectLinkPrompt())
     }

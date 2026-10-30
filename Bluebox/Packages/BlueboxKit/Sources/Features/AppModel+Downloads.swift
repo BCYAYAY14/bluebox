@@ -22,6 +22,7 @@ extension AppModel {
         let registry = registry
         let addonsID = addons.id
         let base = downloads.directory
+        let addons = addons
         manager.resolveResource = { variant in
             // Debrid releases' IDs are their links; asking the add-on source
             // for anything else would start a stream.
@@ -29,6 +30,7 @@ extension AppModel {
                 guard let url = URL(string: variant.id), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
                     throw SourceError.notFound
                 }
+                try await addons.check(url, expectedBytes: variant.sizeBytes)
                 return PlaybackResource(variant: variant, url: url)
             }
             return try await registry.resolve(variant)
@@ -80,7 +82,7 @@ extension AppModel {
         DownloadPowerMonitor.shared.start(manager: downloads)
         downloadLifecycle.isPlaying = { [weak self] in self?.activePlayer?.snapshot.status.isActive == true }  // buffering too
         downloadLifecycle.isPlayerOpen = { [weak self] in self?.activePlayer != nil }
-        downloadLifecycle.isServingExternalPlayer = { [weak self] in self?.isServingInfuse == true }
+        downloadLifecycle.isServingExternalPlayer = { [weak self] in self?.isServingExternalPlayer == true }
         downloadLifecycle.start(manager: downloads)
         downloadsPresence.liveActivityEnabled = { [weak self] in self?.featureSwitches.liveActivity == true }
         downloadsPresence.currentState = { [manager] in DownloadsActivityState.summary(manager.all(), live: manager.liveStats) }
@@ -196,6 +198,17 @@ extension AppModel {
             }
             return
         }
+        // A link that leads to an add-on's notice clip (expired plan, not cached) isn't worth queueing.
+        do {
+            try await addons.check(release)
+        } catch let error as DebridLinkError {
+            if automatic {
+                Log.sources.error("Automatic download skipped: debrid link is a notice clip (\(error.problem.rawValue, privacy: .public))")
+            } else {
+                alert = debridAlert(error, title: "Couldn't download “\(item.title)”", item: item)
+            }
+            return
+        } catch {}
         let variant = await addons.variant(for: release, key: item.key)
         let resource = release.url.map { PlaybackResource(variant: variant, url: $0) }
         await enqueueDownload(variant, key: item.key, title: item.title, subtitle: item.subtitle, resource: resource,
@@ -350,14 +363,14 @@ extension AppModel {
     }
 
     /// Plays a finished download from the device.
-    public func playDownload(_ r: DownloadRecord, inInfuse: Bool = false) async {
+    public func playDownload(_ r: DownloadRecord, in external: ExternalPlayer? = nil) async {
         let key = r.mediaKey ?? MediaKey(rawValue: "url:\(r.id)")
         await play(NowPlayingItem(key: key, title: r.title, subtitle: r.subtitle, artworkURL: r.artworkURL),
-                   variant: DownloadsSource(manager: downloads).variant(r), inInfuse: inInfuse)
+                   variant: DownloadsSource(manager: downloads).variant(r), in: external)
     }
 
-    /// Finished downloads offer Open in Infuse when it's installed.
-    public var canOpenDownloadsInInfuse: Bool { Infuse.isInstalled }
+    /// The apps a finished download's Open In… offers: the installed ones.
+    public var externalPlayersForDownloads: [ExternalPlayer] { ExternalPlayer.installed }
 
     // After watching: Smart Downloads (SmartDownloads.swift).
 

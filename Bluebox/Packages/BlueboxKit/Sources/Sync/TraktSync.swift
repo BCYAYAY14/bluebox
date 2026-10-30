@@ -36,9 +36,13 @@ public actor TraktSync {
         ratings = TraktRatingsStore(prefs: prefs)
     }
 
+    /// Settings › Trakt › Sync Lists (a Bool, off unless set).
+    public static let syncListsKey = "bluebox.trakt.syncLists"
+
     /// Forgets what was agreed with Trakt, e.g. after connecting another account.
     public func resetState() {
-        for key in [Keys.watchlistBase, Keys.historyCursor, Keys.historyBase, Keys.ratingsBase, Keys.ratingsCursor, Keys.outbox] {
+        for key in [Keys.watchlistBase, Keys.historyCursor, Keys.historyBase, Keys.ratingsBase, Keys.ratingsCursor, Keys.outbox,
+                    Keys.listIDs, Keys.listBases] {
             prefs.set(String?.none, for: key)
         }
     }
@@ -51,6 +55,7 @@ public actor TraktSync {
         var report = Report()
         try await flushOutbox(&report)
         try await syncWatchlist(&report)
+        if prefs.value(Bool.self, for: Keys.listsEnabled) == true { try await syncLists(&report) }
         try await syncHistory(&report)
         try await syncRatings(&report)
         return report
@@ -58,11 +63,6 @@ public actor TraktSync {
 
     // MARK: Watchlist
 
-    // TODO(lists): map your own lists (LibraryStore.lists()) to Trakt custom
-    // lists (`users/me/lists`, `.../items`, `.../items/remove`) behind a
-    // setting that's off by default. It needs a stored Trakt list ID per list
-    // and the same three-way merge as below, per list. Only My List (this
-    // watchlist) syncs with Trakt today.
     private func syncWatchlist(_ report: inout Report) async throws {
         let remoteItems = try await remoteWatchlist()
         let remote = Set(remoteItems.keys)
@@ -190,6 +190,87 @@ public actor TraktSync {
         static let ratingsCursor = "bluebox.trakt.ratingsCursor"
         /// [MediaKey: Date]: plays Trakt should hear about (scrobbles that couldn't be sent).
         static let outbox = "bluebox.trakt.outbox"
+        /// Bool: your own lists sync with Trakt custom lists too (off unless turned on).
+        static let listsEnabled = TraktSync.syncListsKey
+        /// [list ID: Trakt list ID]: which Trakt list each of yours is.
+        static let listIDs = "bluebox.trakt.listIDs"
+        /// [list ID: [MediaKey]]: what both sides held after the last sync, per list.
+        static let listBases = "bluebox.trakt.listBases"
+    }
+
+    // MARK: Lists
+
+    /// Each of your lists against a private Trakt list of the same name, with
+    /// My List's three-way merge per list. A list made here is created on
+    /// Trakt (or matched to one of yours there by name, the first time). Lists
+    /// that exist only on Trakt aren't brought in, and deleting a list on
+    /// either side never deletes the other: a list deleted here just stops
+    /// syncing, and one deleted on Trakt is made again from this side.
+    private func syncLists(_ report: inout Report) async throws {
+        let local = try await store.lists()
+        var ids = prefs.value([String: Int].self, for: Keys.listIDs) ?? [:]
+        var bases = prefs.value([String: [MediaKey]].self, for: Keys.listBases) ?? [:]
+        let liveIDs = Set(local.map(\.id))
+        ids = ids.filter { liveIDs.contains($0.key) }
+        bases = bases.filter { liveIDs.contains($0.key) }
+
+        let remoteLists = try decode([TraktCustomList].self, try await client.get("users/me/lists"))
+        let remoteIDs = Set(remoteLists.map(\.ids.trakt))
+        for list in local {
+            let traktID: Int
+            if let known = ids[list.id], remoteIDs.contains(known) {
+                traktID = known
+            } else {
+                bases[list.id] = nil  // new to Trakt (or gone from it): the first sync only adds
+                let taken = Set(ids.values)
+                if let same = remoteLists.first(where: { $0.name == list.name && !taken.contains($0.ids.trakt) }) {
+                    traktID = same.ids.trakt
+                } else {
+                    let made = try await client.post("users/me/lists", TraktNewList(name: list.name))
+                    traktID = try decode(TraktCustomList.self, made).ids.trakt
+                }
+                ids[list.id] = traktID
+            }
+            try await syncList(list, traktID: traktID, bases: &bases, &report)
+            // Saved per list, so a failure part-way keeps what was already agreed.
+            prefs.set(ids, for: Keys.listIDs)
+            prefs.set(bases, for: Keys.listBases)
+        }
+        prefs.set(ids, for: Keys.listIDs)
+        prefs.set(bases, for: Keys.listBases)
+    }
+
+    private func syncList(_ list: UserList, traktID: Int, bases: inout [String: [MediaKey]], _ report: inout Report) async throws {
+        let path = "users/me/lists/\(traktID)/items"
+        var remoteItems: [MediaKey: Title] = [:]
+        for item in try decode([TraktListItem].self, try await client.get(path)) {
+            if let t = item.title { remoteItems[t.key] = t }
+        }
+        let entries = try await store.entries(in: list.id).filter { $0.key.tmdbID != nil && $0.key.seriesKey == nil }
+        let plan = WatchlistReconcile.plan(local: Set(entries.map(\.key)), remote: Set(remoteItems.keys),
+                                           base: bases[list.id].map(Set.init))
+
+        if !plan.addRemote.isEmpty {
+            _ = try await client.post(path, TraktItems(plan.addRemote))
+            report.pushed += plan.addRemote.count
+        }
+        if !plan.removeRemote.isEmpty {
+            _ = try await client.post(path + "/remove", TraktItems(plan.removeRemote))
+            report.pushed += plan.removeRemote.count
+        }
+        if !plan.removeLocal.isEmpty {
+            try await store.removeFromList(plan.removeLocal.sorted(), listID: list.id)
+            report.applied += plan.removeLocal.count
+        }
+        for key in plan.addLocal.sorted() {
+            let title: Title
+            if let cached = try? await store.title(for: key) { title = cached }
+            else if let resolved = await resolveTitle(key) { title = resolved }
+            else { title = remoteItems[key]! }
+            try await store.setOnList(title, listID: list.id, true)
+            report.applied += 1
+        }
+        bases[list.id] = plan.agreed.sorted()
     }
 
     // MARK: Ratings
@@ -457,6 +538,19 @@ struct TraktListItem: Decodable, Sendable {
         let date = media.year.flatMap { DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: .gmt, year: $0, month: 1, day: 1).date }
         return Title(key: key, kind: kind, name: media.title ?? "Untitled", releaseDate: date)
     }
+}
+
+/// One of your custom lists on Trakt (`users/me/lists`).
+struct TraktCustomList: Decodable, Sendable {
+    struct IDs: Decodable, Sendable { let trakt: Int }
+    let name: String
+    let ids: IDs
+}
+
+/// `POST users/me/lists`: a new list only you can see.
+struct TraktNewList: Encodable {
+    let name: String
+    var privacy = "private"
 }
 
 /// `{ movies: [...], shows: [...] }` for watchlist add/remove.

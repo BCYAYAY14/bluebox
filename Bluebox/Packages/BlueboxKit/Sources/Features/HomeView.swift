@@ -1,3 +1,4 @@
+import Addons
 import DesignSystem
 import Domain
 import Observation
@@ -65,6 +66,8 @@ struct HomeRow: Identifiable {
     var titles: [Title]
     var style: Style = .poster
     var genre: (Genre, TitleKind)?
+    /// An add-on's catalog: its See All page.
+    var addonCatalog: ResolvedCatalog?
     /// Top Picks: why each title is there, shown on its card.
     var reasons: [MediaKey: String] = [:]
 }
@@ -80,6 +83,8 @@ final class HomeModel {
     var availableNow: [Title] = []
     /// The editorial rows (TMDB's lists and genres), in today's order.
     var rows: [HomeRow] = []
+    /// Rows from your add-ons' own catalogs, after the editorial ones.
+    var addonRows: [HomeRow] = []
     /// Personal rows, from the profile's file at once, then rebuilt when stale.
     var topPicks: [ScoredPick] = []
     var because: [BecauseRow] = []
@@ -107,7 +112,7 @@ final class HomeModel {
     }
 
     func load(_ app: AppModel, category: HomeCategory) async {
-        if category != self.category { rows = []; hero = nil; topPicks = []; because = []; isLoading = true }
+        if category != self.category { rows = []; addonRows = []; hero = nil; topPicks = []; because = []; isLoading = true }
         self.category = category
         catalogError = nil
         hidden = app.hiddenKeys()
@@ -120,7 +125,8 @@ final class HomeModel {
         async let available: Void = loadAvailable(app)
         async let catalog: Void = loadCatalog(app, plan: plan)
         async let personal: Void = loadBecauseYouWatched(app, plan: plan)
-        _ = await (library, available, catalog, personal)
+        async let addon: Void = loadAddonRows(app)
+        _ = await (library, available, catalog, personal, addon)
         await savePersonalRows(app, plan: await plan.value, profileID: profileID)
         isLoading = false
         Log.metadata.info("Home loaded (\(String(describing: category), privacy: .public)) in \(String(describing: ContinuousClock.now - started), privacy: .public)")
@@ -325,6 +331,26 @@ final class HomeModel {
         }
     }
 
+    /// Your add-ons' catalogs, each on its own: one that fails or comes back
+    /// empty (for this category) costs only its row. Their titles are saved
+    /// like the editorial rows', so a TMDB-keyed one opens with Cinemeta too.
+    func loadAddonRows(_ app: AppModel) async {
+        await app.readMissingAddonCatalogs()
+        let catalogs = app.homeCatalogs().filter { c in category.kind.map { ($0 == .movie) == c.catalog.isMovie } ?? true }
+        guard !catalogs.isEmpty else { addonRows = []; return }
+        let reader = app.addonCatalogs
+        let category = category
+        let pages = await concurrentMap(catalogs, limit: 4) { c in
+            try? await reader.page(c, limit: AddonCatalogReader.rowLength).items.filter(category.includes)
+        }
+        let built = zip(catalogs, pages).compactMap { c, titles -> HomeRow? in
+            guard let titles, !titles.isEmpty else { return nil }
+            return HomeRow(id: "addon-\(c.id)", title: c.catalog.name, titles: titles, addonCatalog: c)
+        }
+        addonRows = built
+        try? await app.store.store(built.flatMap(\.titles))
+    }
+
     /// "Because You Watched" your two most recent titles: TMDB's
     /// recommendations, which come with a title's detail (so usually from
     /// memory or the profile's file), minus what you've watched or hidden.
@@ -390,7 +416,7 @@ final class HomeModel {
 
     /// Editorial and personal rows taking turns, minus hidden titles.
     func visibleRows(_ profile: Profile) -> [HomeRow] {
-        HomeLayout.hiding(hidden, from: HomeLayout.interleave(editorial: rows, personal: personalRows(profile)))
+        HomeLayout.hiding(hidden, from: HomeLayout.interleave(editorial: rows + addonRows, personal: personalRows(profile)))
     }
 
     /// The hero, moved on to the next trending title if it was hidden.
@@ -531,7 +557,8 @@ struct HomeView: View {
                         switch row.style {
                         case .poster:
                             posterRow(row.title, titles: row.titles, metrics: metrics, inset: inset,
-                                      seeAll: row.genre.map { g in { pushRoute(.genre(g.0, g.1)) } })
+                                      seeAll: row.genre.map { g in { pushRoute(.genre(g.0, g.1)) } }
+                                        ?? row.addonCatalog.map { c in { pushRoute(.addonCatalog(addonID: c.addon.id, catalogID: c.catalog.id)) } })
                         case .topTen:
                             ShelfRow(row.title, items: Array(row.titles.enumerated().map { RankedTitle(rank: $0.offset + 1, title: $0.element) }),
                                      inset: inset, itemWidth: metrics.topTenWidth) { r in
@@ -1149,7 +1176,7 @@ struct HeroView: View {
                         .frame(maxWidth: 520, alignment: .leading)
                         .shadow(color: .black.opacity(0.6), radius: 6)
                         .rise(appeared, delay: 0.15, reduceMotion: reduceMotion)
-                        .transition(.opacity.combined(with: .offset(y: 8)))
+                        .transition(Motion.nudge(from: .bottom, reduceMotion, distance: 8))
                 }
                 HStack(spacing: Spacing.m) {
                     primaryButton(fullWidth: false)

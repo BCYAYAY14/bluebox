@@ -40,15 +40,22 @@ struct SearchQueryField: View {
                 .focused($focused)
                 .autocorrectionDisabled()
                 .onSubmit(submit)
+                #if os(macOS)
+                // Esc empties the field (as in Finder and Safari), keeping it focused.
+                .onExitCommand { if !text.isEmpty { clear() } }
+                #endif
                 .accessibilityIdentifier("searchField")
             if results.isLoading {
                 ProgressView().controlSize(.small).accessibilityLabel("Searching")
             }
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textTertiary) }
+                Button(action: clear) { Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.textTertiary) }
                     .buttonStyle(.plain).accessibilityLabel("Clear")
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
+        .animation(Motion.hover, value: text.isEmpty)
+        .animation(Motion.hover, value: results.isLoading)
         .padding(.horizontal, Spacing.l)
         .frame(height: 48)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
@@ -60,6 +67,13 @@ struct SearchQueryField: View {
         // A recent search picked on the page fills the field.
         .onChange(of: query, initial: true) { _, q in if SearchDebounce.trimmed(text) != q { text = q } }
         .modifier(SearchFocusRequests(focused: $focused, focusOnFirstAppear: true))
+    }
+
+    /// Empties the field and the page goes back to recent searches straight
+    /// away (an emptied field skips the debounce); the field keeps focus.
+    private func clear() {
+        text = ""
+        focused = true
     }
 
     private func submit() {
@@ -140,6 +154,7 @@ private struct SearchFocusRequests: ViewModifier {
 /// Recent searches as rows: the top result's picture, the query and what it
 /// found. Tap to search again; × or a swipe left removes one; Clear All empties it.
 struct RecentSearchesList: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let recents: [RecentSearch]
     let onPick: (RecentSearch) -> Void
     let onRemove: (RecentSearch) -> Void
@@ -167,7 +182,7 @@ struct RecentSearchesList: View {
                 }
             }
             if recents.count > Self.collapsedCount {
-                Button(expanded ? "Show Less" : "Show More") { withAnimation(Motion.standard(false)) { expanded.toggle() } }
+                Button(expanded ? "Show Less" : "Show More") { withAnimation(Motion.standard(reduceMotion)) { expanded.toggle() } }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.textSecondary)
                     .buttonStyle(.plain)
@@ -178,6 +193,7 @@ struct RecentSearchesList: View {
 }
 
 private struct RecentSearchRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var app
     let recent: RecentSearch
     let onPick: () -> Void
@@ -234,7 +250,7 @@ private struct RecentSearchRow: View {
                     if g.translation.width < -Self.removeDistance, abs(g.translation.width) > abs(g.translation.height) {
                         onRemove()
                     } else {
-                        withAnimation(Motion.standard(false)) { offset = 0 }
+                        withAnimation(Motion.standard(reduceMotion)) { offset = 0 }
                     }
                 })
         #endif

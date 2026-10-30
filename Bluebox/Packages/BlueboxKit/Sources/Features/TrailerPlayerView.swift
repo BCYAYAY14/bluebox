@@ -1,3 +1,4 @@
+import DesignSystem
 import Domain
 import SwiftUI
 import WebKit
@@ -62,7 +63,7 @@ public struct TrailerSheet: View {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 34, height: 34).background(Circle().fill(Color(white: 0.137)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableStyle())
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Close")
             }

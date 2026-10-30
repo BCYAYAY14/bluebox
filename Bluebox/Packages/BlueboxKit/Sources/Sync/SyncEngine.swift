@@ -71,6 +71,17 @@ public actor SyncEngine {
         return total
     }
 
+    /// Changes on this device the server hasn't had yet: progress, My List,
+    /// lists and their titles, and (for the default profile) profiles.
+    public func pendingChangeCount() async -> Int {
+        var count = (try? await store.pendingUploads().count) ?? 0
+        count += (try? await store.pendingWatchlistUploads().count) ?? 0
+        count += (try? await store.pendingListUploads().count) ?? 0
+        count += (try? await store.pendingListEntryUploads().count) ?? 0
+        if profileID == Profile.defaultID { count += profiles?.pendingUploads().count ?? 0 }
+        return count
+    }
+
     private func runOnce() async throws -> Report {
         guard let session = await auth.currentSession else { throw SyncError.signedOut }
         if let previous = Self.previousAccount(prefs), previous != session.userID,

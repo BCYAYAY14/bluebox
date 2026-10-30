@@ -81,7 +81,7 @@ struct StorageSettingsPage: View {
 
     private func cacheRow(_ title: String, bytes: Int64, symbol: String, clear: Confirmation, disabled: Bool = false) -> some View {
         HStack(spacing: Spacing.l) {
-            Text(title)
+            Text(ui: title)
             Spacer()
             Text(loaded ? ByteText.string(bytes) : "…").foregroundStyle(Palette.textSecondary).monospacedDigit()
             Button("Clear") { confirm = clear }

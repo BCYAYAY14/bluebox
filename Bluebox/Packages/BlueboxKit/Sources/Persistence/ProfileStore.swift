@@ -92,9 +92,10 @@ public final class ProfileStore: @unchecked Sendable {
                 p.updatedAt = p.updatedAt.millisecondRounded
                 if let i = r.firstIndex(where: { $0.profile.id == p.id }) {
                     guard ProfileMerge.incomingWins(p, over: r[i].profile) else { continue }
-                    // Maturity and Kids aren't synced: keep this device's.
+                    // Maturity, Kids and Allow Unrated aren't synced: keep this device's.
                     p.maturity = r[i].profile.maturity
                     p.isKids = r[i].profile.isKids
+                    p.allowsUnrated = r[i].profile.allowsUnrated
                     r[i] = Record(profile: p, needsSync: false)
                 } else {
                     r.append(Record(profile: p, needsSync: false))

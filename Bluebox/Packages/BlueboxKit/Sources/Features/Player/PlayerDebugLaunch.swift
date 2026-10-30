@@ -55,6 +55,9 @@ extension AppModel {
         } else if let raw = value("-handoff-key") {
             await continueWatching(WatchActivityPayload(key: MediaKey(rawValue: raw), title: "Handoff Test", position: position))
         }
+        if args.contains("-demo-party") {
+            await startDemoParty(lobby: args.contains("-demo-party-lobby"), chatOpen: !args.contains("-demo-party-closed"))
+        }
         if let count = value("-subtitle-stress").flatMap(Int.init) { await stressSubtitleStyle(count) }
         if let dir = value("-subtitle-check") { await checkSubtitles(saveTo: dir) }
     }

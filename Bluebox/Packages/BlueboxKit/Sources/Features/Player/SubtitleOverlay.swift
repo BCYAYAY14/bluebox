@@ -212,11 +212,11 @@ struct SubtitleOverlay: View {
     private func flashReset() {
         resetTask?.cancel()
         guard !style.isDefaultPosition else { return }
-        withAnimation(.easeOut(duration: 0.2)) { showsReset = true }
+        withAnimation(Motion.appear) { showsReset = true }
         resetTask = Task {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.2)) { showsReset = false }
+            withAnimation(Motion.disappear) { showsReset = false }
         }
     }
 
@@ -230,10 +230,10 @@ struct SubtitleOverlay: View {
         Button(action: commitReset) {
             Label("Reset Position", systemImage: "arrow.uturn.backward")
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(.black.opacity(0.7), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
-                .foregroundStyle(.white)
+                .labelStyle(NoticeLabelStyle())
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .playerNoticeSurface()
+                .foregroundStyle(Palette.textPrimary)
         }
         .buttonStyle(PressableStyle())
         .fixedSize()

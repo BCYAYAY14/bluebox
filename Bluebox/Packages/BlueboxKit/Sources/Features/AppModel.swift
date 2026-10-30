@@ -11,6 +11,7 @@ import Persistence
 import Playback
 import Subtitles
 import Sync
+import SystemSnapshot
 import Torrent
 import VLCPlayback
 
@@ -25,18 +26,30 @@ public final class AppModel {
     public private(set) var metadata: any MetadataProvider
     public private(set) var catalogMode: CatalogMode
     /// Bumped whenever watchlist or progress changes so screens can refresh.
-    public private(set) var libraryRevision = 0
+    public internal(set) var libraryRevision = 0 {
+        didSet { scheduleSystemRefresh() }  // widgets, Spotlight and Siri (AppModel+System.swift)
+    }
+    @ObservationIgnored public let system = SystemSurfaces()
     /// Bumped when Settings clears recent searches, so Search reloads them.
     var searchHistoryRevision = 0
     /// Bumped when sources are added, removed, enabled, or rescanned.
-    public private(set) var sourcesRevision = 0
+    public internal(set) var sourcesRevision = 0
     public private(set) var sourceConfigurations: [SourceConfiguration] = []
+    /// Fix Match choices for local and debrid files (`AppModel+FixMatch`).
+    @ObservationIgnored let matchOverrides: MatchOverrides
     public private(set) var activePlayer: PlayerSession?
     @ObservationIgnored private var activeVariant: MediaVariant?
+    /// The Jellyfin or Emby item last reported as playing, so it can be
+    /// reported stopped when the player closes or Up Next moves on.
+    @ObservationIgnored var serverPlayback: (source: JellyfinSource, itemID: String, position: TimeInterval)?
     public var alert: AppAlert?
+    /// The release picker opened from outside a title's page (an alert's "Releases…").
+    var releasePickerRequest: TitleDetailView.ReleaseRequest?
     /// A magnet, .torrent or video opened from outside (dropped on the Mac
     /// window, or a link opened in Bluebox): what the open sheet shows.
     public var externalOpen: ExternalOpenState?
+    /// File › Open… on the Mac: shows the picker for videos, folders and .torrent files.
+    public var pickingFiles = false
     /// A short non-blocking message (`ToastHost` draws it).
     public var toast: AppToast?
     /// The current profile's subtitle look and languages (`ProfileSettingKey`).
@@ -114,14 +127,32 @@ public final class AppModel {
     /// Download states last seen, so finishing and failing can be announced.
     @ObservationIgnored var lastDownloadStates: [String: DownloadRecord.State]?
     @ObservationIgnored let downloadLifecycle = DownloadLifecycle()
-    /// What Infuse is reading from Bluebox's stream server (`AppModel+Infuse`).
-    @ObservationIgnored var infuseHandoff: InfuseHandoff?
+    /// What an external player is reading from Bluebox's stream server (`AppModel+ExternalPlayer`).
+    @ObservationIgnored var externalHandoff: ExternalHandoff?
     @ObservationIgnored var madeKeyBridge: CatalogKeyBridge?
-    @ObservationIgnored var infuseWatch: Task<Void, Never>?
+    /// Reads add-ons' catalogs and metas (tests pass a fake transport).
+    @ObservationIgnored var addonCatalogClient = AddonClient()
+    @ObservationIgnored var externalWatch: Task<Void, Never>?
+    /// Sound goes to an AirPlay receiver: releases rank MP4 first (`AppModel+Addons`).
+    @ObservationIgnored let airPlayRoute = AirPlayRoute()
+    /// AVPlayer is showing the video over AirPlay (the player reports it).
+    @ObservationIgnored var airPlayingVideo = false
     /// The Live Activity (iPhone) and Dock badge (Mac) for the queue.
     @ObservationIgnored let downloadsPresence = DownloadsPresence()
     /// Shows "Playing on Mac" (iPhone) or publishes this Mac's player (RemoteControl.swift).
     public let remote = RemoteControl()
+    /// The Watch Party you're in (AppModel+WatchParty.swift).
+    public internal(set) var party: WatchParty?
+    /// Join a Party…: the sheet asking for a code or link, or confirming an invite that was opened.
+    public var partyJoin: PartyJoinRequest?
+    /// The party is opening its next title: closing the old player doesn't leave it.
+    @ObservationIgnored var partyIsSwitching = false
+    /// The Mac's highlight for the remote's touch pad and taps (RemoteFocus.swift).
+    @ObservationIgnored public let remoteFocus = RemoteFocus()
+    /// Where the remote asked the Mac to go; RootView goes there and clears it.
+    public var remoteNavigation: RemoteNavigation?
+    /// Text the remote typed for Search; SearchView takes it and clears it.
+    public var remoteSearchText: String?
     /// Bumped by the Mac menu bar's Open Downloads; RootView shows the Downloads tab.
     public var downloadsOpenRequest = 0
     @ObservationIgnored private var bootstrapped = false
@@ -143,6 +174,10 @@ public final class AppModel {
     /// The episode Up Next resolved, so the countdown and the play that
     /// follows share one resolve (an add-on torrent is buffered only once).
     @ObservationIgnored private var resolvedNext: (after: MediaKey, item: NowPlayingItem, resource: PlaybackResource, at: Date)?
+    /// The next episode's release, picked in the background near the end of
+    /// this one (`prepareNextEpisode`) but not started: resolving an add-on
+    /// torrent would replace the stream that's still playing.
+    @ObservationIgnored private var pickedNext: PickedEpisode?
     /// A list's Play All or Shuffle, in play order (LibraryLists.swift). Cleared when the player closes.
     @ObservationIgnored var listQueue: [Title]?
     /// New List or Edit List, drawn by `listEditorHost()` (ListViews.swift).
@@ -240,7 +275,8 @@ public final class AppModel {
         subtitleStyle = prefs.value(SubtitleStyle.self, for: ProfileSettingKey.subtitleStyle(Profile.defaultID)) ?? SubtitleStyle()
         equalizer = prefs.value(EqualizerSettings.self, for: ProfileSettingKey.equalizer(Profile.defaultID)) ?? EqualizerSettings()
         defaultSpeed = prefs.value(Float.self, for: PreferenceKey.playbackSpeed) ?? 1
-        features = FeatureServices(prefs: prefs, debridLibrary: DebridLibrarySource(api: nil, matcher: nil))
+        matchOverrides = MatchOverrides(prefs.value([String: MatchOverride].self, for: PreferenceKey.matchOverrides) ?? [:])
+        features = FeatureServices(prefs: prefs, debridLibrary: DebridLibrarySource(api: nil, matcher: nil, overrides: matchOverrides))
         featureSwitches = FeatureSwitches(prefs: prefs)
         insights = InsightsModel(prefs: prefs)
         let links = prefs.value([DirectURLSource.Item].self, for: PreferenceKey.directURLs) ?? []
@@ -282,6 +318,7 @@ public final class AppModel {
         }
         account.onAccountCreated = { [weak self] in self?.serverSetup.firstAccountCreated() }
         account.onSignedIn = { [weak self] in self?.serverSetup.forget() }
+        account.onSignOutBlocked = { [weak self] waiting in self?.askToSignOut(leaving: waiting) }
         account.onUseAccountLibrary = { [weak self] in await self?.eraseLibraryForAccountChange() }
         serverSetup.connect = { [weak self] config in
             try await self?.connectSupabase(url: config.url.absoluteString, key: config.publishableKey)
@@ -334,11 +371,18 @@ public final class AppModel {
         for config in sourceConfigurations {
             switch config.kind {
             case .localFolder:
-                if let source = try? LocalFolderSource.fromConfiguration(config, matcher: makeMatcher()) {
+                // A folder whose bookmark no longer resolves still registers: it shows in
+                // Settings and My Sources saying what's wrong, rather than vanishing.
+                if let source = try? LocalFolderSource.fromConfiguration(config, matcher: makeMatcher(), overrides: matchOverrides) {
+                    if let renewed = source.refreshedBookmark { renewBookmark(renewed, for: config.id) }
                     await registry.register(source)
                 }
-            case .jellyfin:
-                if let source = jellyfinSource(config) { await registry.register(source) }
+            case .jellyfin, .emby:
+                if let source = jellyfinSource(config) { await register(source) }
+            case .webdav:
+                if let source = webDAVSource(config) { await registry.register(source) }
+            case .plex:
+                if let source = plexSource(config) { await registry.register(source) }
             default: break
             }
         }
@@ -491,6 +535,7 @@ public final class AppModel {
             if activePlayer != nil { await closePlayer() }
             store = s
             currentProfileID = id
+            settingsUnlocked = false
             prefs.set(id, for: PreferenceKey.currentProfile)
             account.switchLibrary(to: s, profileID: id)
             loadProfileSettings(id)
@@ -503,9 +548,10 @@ public final class AppModel {
     }
 
     @discardableResult
-    public func addProfile(name: String, symbol: String, color: Int, maturity: MaturityRating = .all, isKids: Bool = false) -> Profile {
+    public func addProfile(name: String, symbol: String, color: Int, maturity: MaturityRating = .all, isKids: Bool = false,
+                           allowsUnrated: Bool? = nil) -> Profile {
         let p = Profile(id: UUID().uuidString.lowercased(), name: String(name.trimmingCharacters(in: .whitespaces).prefix(40)),
-                        symbol: symbol, color: color, updatedAt: .now, maturity: maturity, isKids: isKids)
+                        symbol: symbol, color: color, updatedAt: .now, maturity: maturity, isKids: isKids, allowsUnrated: allowsUnrated)
         profileStore.save(p)
         reloadProfiles()
         account.scheduleSync()
@@ -516,7 +562,11 @@ public final class AppModel {
         var p = p
         p.name = String(p.name.trimmingCharacters(in: .whitespaces).prefix(40))
         guard !p.name.isEmpty else { return }
-        let filterChanged = profileStore.profile(p.id)?.contentFilter != p.contentFilter
+        let old = profileStore.profile(p.id)
+        let filterChanged = old?.contentFilter != p.contentFilter
+        // Restricting the profile that's watching from inside Settings: whoever
+        // did it is already in, so Settings stays open until the next lock.
+        if p.id == currentProfileID, old?.isRestricted == false, p.isRestricted { settingsUnlocked = true }
         profileStore.save(p)
         reloadProfiles()
         if filterChanged, p.id == currentProfileID {
@@ -599,7 +649,7 @@ public final class AppModel {
     }
 
     /// Titles saved under the other catalog (TMDB or Cinemeta) still open (`CatalogKeyBridge`).
-    private var keyBridge: CatalogKeyBridge {
+    var keyBridge: CatalogKeyBridge {
         if let made = madeKeyBridge { return made }
         let bridge = CatalogKeyBridge(http: http)
         let store = store
@@ -615,14 +665,63 @@ public final class AppModel {
 
     public func isLocked(_ profileID: String) -> Bool { lockedProfileIDs.contains(profileID) }
 
-    /// Why the current profile can't play `key`, when its known certification
-    /// is above the profile's limit; nil when it may.
+    /// Why the current profile can't play `key`: its known certification is
+    /// above the profile's limit, or it has none and the profile doesn't allow
+    /// unrated titles. nil when it may. Says nothing about how to change it.
     func maturityBlock(for key: MediaKey) -> String? {
-        guard let filter = currentProfile.contentFilter,
-              let cert = (metadata as? CachedMetadataProvider)?.certification(for: key.seriesKey ?? key),
-              !filter.allows(certification: cert) else { return nil }
-        return "It's rated \(cert), above \(currentProfile.name)\u{2019}s limit of \(currentProfile.effectiveMaturity.title). Change it in Manage Profiles."
+        guard let filter = currentProfile.contentFilter else { return nil }
+        let cert = (metadata as? CachedMetadataProvider)?.certification(for: key.seriesKey ?? key)
+        guard !filter.allows(certification: cert) else { return nil }
+        let name = currentProfile.name
+        if let cert, MaturityRating.minimumAge(forCertification: cert) != nil {
+            return "It\u{2019}s rated \(cert), which is above what \(name)\u{2019}s profile allows."
+        }
+        return "It doesn\u{2019}t have a rating, so it isn\u{2019}t on \(name)\u{2019}s profile."
     }
+
+    /// Before Play on a profile that refuses unrated titles: learn the
+    /// title's certification from its page, so a rated title picked from a
+    /// row isn't mistaken for an unrated one.
+    func learnCertificationIfNeeded(for key: MediaKey) async {
+        guard currentProfile.contentFilter?.blocksUnrated == true, let cache = metadata as? CachedMetadataProvider else { return }
+        let titleKey = key.seriesKey ?? key
+        guard cache.certification(for: titleKey) == nil else { return }
+        _ = try? await cache.detail(for: titleKey)
+    }
+
+    // MARK: Settings lock
+
+    /// The profiles whose PIN opens Settings (and the watching profile's own
+    /// editor) while a restricted profile is watching: its own PIN when it has
+    /// one; on a Kids profile without one, any grown-up profile's. Empty:
+    /// Settings opens without asking.
+    public var settingsPINProfiles: [Profile] {
+        let me = currentProfile
+        guard me.isRestricted else { return [] }
+        if isLocked(me.id) { return [me] }
+        guard me.isKids else { return [] }
+        return profiles.filter { !$0.isRemoved && !$0.isKids && isLocked($0.id) }
+    }
+
+    /// Settings has been unlocked for the watching profile. Cleared when the
+    /// profile changes or the app goes to the background.
+    public private(set) var settingsUnlocked = false
+
+    /// Settings shows the PIN pad instead of its pages.
+    public var settingsNeedsPIN: Bool { !settingsUnlocked && !settingsPINProfiles.isEmpty }
+
+    /// Unlocks Settings with one of `settingsPINProfiles`' PINs.
+    public func unlockSettings(pin: String) -> Bool {
+        guard settingsPINProfiles.contains(where: { locks.verify(pin, for: $0.id) }) else { return false }
+        settingsUnlocked = true
+        return true
+    }
+
+    /// Forgot PIN: the device owner (Touch ID, Face ID or the device password) opens Settings.
+    func unlockSettingsAsDeviceOwner() { settingsUnlocked = true }
+
+    /// The app went to the background.
+    public func lockSettings() { settingsUnlocked = false }
 
     /// Checks a PIN (true when the profile has none).
     public func verifyPIN(_ pin: String, for profileID: String) -> Bool { locks.verify(pin, for: profileID) }
@@ -630,6 +729,7 @@ public final class AppModel {
     /// Sets, or with nil removes, a profile's 4-digit PIN.
     public func setPIN(_ pin: String?, for profileID: String) throws {
         try locks.setPIN(pin, for: profileID)
+        if pin != nil, profileID == currentProfileID { settingsUnlocked = true }  // just chose it, inside Settings
         if pin == nil { lockedProfileIDs.remove(profileID) } else { lockedProfileIDs.insert(profileID) }
     }
 
@@ -796,32 +896,68 @@ public final class AppModel {
         persistSources()
     }
 
-    public func addLocalFolder(_ url: URL) async throws {
+    /// Adds a folder the user picked (Settings › Sources, dropped on the window,
+    /// opened with Bluebox). Throws, with a message for the user, when it can't
+    /// be read or is already a source. Returns how many videos it has.
+    @discardableResult
+    public func addLocalFolder(_ url: URL) async throws -> Int {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let bookmark = try LocalFolderSource.makeBookmark(for: url)
-        let config = SourceConfiguration(id: SourceID("local-\(UUID().uuidString.prefix(8))"), kind: .localFolder,
-                                         name: url.lastPathComponent, settings: ["bookmark": bookmark.base64EncodedString()])
-        let source = try LocalFolderSource.fromConfiguration(config, matcher: makeMatcher())
+        let name = url.lastPathComponent
+        // Read it now, while the picker's permission is certain: a folder that
+        // can't be read fails here with a reason instead of showing up empty.
+        let count = try LocalFolderSource.videoFiles(in: url, name: name).count
+        let path = url.standardizedFileURL.path
+        if let existing = sourceConfigurations.first(where: { $0.kind == .localFolder && $0.settings["path"] == path }) {
+            throw LocalFolderAddError.alreadyAdded(existing.name)
+        }
+        let bookmark: Data
+        do { bookmark = try LocalFolderSource.makeBookmark(for: url) } catch {
+            throw LocalFolderAddError.noBookmark(name)
+        }
+        let config = SourceConfiguration(id: SourceID("local-\(UUID().uuidString.prefix(8))"), kind: .localFolder, name: name,
+                                         settings: ["bookmark": bookmark.base64EncodedString(), "path": path])
+        let source = try LocalFolderSource.fromConfiguration(config, matcher: makeMatcher(), overrides: matchOverrides)
+        // The bookmark has to give the folder back, or it would be unreadable after a relaunch.
+        guard await source.testConnection().ok else { throw LocalFolderAddError.noBookmark(name) }
         sourceConfigurations.append(config)
         persistSources()
         await registry.register(source)
         sourcesRevision += 1
+        libraryRevision += 1
+        return count
     }
 
-    /// Signs in to a Jellyfin server and adds it as a source. Only the access
-    /// token is kept (in the Keychain); the password is not stored.
-    public func addJellyfin(server: String, username: String, password: String) async throws {
+    /// Saves a renewed bookmark for a folder whose old one was stale.
+    private func renewBookmark(_ data: Data, for id: SourceID) {
+        guard let i = sourceConfigurations.firstIndex(where: { $0.id == id }) else { return }
+        sourceConfigurations[i].settings["bookmark"] = data.base64EncodedString()
+        persistSources()
+    }
+
+    /// Signs in to a Jellyfin or Emby server and adds it as a source. Only the
+    /// access token is kept (in the Keychain); the password is not stored. The
+    /// server's own answer decides which it is; `flavour` is what the user picked.
+    public func addMediaServer(_ flavour: JellyfinSource.Flavour, server: String, username: String, password: String) async throws {
         let (creds, serverName) = try await JellyfinSource.signIn(server: server, username: username, password: password,
-                                                                  http: http, deviceID: prefs.deviceID)
-        let id = SourceID("jellyfin-\(UUID().uuidString.prefix(8))")
+                                                                  http: http, deviceID: prefs.deviceID, expecting: flavour)
+        let id = SourceID("\(creds.flavour.rawValue)-\(UUID().uuidString.prefix(8))")
         try secrets.write(creds.accessToken, for: SecretAccount.source(id.rawValue))
-        let config = SourceConfiguration(id: id, kind: .jellyfin, name: serverName, settings: [
+        let config = SourceConfiguration(id: id, kind: creds.flavour == .emby ? .emby : .jellyfin, name: serverName, settings: [
             "server": creds.server.absoluteString, "userID": creds.userID, "username": creds.username,
         ])
         sourceConfigurations.append(config)
         persistSources()
-        if let source = jellyfinSource(config) { await registry.register(source) }
+        if let source = jellyfinSource(config) { await register(source) }
+        sourcesRevision += 1
+        libraryRevision += 1
+    }
+
+    /// Adds a signed-in network source (WebDAV, Plex: `AppModel+NetworkSources`).
+    func addNetworkSource(_ config: SourceConfiguration, _ source: (any MediaSource)?) async {
+        sourceConfigurations.append(config)
+        persistSources()
+        if let source { await registry.register(source) }
         sourcesRevision += 1
         libraryRevision += 1
     }
@@ -830,9 +966,16 @@ public final class AppModel {
         guard let server = config.settings["server"].flatMap(URL.init(string:)), let userID = config.settings["userID"],
               let token = (try? secrets.read(SecretAccount.source(config.id.rawValue))).flatMap({ $0 }) else { return nil }
         let creds = JellyfinSource.Credentials(server: server, userID: userID, accessToken: token,
-                                               username: config.settings["username"] ?? "")
+                                               username: config.settings["username"] ?? "",
+                                               flavour: config.kind == .emby ? .emby : .jellyfin)
         return JellyfinSource(id: config.id, name: config.name, credentials: creds, http: http,
                               deviceID: prefs.deviceID, matcher: makeMatcher())
+    }
+
+    /// Registers a server and takes in its watched state each time its library loads.
+    func register(_ source: JellyfinSource) async {
+        await source.setProgressHandler { [weak self] records in await self?.applyServerProgress(records) }
+        await registry.register(source)
     }
 
     public func removeSource(_ id: SourceID) async {
@@ -932,7 +1075,9 @@ public final class AppModel {
                 let best = movies.first { parsed.year == nil || $0.year == parsed.year } ?? movies.first
                 return best?.key
             case .episode(let s, let e):
-                guard let show = results.first(where: { $0.kind == .series && MediaNameParser.normalized($0.name) == want })
+                let shows = results.filter { $0.kind == .series && MediaNameParser.normalized($0.name) == want }
+                // "The.Office.2005.S01E01": the year picks the right one of same-named shows.
+                guard let show = shows.first(where: { parsed.year == nil || $0.year == parsed.year }) ?? shows.first
                 else { return nil }
                 return show.key.episode(season: s, episode: e)  // TMDB or Cinemeta (IMDb) keys
             }
@@ -944,12 +1089,18 @@ public final class AppModel {
     /// Resolves a playable variant for `key` and presents the player.
     /// - Parameter startAt: start at this second whatever the saved progress and
     ///   Settings › Playback › Start Playing say (Handoff).
-    /// - Parameter inInfuse: hand the stream to Infuse instead (Open in Infuse).
-    ///   Settings › Player › Always Open in Infuse does the same for every video
-    ///   Infuse can reach; the rest play here.
+    /// - Parameter external: hand the stream to this app instead (Open In…).
+    ///   Settings › Playback › Open Videos In does the same for every video
+    ///   the chosen app can reach; the rest play here.
+    /// - Parameter autoplay: false opens it paused (a Watch Party's lobby, or joining one).
     public func play(_ item: NowPlayingItem, variant preferred: MediaVariant? = nil, resume: Bool = true,
-                     startAt: TimeInterval? = nil, inInfuse: Bool = false) async {
-        // A maturity limit: titles rated above it don't play on this profile.
+                     startAt: TimeInterval? = nil, in external: ExternalPlayer? = nil, autoplay: Bool = true) async {
+        // "Play on" another device (the remote): it plays there. A file chosen here, and a
+        // party's title (opened paused), stay here.
+        if preferred == nil, startAt == nil, external == nil, autoplay,
+           remote.playOnTarget(RemotePlay(key: item.key, title: item.title, subtitle: item.subtitle, resume: resume)) { return }
+        // A maturity limit: titles rated above it, or unrated ones on Kids, don't play on this profile.
+        await learnCertificationIfNeeded(for: item.key)
         if let reason = maturityBlock(for: item.key) {
             alert = AppAlert(title: "Not available on this profile", message: reason)
             return
@@ -985,9 +1136,10 @@ public final class AppModel {
         let request = playRequest
         // One video at a time: what's playing ends (and saves its place) before the next opens.
         if activePlayer != nil { await closePlayer() }
-        await endInfuseHandoff()
+        await endExternalHandoff()
         guard request == playRequest else { return }
         resolvedNext = nil
+        pickedNext = nil
         await holdTorrentDownloads(before: variant, key: item.key)
         preparingItem = item
         defer { if preparingItem == item { preparingItem = nil } }
@@ -998,22 +1150,23 @@ public final class AppModel {
             await holdTorrentDownloads(streaming: resource.variant)
             rememberSource(variant, for: item.key)
             noteStreaming(resource.variant)  // the mobile data counter
-            if inInfuse || settings.alwaysOpenInInfuse, Infuse.canOpen(resource) {
-                if await openInInfuse(resource, variant: variant) {
-                    // Infuse plays it from here; a torrent or a download keeps being served (`AppModel+Infuse`).
+            // A party's title (opened paused) stays here, where the party can keep it in step.
+            if let player = external ?? (autoplay ? settings.openVideosIn : nil), ExternalPlayer.canOpen(resource) {
+                if await openExternally(resource, variant: variant, in: player) {
+                    // The app plays it from here; a torrent or a download keeps being served (`AppModel+ExternalPlayer`).
                     addonStatus = nil
                     return
                 }
-                if inInfuse {
+                if external != nil {
                     addonStatus = nil
                     releaseTorrentDownloadHolds()
                     if variant.sourceID == addons.id { await addons.stopStreaming() }
-                    alert = AppAlert(title: "Couldn't open Infuse",
-                                     message: Infuse.isInstalled ? "Infuse didn't open “\(item.title)”."
-                                         : "Infuse isn't installed on this device. Get it from the App Store, or play “\(item.title)” in Bluebox.")
+                    alert = AppAlert(title: "Couldn't open \(player.name)",
+                                     message: player.isInstalled ? "\(player.name) didn't open “\(item.title)”."
+                                         : "\(player.name) isn't installed on this device. Get it from the App Store, or play “\(item.title)” in Bluebox.")
                     return
                 }
-                // Always Open in Infuse, but Infuse isn't here: it plays in Bluebox.
+                // Open Videos In, but that app isn't here: it plays in Bluebox.
             }
             activeVariant = variant
             let session = makeSession(for: resource)
@@ -1024,16 +1177,22 @@ public final class AppModel {
                 addonStatus = nil
             }
             nowPlaying.attach(session)
-            await session.start(item, resource: resource, resume: resume && settings.resumeBehavior == .always, startAt: startAt)
+            await session.start(item, resource: resource, resume: resume && settings.resumeBehavior == .always, startAt: startAt,
+                                autoplay: autoplay)
         } catch is CancellationError {
             addonStatus = nil
             releaseTorrentDownloadHolds()
+        } catch let error as DebridLinkError {
+            addonStatus = nil
+            releaseTorrentDownloadHolds()
+            Log.playback.error("Debrid link is a notice clip: \(error.problem.rawValue, privacy: .public)")
+            alert = debridAlert(error, title: "Couldn't play “\(item.title)”", item: item)
         } catch {
             addonStatus = nil
             releaseTorrentDownloadHolds()
             report(error, title: "Couldn't play “\(item.title)”",
                    context: variant.sourceID == addons.id ? .addons : .playback) { [weak self] in
-                await self?.play(item, variant: preferred, resume: resume, startAt: startAt)
+                await self?.play(item, variant: preferred, resume: resume, startAt: startAt, autoplay: autoplay)
             }
         }
     }
@@ -1108,17 +1267,21 @@ public final class AppModel {
 
     public func closePlayer() async {
         guard let session = activePlayer else { return }
+        // Closing the player leaves the party, unless the party itself is changing what plays.
+        if party != nil, !partyIsSwitching { await leaveParty() }
         // Quiet straight away, and a video still opening stands down: the steps
         // below can take a moment, and the player is already leaving.
         session.beginClosing()
-        if let v = activeVariant, let jf = await registry.source(v.sourceID) as? JellyfinSource {
-            let position = session.snapshot.position
-            Task { await jf.reportProgress(itemID: v.id, position: position, isPaused: true, stopped: true) }
+        await reportServerPlayback(session, stopped: true)
+        if let v = activeVariant, let plex = await registry.source(v.sourceID) as? PlexSource {
+            let position = session.snapshot.position, duration = session.snapshot.duration
+            Task { await plex.reportProgress(ratingKey: v.id, position: position, duration: duration, isPaused: true, stopped: true) }
         }
         let wasStreaming = activeVariant?.sourceID == addons.id || resolvedNext?.resource.variant.sourceID == addons.id
         let watched = session.item?.key
         activeVariant = nil
         resolvedNext = nil
+        pickedNext = nil
         // Save the final position before the torrent stream goes away underneath the player.
         await session.end()
         if wasStreaming { await addons.stopStreaming() }
@@ -1150,7 +1313,12 @@ public final class AppModel {
             }, upNextCountdown: settings.upNextCountdown
         )
         session.autoplayNext = settings.autoplayNextEpisode
-        session.onProgressSaved = { [weak self] playing in self?.account.progressSaved(playing: playing) }
+        session.onProgressSaved = { [weak self, weak session] playing in
+            self?.account.progressSaved(playing: playing)
+            guard let self, let session else { return }
+            Task { await self.reportServerPlayback(session, stopped: false) }
+        }
+        session.onNearEnd = { [weak self] key in self?.prepareNextEpisode(after: key) }
         session.subtitleStyle = subtitleStyle
         session.setAudioEffects(AudioEffects(dialogueBoost: settings.dialogueBoost, nightMode: settings.nightMode, equalizer: equalizer))
         // Defaults for every item the session starts, Up Next and Next Episode included.
@@ -1169,30 +1337,70 @@ public final class AppModel {
         if let hit = resolvedNext, hit.after == key, Date().timeIntervalSince(hit.at) < 600 {
             return (hit.item, hit.resource)
         }
+        guard let picked = await pickNextEpisode(after: key),
+              let resolved = await startEpisode(picked) else { return nil }
+        resolvedNext = (key, resolved.0, resolved.1, Date())
+        return resolved
+    }
+
+    /// About 85% through an episode (`PlayerSession.onNearEnd`): picks the next
+    /// one's release in the background, so Up Next and Next Episode only have
+    /// to start it. Nothing is resolved yet, so what's playing is untouched.
+    func prepareNextEpisode(after key: MediaKey) {
+        guard key.seriesKey != nil, key.episodeNumbers != nil else { return }
+        Task { _ = await pickNextEpisode(after: key) }
+    }
+
+    /// The episode after `key` with its release chosen, from `pickedNext` while it's fresh.
+    private func pickNextEpisode(after key: MediaKey) async -> PickedEpisode? {
+        if let hit = pickedNext, hit.after == key, hit.isFresh { return hit }
         guard let seriesKey = key.seriesKey, let (s, e) = key.episodeNumbers,
               let detail = try? await metadata.detail(for: seriesKey),
               let (ns, ne) = SeriesCursor.next(after: s, e, seasons: detail.seasons),
               let nextKey = seriesKey.episode(season: ns, episode: ne),
-              let resolved = await resolveEpisode(nextKey, detail: detail) else { return nil }
-        resolvedNext = (key, resolved.0, resolved.1, Date())
-        return resolved
+              var picked = await pickEpisode(nextKey, detail: detail) else { return nil }
+        picked.after = key
+        pickedNext = picked
+        return picked
     }
 
     /// An episode resolved and ready to play in the open player (Next Episode,
     /// Previous Episode, the player's Episodes list).
     func resolveEpisode(_ nextKey: MediaKey, detail known: TitleDetail? = nil) async -> (NowPlayingItem, PlaybackResource)? {
-        guard let seriesKey = nextKey.seriesKey, let (ns, ne) = nextKey.episodeNumbers else { return nil }
         if let hit = resolvedNext, hit.item.key == nextKey, Date().timeIntervalSince(hit.at) < 600 {
             return (hit.item, hit.resource)
         }
+        let early: PickedEpisode? = if let hit = pickedNext, hit.item.key == nextKey, hit.isFresh { hit } else { nil }
+        let fetched: PickedEpisode? = if let early { early } else { await pickEpisode(nextKey, detail: known) }
+        guard let picked = fetched else { return nil }
+        return await startEpisode(picked)
+    }
+
+    /// The pick half: which release `nextKey` plays, and its title and still.
+    /// Asks the sources (add-on searches, debrid cache checks), which is most
+    /// of the wait, but starts nothing.
+    private func pickEpisode(_ nextKey: MediaKey, detail known: TitleDetail?) async -> PickedEpisode? {
+        guard let seriesKey = nextKey.seriesKey, let (ns, ne) = nextKey.episodeNumbers else { return nil }
         let fetched: TitleDetail? = if let known { known } else { try? await metadata.detail(for: seriesKey) }
         guard let detail = fetched else { return nil }
-        // The player this is for; if it closes meanwhile, nothing new may start.
+        // The player this is for; if it closes meanwhile, nothing is kept.
         let owner = activePlayer
         let availability = await registry.availability(for: nextKey)
         guard activePlayer === owner else { return nil }
         guard let variant = chooseVariant(availability.variants, for: nextKey),
               PlaybackEngines.canAttempt(container: variant.container) else { return nil }
+        let episode = try? await metadata.season(ns, of: seriesKey).episodes.first { $0.number == ne }
+        let item = NowPlayingItem(key: nextKey, title: detail.title.name,
+                                  subtitle: "S\(ns)·E\(ne)" + (episode.map { " · \($0.name)" } ?? ""),
+                                  artworkURL: imageURL(episode?.still ?? detail.title.backdrop, width: 640))
+        return PickedEpisode(item: item, variant: variant)
+    }
+
+    /// The start half: resolves the picked release (for a torrent, this is
+    /// where the stream changes over).
+    private func startEpisode(_ picked: PickedEpisode) async -> (NowPlayingItem, PlaybackResource)? {
+        let nextKey = picked.item.key, variant = picked.variant
+        let owner = activePlayer
         await holdTorrentDownloads(before: variant, key: nextKey)
         let resource: PlaybackResource
         do {
@@ -1209,12 +1417,21 @@ public final class AppModel {
         }
         await holdTorrentDownloads(streaming: resource.variant)
         rememberSource(variant, for: nextKey)
-        let episode = try? await metadata.season(ns, of: seriesKey).episodes.first { $0.number == ne }
-        let item = NowPlayingItem(key: nextKey, title: detail.title.name,
-                                  subtitle: "S\(ns)·E\(ne)" + (episode.map { " · \($0.name)" } ?? ""),
-                                  artworkURL: imageURL(episode?.still ?? detail.title.backdrop, width: 640))
-        return (item, resource)
+        if pickedNext?.item.key == nextKey { pickedNext = nil }  // used: a later pick asks the sources afresh
+        return (picked.item, resource)
     }
+}
+
+/// An episode whose release has been chosen but not started (`AppModel.pickEpisode`).
+struct PickedEpisode {
+    /// The episode it follows, when picked as "the next one".
+    var after: MediaKey?
+    let item: NowPlayingItem
+    let variant: MediaVariant
+    let at = Date()
+
+    /// Debrid caches and swarms change: after ten minutes, ask again.
+    var isFresh: Bool { Date().timeIntervalSince(at) < 600 }
 }
 
 public struct AppAlert: Identifiable, Equatable {
@@ -1223,9 +1440,23 @@ public struct AppAlert: Identifiable, Equatable {
     public let message: String
     /// Shown as a Try Again button beside OK when set.
     public let retry: (@MainActor () -> Void)?
+    /// Ways forward shown above OK, the first in white ("Open Real-Debrid", "Releases…").
+    /// When any has a `role`, the alert asks for a decision: just these
+    /// buttons, styled by role, with no OK ("Sign Out Anyway", "Try Again", "Cancel").
+    public let actions: [Action]
 
-    public init(title: String, message: String, retry: (@MainActor () -> Void)? = nil) {
-        self.title = title; self.message = message; self.retry = retry
+    public struct Action {
+        public enum Role { case primary, secondary, cancel }
+        public let title: String
+        public let role: Role?
+        public let perform: @MainActor () -> Void
+        public init(_ title: String, role: Role? = nil, perform: @escaping @MainActor () -> Void = {}) {
+            self.title = title; self.role = role; self.perform = perform
+        }
+    }
+
+    public init(title: String, message: String, retry: (@MainActor () -> Void)? = nil, actions: [Action] = []) {
+        self.title = title; self.message = message; self.retry = retry; self.actions = actions
     }
 
     public static func == (a: AppAlert, b: AppAlert) -> Bool { a.id == b.id }
@@ -1247,12 +1478,18 @@ final class TitleResolver {
 
 extension AppModel {
     public func setAddonSettings(_ settings: AddonSettings) {
+        saveAddonSettings(settings, reloading: true)
+    }
+
+    /// `reloading` false keeps the pages built from the sources as they are
+    /// (Home saving the catalogs it just read).
+    func saveAddonSettings(_ settings: AddonSettings, reloading: Bool) {
         addonSettings = settings
         prefs.set(settings, for: PreferenceKey.addons)
         Task { await addons.update(settings: settings, debridKey: debridKey) }
         Task { await torrentDownloads.update(settings: settings.streamSettings) }
         refreshDebridLibrarySource()
-        sourcesRevision += 1
+        if reloading { sourcesRevision += 1 }
     }
 
     public func setDebridKey(_ key: String) {
@@ -1274,17 +1511,20 @@ extension AppModel {
     }
 
     /// Plays one release the user picked.
-    public func play(_ item: NowPlayingItem, release: AddonRelease, inInfuse: Bool = false) async {
+    public func play(_ item: NowPlayingItem, release: AddonRelease, in external: ExternalPlayer? = nil,
+                     resume: Bool = true, autoplay: Bool = true) async {
+        if external == nil, autoplay, let data = try? JSONEncoder().encode(release),
+           remote.playOnTarget(RemotePlay(key: item.key, title: item.title, subtitle: item.subtitle, release: data)) { return }
         let variant = await addons.variant(for: release, key: item.key)
-        await play(item, variant: variant, inInfuse: inInfuse)
+        await play(item, variant: variant, resume: resume, in: external, autoplay: autoplay)
     }
 
-    /// Whether a release's menu offers Open in Infuse: links, and torrents,
-    /// which Bluebox keeps serving behind Infuse.
-    public func canOpenInInfuse(_ release: AddonRelease) -> Bool {
-        guard Infuse.isInstalled else { return false }
-        if let url = release.url { return Infuse.canOpen(url) }
-        return release.magnet != nil && addonsCanStreamTorrents
+    /// The apps a release's Open In… offers: links, and torrents, which
+    /// Bluebox keeps serving behind the app. Empty when none is installed.
+    public func externalPlayers(for release: AddonRelease) -> [ExternalPlayer] {
+        if let url = release.url { guard ExternalPlayer.canOpen(url) else { return [] } }
+        else if release.magnet == nil || !addonsCanStreamTorrents { return [] }
+        return ExternalPlayer.installed
     }
 
     #if DEBUG
@@ -1349,6 +1589,19 @@ extension AppModel {
 
     public func cancelConnect() { pendingConnect = nil }
 
+    /// Sign-out couldn't upload everything: sign out anyway (the changes stay
+    /// here and upload the next time this account signs in), try again, or stay.
+    func askToSignOut(leaving waiting: Int) {
+        let title = waiting == 1 ? "1 change hasn't uploaded" : "\(waiting) changes haven't uploaded"
+        alert = AppAlert(title: title,
+                         message: "Bluebox couldn't reach your server. If you sign out now, they stay on this device and upload the next time you sign in to this account.",
+                         actions: [
+                             .init("Sign Out Anyway") { [weak self] in Task { await self?.account.signOut(force: true) } },
+                             .init("Try Again", role: .primary) { [weak self] in Task { await self?.account.signOut() } },
+                             .init("Cancel", role: .cancel),
+                         ])
+    }
+
     /// Forgets the project entered in Settings and signs out.
     public func disconnectSupabase() {
         try? secrets.write(nil, for: SecretAccount.supabaseServer)
@@ -1357,12 +1610,17 @@ extension AppModel {
         account.configure(SupabaseConfig(bundle: .main))
     }
 
-    /// Links opened from outside: `bluebox://connect?…` from another device's
+    /// Links opened from outside: `bluebox://title…`, `play…`, `my-list` and
+    /// `search…` from widgets, Spotlight and Siri (`SystemLink`), `bluebox://connect?…` from another device's
     /// "Add Another Device", `bluebox://auth-callback…` sign-in links (refused), and
     /// (Mac) `magnet:` links, .torrent and video files opened with Bluebox,
     /// which go the Settings › Sources way and then offer Play (`openExternal`).
     public func handleOpenURL(_ url: URL) {
-        if ConnectLink.matches(url) {
+        if let invite = TogetherInvite(url: url) {
+            partyJoin = PartyJoinRequest(invite: invite)
+        } else if let link = SystemLink(url: url) {
+            Task { await open(link) }  // widgets, Spotlight and Siri
+        } else if ConnectLink.matches(url) {
             Task { await connect(fromLink: url) }
         } else if let item = ExternalItem.classify(url) {
             Task { await openExternal(item) }
@@ -1473,7 +1731,10 @@ extension AppModel {
             default: break
             }
         }
-        if done != completedDownloadKeys { completedDownloadKeys = done }
+        if done != completedDownloadKeys {
+            completedDownloadKeys = done
+            scheduleSystemRefresh()  // Spotlight lists downloads
+        }
         if active != activeDownloadCount { activeDownloadCount = active }
     }
 }

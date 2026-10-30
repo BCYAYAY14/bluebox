@@ -227,3 +227,32 @@ enum Make {
         #expect(ReleaseDeduplicator.merge([[a], [b, c]]).count == 2)
     }
 }
+
+@Suite struct AirPlayRankingTests {
+    private func names(_ releases: [AddonRelease], airPlaying: Bool) -> [String] {
+        var device = DeviceProfile.typical
+        device.airPlaying = airPlaying
+        return ReleaseRanker.rank(releases, context: RankingContext(device: device))
+            .map { String($0.title.prefix(while: { $0 != "." })) }
+    }
+
+    @Test func mp4FirstWhileAirPlaying() {
+        let found = [
+            Make.link("1", "cached.1080p.WEB-DL.x264.mkv", cache: .cached, gb: 2),
+            Make.torrent("2", "healthy.1080p.WEB-DL.x264.mkv", seeders: 80, gb: 2),
+            Make.torrent("3", "thinmp4.1080p.WEB-DL.x264.mp4", seeders: 2, gb: 2),
+            Make.torrent("4", "movie.1080p.WEB-DL.x264.m4v", seeders: 60, gb: 2),
+        ]
+        #expect(names(found, airPlaying: false) == ["cached", "healthy", "movie", "thinmp4"])
+        #expect(names(found, airPlaying: true) == ["movie", "thinmp4", "cached", "healthy"])
+    }
+
+    @Test func deadMP4sDontJumpTheQueue() {
+        let found = [
+            Make.torrent("1", "dead.1080p.WEB-DL.x264.mp4", seeders: 0, gb: 2),
+            Make.torrent("2", "healthy.1080p.WEB-DL.x264.mkv", seeders: 80, gb: 2),
+            Make.torrent("3", "quick.1080p.WEB-DL.x264.mov", seeders: 40, gb: 2),
+        ]
+        #expect(names(found, airPlaying: true) == ["quick", "healthy", "dead"])
+    }
+}

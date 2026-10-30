@@ -253,7 +253,7 @@ struct SearchResultsSkeleton: View {
 
     private func shelf(_ title: String, posterWidth: CGFloat, inset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            Text(title).font(Typography.rowTitle).padding(.horizontal, inset)
+            Text(ui: title).font(Typography.rowTitle).padding(.horizontal, inset)
             HStack(alignment: .top, spacing: Spacing.cardGap) {
                 ForEach(0..<8, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: Spacing.xs) {

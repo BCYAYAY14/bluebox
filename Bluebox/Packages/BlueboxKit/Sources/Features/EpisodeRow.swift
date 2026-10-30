@@ -95,6 +95,9 @@ struct EpisodeRow: View {
             .contentShape(RoundedRectangle(cornerRadius: Radius.hero - 4, style: .continuous))
         }
         .buttonStyle(EpisodeRowButtonStyle())
+        .remoteFocusable("episode:\(episode.key)", label: "\(episode.number) · \(episode.name)", cornerRadius: Radius.control) {
+            actions.play()
+        }
         .disabled(!isPlayable)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(isPlayable ? "Plays the episode" : "Not available in your sources")

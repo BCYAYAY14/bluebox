@@ -34,7 +34,7 @@ struct OpenSubtitlesSection: View {
                 Button(working ? "Checking…" : "Save Key") { Task { await run { try await app.saveOpenSubtitlesKey(key); key = "" } } }
                     .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty || working)
             }
-            if let message { Text(message).font(.footnote).foregroundStyle(Palette.warning) }
+            if let message { Text(ui: message).font(.footnote).foregroundStyle(Palette.warning) }
         } header: {
             Text("Subtitle Search")
         } footer: {
@@ -76,7 +76,7 @@ struct SubtitleSitesSection: View {
                 Button(working ? "Checking…" : "Save Subdl Key") { Task { await saveKey() } }
                     .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty || working)
             }
-            if let message { Text(message).font(.footnote).foregroundStyle(Palette.warning) }
+            if let message { Text(ui: message).font(.footnote).foregroundStyle(Palette.warning) }
         } header: {
             Text("Search Online")
         } footer: {

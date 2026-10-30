@@ -271,7 +271,7 @@ struct SettingsColorRow: View {
 
     var body: some View {
         HStack(spacing: Spacing.m) {
-            Text(title)
+            Text(ui: title)
             Spacer(minLength: Spacing.s)
             ForEach(choices, id: \.self) { c in
                 let selected = Self.close(c, color)

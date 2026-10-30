@@ -25,7 +25,7 @@ extension AppModel {
     /// store while it's open could be written back over on the way out.
     func eraseAllDataAndQuit() async {
         let signOut = Task { @MainActor in
-            await account.signOut()
+            await account.signOut(force: true)  // everything here is being erased anyway
             if trakt.isConnected { await trakt.disconnect() }
         }
         await withTaskGroup(of: Void.self) { group in
@@ -90,6 +90,9 @@ public enum EraseAllData {
 
         // Sign-ins and keys.
         KeychainStore().deleteAll()
+
+        // The widgets' snapshot (in the App Group, outside these folders) and Spotlight.
+        AppModel.eraseSystemSurfaces()
 
         try? fm.removeItem(at: marker)
     }

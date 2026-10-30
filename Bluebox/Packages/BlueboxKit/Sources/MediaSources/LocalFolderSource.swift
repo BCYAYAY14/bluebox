@@ -5,13 +5,35 @@ import Foundation
 /// Resolves a parsed filename to a catalog key (usually via TMDB search).
 public typealias MediaMatcher = @Sendable (ParsedMediaName) async -> MediaKey?
 
+/// Why a folder source can't be read, in words for the user.
+public enum LocalFolderError: Error, Hashable, Sendable, LocalizedError {
+    /// The folder isn't there (moved, renamed, or its drive isn't connected).
+    case missing(String)
+    /// Bluebox may no longer read it (the saved permission didn't resolve or was refused).
+    case notPermitted(String)
+    /// The path isn't a folder.
+    case notAFolder(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missing(let name):
+            "“\(name)” can't be found. It may have been moved or renamed, or its drive isn't connected."
+        case .notPermitted(let name):
+            "Bluebox isn't allowed to read “\(name)” any more. Remove it in Settings › Sources and add it again."
+        case .notAFolder(let name): "“\(name)” isn't a folder."
+        }
+    }
+}
+
 /// Video files in a user-chosen folder.
 ///
 /// Access is through a security-scoped bookmark so the folder stays readable
 /// across launches in the sandbox. Matching filenames to catalog titles is
 /// delegated to a `MediaMatcher` and cached for the life of the source.
 public actor LocalFolderSource: MediaSource {
-    public static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "mkv", "avi", "webm", "ts", "m2ts"]
+    /// What a folder scan picks up, and what can be opened or dropped on Bluebox.
+    public static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "mkv", "avi", "webm", "ts", "m2ts", "mts",
+                                                      "wmv", "flv", "mpg", "mpeg", "ogv", "3gp", "divx", "vob"]
 
     public nonisolated let id: SourceID
     public nonisolated let kind = SourceKind.localFolder
@@ -21,6 +43,11 @@ public actor LocalFolderSource: MediaSource {
     private let folderURL: URL
     private let usesSecurityScope: Bool
     private let matcher: MediaMatcher?
+    private let overrides: MatchOverrides?
+    /// Set when the saved bookmark couldn't be resolved: every read fails with it.
+    private let accessProblem: LocalFolderError?
+    /// New bookmark data for a stale bookmark, for the app to save in place of the old.
+    public nonisolated let refreshedBookmark: Data?
     private var scanned: [MediaVariant]?
     private var scannedAt: Date?
     private var fileByVariant: [String: URL] = [:]
@@ -33,16 +60,32 @@ public actor LocalFolderSource: MediaSource {
     private var now: @Sendable () -> Date = { Date() }
 
     /// - Parameter usesSecurityScope: true when `folderURL` came from a bookmark.
-    public init(id: SourceID, name: String, folderURL: URL, usesSecurityScope: Bool, matcher: MediaMatcher? = nil) {
+    /// - Parameter overrides: Fix Match choices, read before the matcher.
+    public init(id: SourceID, name: String, folderURL: URL, usesSecurityScope: Bool, matcher: MediaMatcher? = nil,
+                overrides: MatchOverrides? = nil) {
+        self.init(id: id, name: name, folderURL: folderURL, usesSecurityScope: usesSecurityScope, matcher: matcher,
+                  overrides: overrides, accessProblem: nil, refreshedBookmark: nil)
+    }
+
+    private init(id: SourceID, name: String, folderURL: URL, usesSecurityScope: Bool, matcher: MediaMatcher?,
+                 overrides: MatchOverrides?, accessProblem: LocalFolderError?, refreshedBookmark: Data?) {
         self.id = id; self.displayName = name; self.folderURL = folderURL
-        self.usesSecurityScope = usesSecurityScope; self.matcher = matcher
+        self.usesSecurityScope = usesSecurityScope; self.matcher = matcher; self.overrides = overrides
+        self.accessProblem = accessProblem; self.refreshedBookmark = refreshedBookmark
     }
 
     /// Tests: replaces the clock.
     func setClock(_ now: @escaping @Sendable () -> Date) { self.now = now }
 
-    /// Recreates a source from a stored configuration (`settings["bookmark"]` is base64 bookmark data).
-    public static func fromConfiguration(_ config: SourceConfiguration, matcher: MediaMatcher?) throws -> LocalFolderSource {
+    /// Recreates a source from a stored configuration (`settings["bookmark"]` is base64
+    /// bookmark data, `settings["path"]` the folder's path when it was added).
+    ///
+    /// A bookmark that no longer resolves still gives a source, one whose reads
+    /// fail with a `LocalFolderError` saying what to do, so the folder stays in
+    /// Settings and My Sources instead of quietly disappearing. A stale one that
+    /// still resolves is renewed (`refreshedBookmark`).
+    public static func fromConfiguration(_ config: SourceConfiguration, matcher: MediaMatcher?,
+                                         overrides: MatchOverrides? = nil) throws -> LocalFolderSource {
         guard let b64 = config.settings["bookmark"], let data = Data(base64Encoded: b64) else {
             throw SourceError.invalidConfiguration("Missing folder bookmark")
         }
@@ -52,10 +95,25 @@ public actor LocalFolderSource: MediaSource {
         #else
         let options: URL.BookmarkResolutionOptions = []
         #endif
-        guard let url = try? URL(resolvingBookmarkData: data, options: options, relativeTo: nil, bookmarkDataIsStale: &stale) else {
-            throw SourceError.notFound
+        let url: URL
+        do {
+            url = try URL(resolvingBookmarkData: data, options: options, relativeTo: nil, bookmarkDataIsStale: &stale)
+        } catch {
+            let path = config.settings["path"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            let problem: LocalFolderError = [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains((error as NSError).code)
+                ? .missing(config.name) : .notPermitted(config.name)
+            return LocalFolderSource(id: config.id, name: config.name, folderURL: path ?? URL(fileURLWithPath: "/"),
+                                     usesSecurityScope: false, matcher: matcher, overrides: overrides,
+                                     accessProblem: problem, refreshedBookmark: nil)
         }
-        return LocalFolderSource(id: config.id, name: config.name, folderURL: url, usesSecurityScope: true, matcher: matcher)
+        var renewed: Data?
+        if stale {
+            let started = url.startAccessingSecurityScopedResource()
+            renewed = try? makeBookmark(for: url)
+            if started { url.stopAccessingSecurityScopedResource() }
+        }
+        return LocalFolderSource(id: config.id, name: config.name, folderURL: url, usesSecurityScope: true, matcher: matcher,
+                                 overrides: overrides, accessProblem: nil, refreshedBookmark: renewed)
     }
 
     /// Creates bookmark data for a folder the user just picked.
@@ -76,22 +134,25 @@ public actor LocalFolderSource: MediaSource {
     public func catalog() async throws -> [MediaVariant] {
         if let scanned, let scannedAt {
             let allMatched = matcher == nil || !scanned.contains { $0.mediaKey == nil }
-            if allMatched || now().timeIntervalSince(scannedAt) < Self.unmatchedRetryInterval { return scanned }
+            if allMatched || now().timeIntervalSince(scannedAt) < Self.unmatchedRetryInterval { return applyingOverrides(scanned) }
         }
-        let files = try withAccess { try Self.videoFiles(in: folderURL) }
+        let files = try withAccess { try Self.videoFiles(in: folderURL, name: displayName) }
         var out: [MediaVariant] = []
         var byVariant: [String: URL] = [:]
+        // One lookup per film or show in this scan: a season of 20 episodes is one search, not 20.
+        var lookups: [String: MediaKey?] = [:]
         for file in files {
             try Task.checkCancellation()
             let parsed = MediaNameParser.parse(filename: file.lastPathComponent)
+            let vid = Self.variantID(for: file, root: folderURL)
             var key = matches[file]
+            // Matched even when Fix Match overrides it, so Reset Match has the automatic match at hand.
             if key == nil, let matcher {
-                key = await matcher(parsed)
+                key = await Self.lookUp(parsed, in: &lookups, matcher: matcher)
                 if let key { matches[file] = key }
             }
-            let vid = Self.variantID(for: file, root: folderURL)
             byVariant[vid] = file
-            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+            let size = withAccessNoThrow { (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) }
             out.append(MediaVariant(
                 id: vid, sourceID: id, mediaKey: key, displayName: file.deletingPathExtension().lastPathComponent,
                 container: file.pathExtension.lowercased(), resolution: parsed.resolution, sizeBytes: size,
@@ -101,7 +162,45 @@ public actor LocalFolderSource: MediaSource {
         fileByVariant = byVariant
         scanned = out
         scannedAt = now()
-        return out
+        return applyingOverrides(out)
+    }
+
+    /// The automatic match for a film or show, shared by every file of it in one scan.
+    static func lookUp(_ parsed: ParsedMediaName, in lookups: inout [String: MediaKey?], matcher: MediaMatcher) async -> MediaKey? {
+        let title = MediaNameParser.normalized(parsed.title)
+        guard !title.isEmpty else { return nil }
+        switch parsed.kind {
+        case .movie:
+            let k = "m:\(title):\(parsed.year ?? 0)"
+            if let cached = lookups[k] { return cached }
+            let found = await matcher(parsed)
+            lookups[k] = .some(found)
+            return found
+        case .episode(let s, let e):
+            let k = "s:\(title):\(parsed.year ?? 0)"
+            let show: MediaKey?
+            if let cached = lookups[k] {
+                show = cached
+            } else {
+                show = await matcher(parsed).map { $0.seriesKey ?? $0 }
+                lookups[k] = .some(show)
+            }
+            return show?.episode(season: s, episode: e)
+        }
+    }
+
+    /// Fix Match choices win over what the file names matched.
+    private func applyingOverrides(_ variants: [MediaVariant]) -> [MediaVariant] {
+        guard let overrides else { return variants }
+        return variants.map { v in
+            guard let o = overrides.override(source: id, variant: v.id) else { return v }
+            return v.withMediaKey(o.key)
+        }
+    }
+
+    /// The parsed name of a scanned file, for Fix Match's search field.
+    public func parsedName(of variantID: String) -> ParsedMediaName? {
+        fileByVariant[variantID].map { MediaNameParser.parse(filename: $0.lastPathComponent) }
     }
 
     public func variants(for key: MediaKey) async throws -> [MediaVariant] {
@@ -119,11 +218,19 @@ public actor LocalFolderSource: MediaSource {
 
     public func testConnection() async -> SourceHealth {
         do {
-            let count = try withAccess { try Self.videoFiles(in: folderURL).count }
-            return SourceHealth(ok: true, message: "\(count) video file\(count == 1 ? "" : "s") found.")
+            let count = try withAccess { try Self.videoFiles(in: folderURL, name: displayName).count }
+            return SourceHealth(ok: true, message: count == 0
+                                ? "No videos found. Bluebox looks for \(Self.extensionList) files in the folder and the folders inside it."
+                                : "\(count) video file\(count == 1 ? "" : "s") found.")
         } catch {
-            return SourceHealth(ok: false, message: "Folder can't be read. Choose it again in Settings.")
+            return SourceHealth(ok: false, message: (error as? LocalizedError)?.errorDescription
+                                ?? "Folder can't be read. Remove it and add it again in Settings › Sources.")
         }
+    }
+
+    /// "MKV, MP4, MOV…" for messages.
+    public static var extensionList: String {
+        ["mkv", "mp4", "mov", "avi", "m4v", "webm"].map { $0.uppercased() }.joined(separator: ", ") + " and similar"
     }
 
     /// The folder URL, for starting security-scoped access during playback.
@@ -132,6 +239,7 @@ public actor LocalFolderSource: MediaSource {
     // MARK: Helpers
 
     private func withAccess<T>(_ body: () throws -> T) throws -> T {
+        if let accessProblem { throw accessProblem }
         let started = usesSecurityScope && folderURL.startAccessingSecurityScopedResource()
         defer { if started { folderURL.stopAccessingSecurityScopedResource() } }
         return try body()
@@ -143,21 +251,61 @@ public actor LocalFolderSource: MediaSource {
         return body()
     }
 
-    static func videoFiles(in folder: URL) throws -> [URL] {
+    /// Every video in `folder` and the folders inside it (following folder
+    /// aliases and symlinks one level), without samples. Throws a
+    /// `LocalFolderError` when the folder itself can't be read, rather than
+    /// returning nothing.
+    public static func videoFiles(in folder: URL, name: String? = nil) throws -> [URL] {
         let fm = FileManager.default
+        let name = name ?? folder.lastPathComponent
         var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else { throw SourceError.notFound }
-        guard let e = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-                                    options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
-            throw SourceError.notFound
+        guard fm.fileExists(atPath: folder.path, isDirectory: &isDir) else {
+            // The sandbox answers "no such file" for a folder it won't let us see.
+            throw fm.isReadableFile(atPath: folder.deletingLastPathComponent().path) ? LocalFolderError.missing(name)
+                : LocalFolderError.notPermitted(name)
+        }
+        guard isDir.boolValue else { throw LocalFolderError.notAFolder(name) }
+        // Read the top level first: the enumerator below skips what it can't
+        // read without saying so, which made an unreadable folder look empty.
+        do { _ = try fm.contentsOfDirectory(atPath: folder.path) } catch {
+            throw (error as NSError).code == NSFileReadNoSuchFileError ? LocalFolderError.missing(name) : LocalFolderError.notPermitted(name)
         }
         var files: [URL] = []
-        for case let url as URL in e where videoExtensions.contains(url.pathExtension.lowercased()) {
-            // Skip samples/trailers shipped next to releases.
-            if url.lastPathComponent.lowercased().contains("sample") { continue }
-            files.append(url)
+        var visited: Set<String> = []
+        var roots = [folder]
+        while let root = roots.popLast() {
+            guard visited.insert(root.resolvingSymlinksInPath().path).inserted,
+                  let e = fm.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey],
+                                        options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+            for case let url as URL in e {
+                let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+                if values?.isDirectory == true, isSampleFolder(url) {
+                    e.skipDescendants()
+                    continue
+                }
+                if values?.isSymbolicLink == true, root == folder {
+                    var linkIsDir: ObjCBool = false
+                    // The enumerator doesn't follow a link it starts on, so it's given the target.
+                    if fm.fileExists(atPath: url.path, isDirectory: &linkIsDir), linkIsDir.boolValue {
+                        roots.append(url.resolvingSymlinksInPath())
+                    }
+                }
+                guard videoExtensions.contains(url.pathExtension.lowercased()), !isSample(url) else { continue }
+                files.append(url)
+            }
         }
         return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    /// Samples shipped next to releases: "sample.mkv", "Movie.2010-sample.mkv",
+    /// "Movie.Sample.mkv". Not titles that merely contain the word ("The Sampler").
+    static func isSample(_ url: URL) -> Bool {
+        let stem = url.deletingPathExtension().lastPathComponent.lowercased()
+        return stem.range(of: #"(^|[\s._\-\[(])sample([\s._\-\])]|$)"#, options: .regularExpression) != nil
+    }
+
+    static func isSampleFolder(_ url: URL) -> Bool {
+        ["sample", "samples"].contains(url.lastPathComponent.lowercased())
     }
 
     /// `Movie.mkv` + `Movie.en.srt` / `Movie.srt` / `Movie.vtt` / `Movie.ass` in the same folder.

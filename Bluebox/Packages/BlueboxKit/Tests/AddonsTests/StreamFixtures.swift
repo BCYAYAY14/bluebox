@@ -76,6 +76,11 @@ enum StreamFixtures {
     {"id":"org.example.catalog","version":"1.0.0","name":"Just Lists","description":"","resources":["catalog","meta"],"types":["movie","series"],"catalogs":[{"type":"movie","id":"top","name":"Top"}]}
     """#
 
+    /// Only TV channels: nothing Bluebox can stream or show.
+    static let channelsOnlyManifest = #"""
+    {"id":"org.example.tv","version":"1.0.0","name":"Just Channels","description":"","resources":["catalog","meta"],"types":["tv"],"catalogs":[{"type":"tv","id":"live","name":"Live"}]}
+    """#
+
     static let animeOnlyManifest = #"""
     {"id":"org.example.anime","version":"1.0.0","name":"Anime Only","description":"","resources":[{"name":"stream","types":["series"],"idPrefixes":["kitsu:"]}],"types":["series"],"catalogs":[]}
     """#

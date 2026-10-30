@@ -163,9 +163,13 @@ public final class EmbeddedTextFeed {
                 }
             }
             var added = false
-            for block in blocks {
+            let ordered = blocks.sorted { $0.start < $1.start }
+            for (i, block) in ordered.enumerated() {
                 guard let text = codec.text(block.payload) else { continue }
-                let cue = SubtitleCue(start: block.start, end: block.start + (block.duration ?? Self.defaultDuration), text: text)
+                // No duration: until the next line at most, not on top of it.
+                let next = ordered[(i + 1)...].first { $0.start > block.start }?.start
+                let end = block.start + (block.duration ?? min(Self.defaultDuration, (next ?? .infinity) - block.start))
+                let cue = SubtitleCue(start: block.start, end: end, text: text)
                 if store.seen.insert(cue).inserted { store.cues.append(cue); added = true }
             }
             if added { store.timeline = SubtitleTimeline(cues: store.cues) }

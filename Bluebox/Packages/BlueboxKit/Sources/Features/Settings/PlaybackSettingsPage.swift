@@ -3,12 +3,13 @@ import Domain
 import SkipSegments
 import SwiftUI
 
-/// Settings › Player (everyone on this device): a live player frame, then
-/// which player, where playback starts, the transport controls, the Up Next
-/// countdown and sound. Autoplay and the audio language belong to each
-/// profile (`ProfilePlaybackPage`, `ProfileLanguagesPage`).
+/// Settings › Playback: a live player frame, then the profile's own
+/// autoplay switch, then (for everyone on this device) which player, where
+/// playback starts, the transport controls, the Up Next countdown and sound.
+/// The audio language is the profile's too, on Language (`ProfileLanguagesPage`).
 struct PlaybackSettingsPage: View {
     @Environment(AppModel.self) private var app
+    @AppStorage(WatchParty.bubblesKey) private var partyBubbles = true
     static let speeds: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
     var body: some View {
@@ -21,9 +22,22 @@ struct PlaybackSettingsPage: View {
                             upNext: settings.autoplayNextEpisode ? settings.upNextCountdown : nil)
         } content: {
             Section {
+                Toggle("Autoplay Next Episode", isOn: $settings.autoplayNextEpisode)
+                    .settingsRow("Autoplay Next Episode")
+            } header: {
+                Text("Only for \(app.currentProfile.name)")
+            } footer: {
+                Text(settings.autoplayNextEpisode
+                     ? "Up Next counts down, then plays the next episode."
+                     : "Playback stops when an episode ends.")
+            }
+
+            Section {
                 SettingsPicker("Player", selection: $settings.enginePreference,
                                options: AppSettings.EnginePreference.allCases.map { .init($0.title, value: $0) })
                     .settingsRow("Player")
+            } header: {
+                Text("Player")
             } footer: {
                 Text(engineFooter)
             }
@@ -48,13 +62,17 @@ struct PlaybackSettingsPage: View {
                 SettingsPicker("Skip Forward", selection: $settings.skipForwardSeconds,
                                options: AppSettings.skipIntervals.map { .init("\($0) seconds", value: $0) })
                     .settingsRow("Skip Forward")
+                #if os(iOS)
+                Toggle("Swipe Gestures", isOn: $settings.swipeGestures)
+                    .settingsRow("Swipe Gestures")
+                #endif
             } header: {
                 Text("Controls")
             } footer: {
                 #if os(macOS)
                 Text("For the skip buttons and the Left and Right Arrow keys.")
                 #else
-                Text("For the skip buttons, and the arrow keys on a keyboard.")
+                Text("Skip times are for the skip buttons, and the arrow keys on a keyboard. Swipe Gestures: swipe across the picture to seek, or up and down on the left for brightness and on the right for volume.")
                 #endif
             }
 
@@ -127,12 +145,12 @@ struct PlaybackSettingsPage: View {
             }
 
             Section {
-                Toggle("Always Open in Infuse", isOn: $settings.alwaysOpenInInfuse)
-                    .settingsRow("Always Open in Infuse")
+                SettingsPicker("Open Videos In", selection: $settings.openVideosIn, options: openVideosInOptions)
+                    .settingsRow("Open Videos In")
             } header: {
                 Text("External Player")
             } footer: {
-                Text(infuseFooter)
+                Text(externalPlayerFooter)
             }
 
             Section {
@@ -144,6 +162,15 @@ struct PlaybackSettingsPage: View {
                 Text("Player")
             } footer: {
                 Text("Handoff offers what's playing to your other Apple devices, to pick up where you are.")
+            }
+
+            Section {
+                Toggle("Show Party Messages Over the Video", isOn: $partyBubbles)
+                    .settingsRow("Show Party Messages Over the Video")
+            } header: {
+                Text("Watch Party")
+            } footer: {
+                Text("While the chat is closed, the last two messages show over the film for a few seconds.")
             }
 
             Section {
@@ -190,14 +217,27 @@ struct PlaybackSettingsPage: View {
         }
     }
 
-    private var infuseFooter: String {
+    /// Bluebox, then the players installed here (and the one chosen, even if it's gone).
+    private var openVideosInOptions: [BlueboxPickerOption<ExternalPlayer?>] {
+        var players = ExternalPlayer.installed
+        if let chosen = app.settings.openVideosIn, !players.contains(chosen) { players.append(chosen) }
+        return [.init("Bluebox", value: nil)] + players.map { .init($0.name, value: $0) }
+    }
+
+    private var externalPlayerFooter: String {
+        guard let player = app.settings.openVideosIn else {
+            return ExternalPlayer.installed.isEmpty
+                ? "Install Infuse or VLC to open videos in another player. Bluebox finds the ones on this device."
+                : "Open In… on a title, a release or in the player hands one video to another app."
+        }
+        let name = player == .shareSheet ? "the app you pick" : player.name
         #if os(macOS)
-        let reach = "Debrid links, direct links, torrents and downloads open in Infuse; Bluebox keeps serving torrents while Infuse plays them."
+        let reach = "Debrid links, direct links, torrents and downloads open in \(name); Bluebox keeps serving torrents while \(name) plays them."
         #else
-        let reach = "Debrid links, direct links, torrents and downloads open in Infuse. For torrents and downloads, Bluebox keeps running in the background to serve the video, until Infuse has left it alone for 15 minutes."
+        let reach = "Debrid links, direct links, torrents and downloads open in \(name). For torrents and downloads, Bluebox keeps running in the background to serve the video, until \(name) has left it alone for 15 minutes."
         #endif
-        let missing = Infuse.isInstalled ? "" : " Infuse isn't installed on this device, so everything plays in Bluebox for now."
-        return reach + " Bluebox doesn't see what you watch there, so progress, Up Next and Trakt don't update." + missing
+        let missing = player.isInstalled ? "" : " \(player.name) isn't installed on this device, so everything plays in Bluebox for now."
+        return reach + " Progress isn't tracked there: Bluebox doesn't see what you watch, so Continue Watching, Up Next and Trakt don't update." + missing
     }
 
     private func speedLabel(_ s: Float) -> String { s == 1 ? "Normal" : String(format: "%g×", s) }
@@ -208,6 +248,7 @@ struct PlaybackSettingsPage: View {
 /// A list of shows (series or film keys) that opted out of something; swipe or
 /// use Remove to take one off.
 struct SkipShowListPage: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var app
     let title: String
     @Binding var keys: Set<String>
@@ -226,7 +267,7 @@ struct SkipShowListPage: View {
                     HStack {
                         Text(names[key] ?? "…").foregroundStyle(Palette.textPrimary)
                         Spacer()
-                        Button("Remove") { withAnimation(Motion.snappy(false)) { _ = keys.remove(key) } }
+                        Button("Remove") { withAnimation(Motion.snappy(reduceMotion)) { _ = keys.remove(key) } }
                             .buttonStyle(TextActionStyle())
                             .accessibilityLabel("Remove \(names[key] ?? "show")")
                     }

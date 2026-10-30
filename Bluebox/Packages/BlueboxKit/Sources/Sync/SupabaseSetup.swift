@@ -230,6 +230,12 @@ public enum SupabaseSetupError: LocalizedError, Equatable, Sendable {
     public var needsSetupSQL: Bool { self == .tablesMissing || self == .tablesOutdated }
 }
 
+/// A migration the user can copy into the SQL Editor to fix a warning.
+public struct SupabaseSetupScript: Hashable, Sendable {
+    public let fileName: String
+    public let sql: String
+}
+
 /// What a project's Auth settings (`/auth/v1/settings`) say about signing in.
 public struct SupabaseProjectReport: Equatable, Sendable {
     /// The Email provider is on (Authentication › Sign In / Providers › Email).
@@ -263,12 +269,24 @@ public struct SupabaseProjectReport: Equatable, Sendable {
             w.append("New accounts on this server must confirm an email, which Bluebox doesn't use. Turn off Authentication › Sign In / Providers › Email › Confirm email.")
         }
         if settingsTableMissing {
-            w.append("API keys, add-ons and settings don't sync yet: this server is missing a newer table. Set it up again with an access token (it adds only what's missing), or run Backend/supabase/migrations/20261029000000_account_settings.sql in the SQL Editor.")
+            w.append("API keys, add-ons and settings don't sync yet: this server is missing a newer table. Set it up again with an access token (it adds only what's missing), or copy 20261029000000_account_settings.sql below and run it in the SQL Editor.")
         }
         if realtimePrivateMissing {
-            w.append("Remote control and instant sync are off: this server doesn't have Bluebox's private-channel rules yet. Set it up again with an access token, or run Backend/supabase/migrations/20261030000000_realtime_private.sql in the SQL Editor. Then turn off Realtime › Settings › Allow public access.")
+            w.append("Remote control and instant sync are off: this server doesn't have Bluebox's private-channel rules yet. Set it up again with an access token, or copy 20261030000000_realtime_private.sql below and run it in the SQL Editor. Then turn off Realtime › Settings › Allow public access.")
         }
         return w
+    }
+
+    /// The migrations that fix `warnings`, for Copy buttons under them.
+    public var scripts: [SupabaseSetupScript] {
+        var s: [SupabaseSetupScript] = []
+        if settingsTableMissing {
+            s.append(.init(fileName: "20261029000000_account_settings.sql", sql: SupabaseSetupFiles.accountSettingsMigrationSQL))
+        }
+        if realtimePrivateMissing {
+            s.append(.init(fileName: "20261030000000_realtime_private.sql", sql: SupabaseSetupFiles.realtimePrivateMigrationSQL))
+        }
+        return s
     }
 }
 

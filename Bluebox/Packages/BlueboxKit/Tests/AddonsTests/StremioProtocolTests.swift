@@ -149,7 +149,9 @@ import Testing
     }
 
     @Test func rejectsAddonsThatCantFindReleases() throws {
-        #expect(throws: AddonError.noStreams("Just Lists")) { try AddonClient.validate(try manifest(StreamFixtures.catalogOnlyManifest)) }
+        // Lists alone are fine now (rows on Home); TV channels alone aren't.
+        try AddonClient.validate(try manifest(StreamFixtures.catalogOnlyManifest))
+        #expect(throws: AddonError.noStreams("Just Channels")) { try AddonClient.validate(try manifest(StreamFixtures.channelsOnlyManifest)) }
         #expect(throws: AddonError.noStreams("Anime Only")) { try AddonClient.validate(try manifest(StreamFixtures.animeOnlyManifest)) }
         #expect(throws: AddonError.needsConfiguration("Needs Setup")) { try AddonClient.validate(try manifest(StreamFixtures.needsConfigManifest)) }
     }

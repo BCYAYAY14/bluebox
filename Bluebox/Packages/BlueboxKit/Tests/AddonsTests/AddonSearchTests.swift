@@ -201,6 +201,27 @@ actor Gate {
         let result = await DebridCacheCheck.cached(["h"], service: .realDebrid, key: "K", client: AddonClient(transport: transport))
         #expect(result == nil)
         #expect(transport.requests.isEmpty)
+        let none = await DebridCacheCheck.cached(["h"], service: .allDebrid, key: "K", client: AddonClient(transport: transport))
+        #expect(none == nil && transport.requests.isEmpty)
+        #expect(DebridProvider.debridLink.canCheckCache && !DebridProvider.allDebrid.canCheckCache)
+    }
+
+    @Test func debridLinkAnswersByHash() async throws {
+        let json = #"{"success":true,"value":{"AAAA":{"name":"Sintel","files":[{"name":"Sintel.mkv","size":1}]}}}"#
+        #expect(DebridCacheCheck.parseDebridLink(Data(json.utf8)) == ["aaaa"])
+        // Nothing cached comes back as an empty list, not an object.
+        #expect(DebridCacheCheck.parseDebridLink(Data(#"{"success":true,"value":[]}"#.utf8)).isEmpty)
+        #expect(DebridCacheCheck.parseDebridLink(Data(#"{"success":false,"error":"badToken"}"#.utf8)).isEmpty)
+
+        let request = DebridCacheCheck.debridLinkRequest(["h1", "h2"], key: "FAKE-KEY", timeout: 3)
+        #expect(request.url?.absoluteString == "https://debrid-link.com/api/v2/seedbox/cached?url=h1,h2")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer FAKE-KEY")
+
+        let transport = FakeTransport(["debrid-link.com": .init(body: #"{"success":true,"value":{"aaaa":{"name":"x"}}}"#)])
+        let found = await DebridCacheCheck.cached(["AAAA", "bbbb"], service: .debridLink, key: "FAKE-KEY",
+                                                  client: AddonClient(transport: transport))
+        #expect(found == ["aaaa"])
+        #expect(transport.requests.count == 1)
     }
 }
 
@@ -269,13 +290,15 @@ actor Gate {
     @Test func inspectsPastedLinks() async throws {
         let transport = FakeTransport(["addon.example": .init(body: StreamFixtures.torrentioManifest),
                                        "lists.example": .init(body: StreamFixtures.catalogOnlyManifest),
+                                       "channels.example": .init(body: StreamFixtures.channelsOnlyManifest),
                                        "broken.example": .init(body: "<html>")])
         let s = source(transport)
         let (base, manifest) = try await s.inspectAddon(link: "stremio://addon.example/cfg/manifest.json")
         #expect(base.absoluteString == "https://addon.example/cfg")
         #expect(manifest.name == "Torrentio")
         #expect(transport.requests.last?.url?.absoluteString == "https://addon.example/cfg/manifest.json")
-        await #expect(throws: AddonError.noStreams("Just Lists")) { try await s.inspectAddon(link: "https://lists.example/manifest.json") }
+        #expect(try await s.inspectAddon(link: "https://lists.example/manifest.json").manifest.homeCatalogs.map(\.catalogID) == ["top"])
+        await #expect(throws: AddonError.noStreams("Just Channels")) { try await s.inspectAddon(link: "https://channels.example/manifest.json") }
         await #expect(throws: AddonError.invalidManifest) { try await s.inspectAddon(link: "https://broken.example") }
         await #expect(throws: AddonError.invalidAddonURL) { try await s.inspectAddon(link: "hello there") }
     }

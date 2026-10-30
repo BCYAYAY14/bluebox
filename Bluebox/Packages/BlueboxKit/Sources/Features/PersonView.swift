@@ -19,6 +19,7 @@ public struct PersonView: View {
     @State private var libraryKeys: Set<MediaKey>?
     @State private var scope: Scope = .all
     @State private var bioExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var error: String?
     @State private var failedOffline = false
 
@@ -52,11 +53,12 @@ public struct PersonView: View {
                     }
                     if let filmography {
                         if !filmography.knownFor.isEmpty { knownFor(filmography.knownFor, inset: inset) }
-                        Picker("Show", selection: $scope) {
-                            ForEach(Scope.allCases) { Text($0.rawValue).tag($0) }
+                        HStack(spacing: Spacing.s) {
+                            ForEach(Scope.allCases) { s in
+                                CategoryChip(s.rawValue, selected: scope == s) { scope = s }
+                            }
                         }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 360)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, inset)
                         credits("Movies", filter(filmography.movies), inset: inset)
                         credits("TV Shows", filter(filmography.shows), inset: inset)
@@ -108,7 +110,7 @@ public struct PersonView: View {
                     .lineLimit(bioExpanded ? nil : 4)
                     .padding(.top, Spacing.xs)
                     .textSelection(.enabled)
-                Button(bioExpanded ? "Less" : "More") { withAnimation(.easeInOut(duration: 0.2)) { bioExpanded.toggle() } }
+                Button(bioExpanded ? "Less" : "More") { withAnimation(Motion.standard(reduceMotion)) { bioExpanded.toggle() } }
                     .buttonStyle(PressableStyle())
                     .font(Typography.meta.weight(.semibold))
                     .foregroundStyle(Palette.textPrimary)
@@ -189,7 +191,9 @@ public struct PersonView: View {
         do {
             async let p = app.person(id: personID)
             async let f = app.filmography(personID: personID)
-            (person, filmography) = try await (p, f)
+            let loaded = try await (p, f)
+            // The skeleton fades into the page rather than cutting to it.
+            withAnimation(Motion.standard(reduceMotion)) { (person, filmography) = loaded }
             error = nil
         } catch is CancellationError {
         } catch {
@@ -222,6 +226,7 @@ private struct CreditRow: View {
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(hovering ? Palette.surface : .clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityElement(children: .combine)
     }
 }

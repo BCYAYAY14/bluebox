@@ -2,24 +2,43 @@ import Domain
 import Foundation
 import Metadata
 
-/// A Jellyfin server the user signs in to. Movies and episodes are matched to
-/// the catalog by the TMDB IDs Jellyfin stores, falling back to name and year.
+/// A Jellyfin or Emby server the user signs in to. The two share an API
+/// (Jellyfin began as a fork of Emby); `Flavour` covers where they differ.
+/// Movies and episodes are matched to the catalog by the TMDB IDs the server
+/// stores, falling back to name and year.
 ///
 /// MP4/MOV/M4V play directly; other containers are remuxed or transcoded by the
 /// server to HLS, which AVPlayer handles.
+///
+/// Progress goes both ways: playback is reported to the server, and the
+/// server's watched state and resume points (from its other apps) come back
+/// through `watchProgress()` and the progress handler.
 public actor JellyfinSource: MediaSource {
+    public enum Flavour: String, Codable, Sendable, Identifiable {
+        case jellyfin, emby
+        public var id: String { rawValue }
+        public var displayName: String { self == .emby ? "Emby" : "Jellyfin" }
+        var kind: SourceKind { self == .emby ? .emby : .jellyfin }
+        /// The query parameter that carries the token on media URLs.
+        var tokenParameter: String { self == .emby ? "api_key" : "ApiKey" }
+    }
+
     public struct Credentials: Codable, Sendable, Equatable {
+        /// Includes `/emby` for Emby servers that only answer there.
         public var server: URL
         public var userID: String
         public var accessToken: String
         public var username: String
-        public init(server: URL, userID: String, accessToken: String, username: String) {
+        public var flavour: Flavour
+        public init(server: URL, userID: String, accessToken: String, username: String, flavour: Flavour = .jellyfin) {
             self.server = server; self.userID = userID; self.accessToken = accessToken; self.username = username
+            self.flavour = flavour
         }
     }
 
     public nonisolated let id: SourceID
-    public nonisolated let kind = SourceKind.jellyfin
+    public nonisolated let flavour: Flavour
+    public nonisolated var kind: SourceKind { flavour.kind }
     public nonisolated let displayName: String
     public nonisolated let capabilities: SourceCapabilities = [.browse, .search, .play, .download, .externalSubtitles,
                                                                .reportsProgress, .requiresAuthentication]
@@ -30,6 +49,7 @@ public actor JellyfinSource: MediaSource {
     let matcher: MediaMatcher?
     private var items: [Entry]?
     private var loadedAt: Date?
+    private var progressHandler: (@Sendable ([WatchProgress]) async -> Void)?
     static let refreshInterval: TimeInterval = 600
     static let directPlayContainers: Set<String> = ["mp4", "m4v", "mov"]
 
@@ -43,40 +63,62 @@ public actor JellyfinSource: MediaSource {
         let size: Int64?
         let duration: TimeInterval?
         let subtitles: [Subtitle]
+        var userData: UserState?
         struct Subtitle: Sendable { let index: Int; let language: String?; let title: String }
     }
 
+    /// This user's state for an item on the server.
+    struct UserState: Sendable, Equatable {
+        var position: TimeInterval
+        var played: Bool
+        var lastPlayed: Date?
+    }
+
     public init(id: SourceID, name: String, credentials: Credentials, http: any HTTPClient, deviceID: String, matcher: MediaMatcher?) {
-        self.id = id; self.displayName = name; self.credentials = credentials
+        self.id = id; self.displayName = name; self.credentials = credentials; self.flavour = credentials.flavour
         self.http = http; self.deviceID = deviceID; self.matcher = matcher
     }
 
     // MARK: Sign-in
 
     /// Signs in with a username and password. The password isn't stored; the
-    /// returned token is (by the caller, in the Keychain).
+    /// returned token is (by the caller, in the Keychain). Whether it's
+    /// Jellyfin or Emby comes from the server's public info, and an Emby
+    /// server that only answers under `/emby` is found there. `expecting` is
+    /// what the user said they were adding, for a server that doesn't say.
     public static func signIn(server raw: String, username: String, password: String, http: any HTTPClient,
-                              deviceID: String) async throws -> (Credentials, serverName: String) {
-        guard let server = normalize(raw) else { throw SourceError.invalidConfiguration("Enter the server address, like https://media.example.com") }
-        let publicInfo: PublicInfo = try await send(request(server, "System/Info/Public", deviceID: deviceID), http: http)
-        var req = request(server, "Users/AuthenticateByName", deviceID: deviceID)
+                              deviceID: String, expecting: Flavour = .jellyfin) async throws -> (Credentials, serverName: String) {
+        guard var server = normalize(raw) else { throw SourceError.invalidConfiguration("Enter the server address, like https://media.example.com") }
+        let publicInfo: PublicInfo
+        do {
+            publicInfo = try await send(request(server, "System/Info/Public", deviceID: deviceID, flavour: expecting), http: http)
+        } catch SourceError.notFound where server.lastPathComponent.lowercased() != "emby" {
+            server = server.appending(path: "emby")
+            publicInfo = try await send(request(server, "System/Info/Public", deviceID: deviceID, flavour: .emby), http: http)
+        }
+        let flavour = flavour(of: publicInfo, otherwise: expecting)
+        var req = request(server, "Users/AuthenticateByName", deviceID: deviceID, flavour: flavour)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["Username": username, "Pw": password])
         let auth: AuthResult = try await send(req, http: http)
-        return (Credentials(server: server, userID: auth.User.Id, accessToken: auth.AccessToken, username: auth.User.Name ?? username),
-                publicInfo.ServerName ?? server.host() ?? "Jellyfin")
+        return (Credentials(server: server, userID: auth.User.Id, accessToken: auth.AccessToken, username: auth.User.Name ?? username,
+                            flavour: flavour),
+                publicInfo.ServerName ?? server.host() ?? flavour.displayName)
     }
 
-    static func normalize(_ raw: String) -> URL? {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !s.contains("://") { s = "https://" + s }
-        while s.hasSuffix("/") { s.removeLast() }
-        guard let u = URL(string: s), let scheme = u.scheme?.lowercased(), let host = u.host(), !host.isEmpty else { return nil }
-        if scheme == "https" { return u }
-        if scheme == "http", DirectURLSource.isLocalNetworkHost(host) { return u }
-        return nil
+    /// Jellyfin names itself in `ProductName` ("Jellyfin Server"); Emby may not
+    /// send one, but its versions are 4.x where Jellyfin's are 10.x.
+    static func flavour(of info: PublicInfo, otherwise fallback: Flavour = .jellyfin) -> Flavour {
+        if let product = info.ProductName?.lowercased() {
+            if product.contains("jellyfin") { return .jellyfin }
+            if product.contains("emby") { return .emby }
+        }
+        guard let major = info.Version?.split(separator: ".").first.flatMap({ Int($0) }) else { return fallback }
+        return major >= 10 ? .jellyfin : .emby
     }
+
+    static func normalize(_ raw: String) -> URL? { ServerAddress.normalize(raw) }
 
     // MARK: MediaSource
 
@@ -105,16 +147,115 @@ public actor JellyfinSource: MediaSource {
         }
     }
 
-    /// Reports the position to the server so Jellyfin's own resume points stay current.
+    /// Reports the position to the server so its own resume points stay current.
     public func reportProgress(itemID: String, position: TimeInterval, isPaused: Bool, stopped: Bool) async {
-        var req = request(credentials.server, stopped ? "Sessions/Playing/Stopped" : "Sessions/Playing/Progress",
-                          deviceID: deviceID, token: credentials.accessToken)
+        var req = request(stopped ? "Sessions/Playing/Stopped" : "Sessions/Playing/Progress")
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: AnyEncodable] = ["ItemId": .init(itemID), "PositionTicks": .init(Int64(position * 10_000_000)),
                                             "IsPaused": .init(isPaused), "CanSeek": .init(true)]
         req.httpBody = try? JSONEncoder().encode(body)
         _ = try? await http.send(req)
+        // Read before writing: `items?[i].userData = … items?[i] …` is an exclusivity trap.
+        if let i = items?.firstIndex(where: { $0.itemID == itemID }) {
+            let played = items?[i].userData?.played ?? false
+            items?[i].userData = UserState(position: position, played: played, lastPlayed: Date())
+        }
+    }
+
+    // MARK: Watched state from the server
+
+    /// Called with the server's progress each time the library is fetched.
+    public func setProgressHandler(_ handler: @escaping @Sendable ([WatchProgress]) async -> Void) {
+        progressHandler = handler
+    }
+
+    /// The server's watched state and resume points for everything it holds
+    /// that matched the catalog, one record per title (the newest when several
+    /// files are the same title).
+    public func watchProgress() async throws -> [WatchProgress] {
+        Self.progress(from: try await entries())
+    }
+
+    /// Fetches fresh state for one movie or episode, or every episode of a
+    /// show, and returns its progress. Used when a title page opens.
+    public func refreshWatchProgress(for key: MediaKey) async -> [WatchProgress] {
+        guard let all = try? await entries() else { return [] }
+        let ids = all.filter { $0.key == key || ($0.key?.seriesKey == key && key.isSeries) }.map(\.itemID)
+        guard !ids.isEmpty else { return [] }
+        var fresh: [String: UserState] = [:]
+        for chunk in stride(from: 0, to: ids.count, by: 100).map({ Array(ids[$0..<min($0 + 100, ids.count)]) }) {
+            let q = ["userId": credentials.userID, "ids": chunk.joined(separator: ","), "enableImages": "false",
+                     "enableUserData": "true"]
+            var req = URLRequest(url: url("Items", q, includeKey: false))
+            authorize(&req)
+            guard let result: ItemsResult = try? await Self.send(req, http: http) else { return [] }
+            for item in result.Items { fresh[item.Id] = item.UserData.map(UserState.init) }
+        }
+        var updated = items ?? all
+        for i in updated.indices { if let u = fresh[updated[i].itemID] { updated[i].userData = u } }
+        items = updated
+        return Self.progress(from: updated.filter { fresh[$0.itemID] != nil })
+    }
+
+    /// Marks every copy of a movie or episode played or unplayed on the server.
+    public func setPlayed(_ key: MediaKey, _ played: Bool) async {
+        guard let all = try? await entries() else { return }
+        for i in all.indices where all[i].key == key {
+            let itemID = all[i].itemID
+            var ok = await sendPlayed(path: "Users/\(credentials.userID)/PlayedItems/\(itemID)", played: played, query: [:])
+            if !ok, flavour == .jellyfin {
+                // Jellyfin 10.9 moved it; the old route may be gone in later versions.
+                ok = await sendPlayed(path: "UserPlayedItems/\(itemID)", played: played, query: ["userId": credentials.userID])
+            } else if !ok, !played {
+                // Emby also takes a POST for servers behind proxies that refuse DELETE.
+                ok = await sendPlayed(path: "Users/\(credentials.userID)/PlayedItems/\(itemID)/Delete", played: true, query: [:])
+            }
+            if ok, let j = items?.firstIndex(where: { $0.itemID == itemID }) {
+                items?[j].userData = UserState(position: 0, played: played, lastPlayed: played ? Date() : nil)
+            }
+        }
+    }
+
+    private func sendPlayed(path: String, played: Bool, query: [String: String]) async -> Bool {
+        var req = URLRequest(url: url(path, query, includeKey: false))
+        authorize(&req)
+        req.httpMethod = played ? "POST" : "DELETE"
+        req.timeoutInterval = 20
+        guard let (_, response) = try? await http.send(req) else { return false }
+        return (200..<300).contains(response.statusCode)
+    }
+
+    static func progress(from entries: [Entry]) -> [WatchProgress] {
+        var out: [MediaKey: WatchProgress] = [:]
+        for e in entries {
+            guard let key = e.key, let p = progress(e.userData, key: key, duration: e.duration) else { continue }
+            if let old = out[key] { out[key] = ProgressMerge.merge(old, p) } else { out[key] = p }
+        }
+        return Array(out.values)
+    }
+
+    /// The server's state as a progress record. A resume point needs the date
+    /// it was set to merge by; a played item without one (marked by an import,
+    /// say) still counts, dated so anything Bluebox knows wins over it.
+    static func progress(_ u: UserState?, key: MediaKey, duration: TimeInterval?) -> WatchProgress? {
+        guard let u else { return nil }
+        if u.played {
+            return WatchProgress(key: key, position: duration ?? u.position, duration: duration, isCompleted: true,
+                                 updatedAt: u.lastPlayed ?? Date(timeIntervalSince1970: 0), deviceID: "server")
+        }
+        guard u.position > 0, let date = u.lastPlayed else { return nil }
+        return ProgressPolicy.standard.record(key: key, position: u.position, duration: duration, at: date, deviceID: "server")
+    }
+
+    /// Whether the server's record should be stored over what Bluebox has:
+    /// only when it wins the usual merge and says something different (the
+    /// server echoing back Bluebox's own report a moment later doesn't count).
+    public static func shouldApply(_ remote: WatchProgress, over local: WatchProgress?) -> Bool {
+        guard let local else { return true }
+        guard ProgressMerge.merge(local, remote) == remote else { return false }
+        if local.isCompleted != remote.isCompleted { return true }
+        return !local.isCompleted && abs(local.position - remote.position) >= 10
     }
 
     // MARK: Library
@@ -155,10 +296,11 @@ public actor JellyfinSource: MediaSource {
                              container: source.Container?.split(separator: ",").first.map { String($0).lowercased() },
                              resolution: height.map(Self.resolutionLabel), size: source.Size,
                              duration: (source.RunTimeTicks ?? v.RunTimeTicks).map { TimeInterval($0) / 10_000_000 },
-                             subtitles: subs))
+                             subtitles: subs, userData: v.UserData.map(UserState.init)))
         }
         items = out
         loadedAt = Date()
+        if let progressHandler { let p = Self.progress(from: out); Task { await progressHandler(p) } }
         return out
     }
 
@@ -167,7 +309,8 @@ public actor JellyfinSource: MediaSource {
         let page = 500
         while true {
             let q = ["userId": credentials.userID, "recursive": "true", "includeItemTypes": types, "fields": fields,
-                     "startIndex": String(all.count), "limit": String(page), "enableImages": "false", "enableUserData": "false"]
+                     "startIndex": String(all.count), "limit": String(page), "enableImages": "false",
+                     "enableUserData": types == "Series" ? "false" : "true"]
             var req = URLRequest(url: url("Items", q, includeKey: false))
             authorize(&req)
             let result: ItemsResult = try await Self.send(req, http: http)
@@ -201,17 +344,31 @@ public actor JellyfinSource: MediaSource {
     // MARK: HTTP
 
     /// AVPlayer can't add headers to media requests, so media URLs carry the
-    /// token as Jellyfin's `ApiKey` query parameter. API calls use the header.
+    /// token as a query parameter (`ApiKey` on Jellyfin, `api_key` on Emby).
+    /// API calls use the header.
     func url(_ path: String, _ query: [String: String], includeKey: Bool = true) -> URL {
         var c = URLComponents(url: credentials.server.appending(path: path), resolvingAgainstBaseURL: false)!
         var items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
-        if includeKey { items.append(URLQueryItem(name: "ApiKey", value: credentials.accessToken)) }
+        if includeKey { items.append(URLQueryItem(name: flavour.tokenParameter, value: credentials.accessToken)) }
         c.queryItems = items.isEmpty ? nil : items
         return c.url!
     }
 
     private func authorize(_ req: inout URLRequest) {
-        req.setValue(Self.authHeader(deviceID: deviceID, token: credentials.accessToken), forHTTPHeaderField: "Authorization")
+        Self.authorize(&req, deviceID: deviceID, token: credentials.accessToken, flavour: flavour)
+    }
+
+    /// Jellyfin reads `Authorization`; Emby reads `X-Emby-Authorization`, and
+    /// the token alone from `X-Emby-Token`.
+    static func authorize(_ req: inout URLRequest, deviceID: String, token: String?, flavour: Flavour) {
+        let header = authHeader(deviceID: deviceID, token: token)
+        switch flavour {
+        case .jellyfin:
+            req.setValue(header, forHTTPHeaderField: "Authorization")
+        case .emby:
+            req.setValue(header, forHTTPHeaderField: "X-Emby-Authorization")
+            if let token { req.setValue(token, forHTTPHeaderField: "X-Emby-Token") }
+        }
     }
 
     static func authHeader(deviceID: String, token: String?) -> String {
@@ -228,13 +385,14 @@ public actor JellyfinSource: MediaSource {
         #endif
     }
 
-    private func request(_ server: URL, _ path: String, deviceID: String, token: String? = nil) -> URLRequest {
-        Self.request(server, path, deviceID: deviceID, token: token)
+    private func request(_ path: String) -> URLRequest {
+        Self.request(credentials.server, path, deviceID: deviceID, token: credentials.accessToken, flavour: flavour)
     }
 
-    static func request(_ server: URL, _ path: String, deviceID: String, token: String? = nil) -> URLRequest {
+    static func request(_ server: URL, _ path: String, deviceID: String, token: String? = nil,
+                        flavour: Flavour = .jellyfin) -> URLRequest {
         var r = URLRequest(url: server.appending(path: path))
-        r.setValue(authHeader(deviceID: deviceID, token: token), forHTTPHeaderField: "Authorization")
+        authorize(&r, deviceID: deviceID, token: token, flavour: flavour)
         r.setValue("application/json", forHTTPHeaderField: "Accept")
         r.timeoutInterval = 20
         return r
@@ -255,9 +413,9 @@ public actor JellyfinSource: MediaSource {
         catch { throw SourceError.unreachable("The server sent a response Bluebox couldn't read.") }
     }
 
-    // MARK: Wire format (field names as Jellyfin sends them)
+    // MARK: Wire format (field names as Jellyfin and Emby send them)
 
-    struct PublicInfo: Decodable { let ServerName: String?; let Version: String? }
+    struct PublicInfo: Decodable { let ServerName: String?; let Version: String?; let ProductName: String? }
     struct AuthResult: Decodable {
         struct User: Decodable { let Id: String; let Name: String? }
         let User: User
@@ -276,12 +434,19 @@ public actor JellyfinSource: MediaSource {
         let IndexNumber: Int?
         let RunTimeTicks: Int64?
         let MediaSources: [Source]?
+        let UserData: UserData?
         var tmdbID: Int? { (ProviderIds?["Tmdb"] ?? ProviderIds?["tmdb"]).flatMap(Int.init) }
 
         enum CodingKeys: String, CodingKey {
             case Id, Name, ProductionYear, ProviderIds, SeriesId, SeriesName, ParentIndexNumber, IndexNumber, RunTimeTicks, MediaSources
+            case UserData
             case type = "Type"
         }
+    }
+    struct UserData: Decodable {
+        let PlaybackPositionTicks: Int64?
+        let Played: Bool?
+        let LastPlayedDate: String?
     }
     struct Source: Decodable {
         let Id: String?
@@ -301,6 +466,27 @@ public actor JellyfinSource: MediaSource {
             case Index, Language, DisplayTitle, Height, IsTextSubtitleStream
             case type = "Type"
         }
+    }
+}
+
+extension JellyfinSource.UserState {
+    init(_ d: JellyfinSource.UserData) {
+        self.init(position: TimeInterval(d.PlaybackPositionTicks ?? 0) / 10_000_000, played: d.Played ?? false,
+                  lastPlayed: d.LastPlayedDate.flatMap(Self.parseDate))
+    }
+
+    /// Both servers send .NET dates with seven fractional digits
+    /// ("2024-05-01T20:15:03.1234567Z"), more than ISO8601DateFormatter reads.
+    static func parseDate(_ s: String) -> Date? {
+        var base = s, fraction = 0.0
+        if let dot = s.firstIndex(of: ".") {
+            let digits = s[s.index(after: dot)...].prefix { $0.isNumber }
+            fraction = Double("0." + digits) ?? 0
+            base = String(s[..<dot]) + String(s[s.index(after: dot)...].dropFirst(digits.count))
+        }
+        if !base.hasSuffix("Z"), base.range(of: #"[+-]\d\d:?\d\d$"#, options: .regularExpression) == nil { base += "Z" }
+        guard let date = ISO8601DateFormatter().date(from: base) else { return nil }
+        return date.addingTimeInterval(fraction)
     }
 }
 

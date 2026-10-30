@@ -71,7 +71,7 @@ struct PanelSegmentsWithMore<Value: Hashable>: View {
             Menu {
                 ForEach(more, id: \.1) { title, value in
                     Button { selection = value } label: {
-                        if value == selection { Label(title, systemImage: "checkmark") } else { Text(title) }
+                        if value == selection { Label(title, systemImage: "checkmark") } else { Text(ui: title) }
                     }
                 }
             } label: {
@@ -95,7 +95,7 @@ struct PanelSegmentsWithMore<Value: Hashable>: View {
 
     private func segment(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
+            Text(ui: title)
                 .font(PanelMetrics.chipFont).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, minHeight: PanelMetrics.control - 4)
@@ -163,7 +163,7 @@ struct PanelSlider: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Spacing.s) {
-                Text(title).font(.subheadline)
+                Text(ui: title).font(.subheadline)
                 Spacer(minLength: Spacing.s)
                 Text(format(value)).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Palette.textSecondary)
                 if let defaultValue {
@@ -207,7 +207,7 @@ struct PanelPickRow: View {
                     Image(systemName: symbol).font(.footnote).foregroundStyle(Palette.textSecondary).frame(width: 18)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.subheadline.weight(selected ? .semibold : .regular)).lineLimit(2)
+                    Text(ui: title).font(.subheadline.weight(selected ? .semibold : .regular)).lineLimit(2)
                     if let detail { Text(detail).font(.caption).foregroundStyle(Palette.textSecondary).lineLimit(1) }
                 }
                 Spacer(minLength: Spacing.s)
@@ -239,7 +239,7 @@ struct PanelActionButton: View {
         Button(role: role, action: action) {
             HStack(spacing: Spacing.s) {
                 Image(systemName: symbol).frame(width: 18)
-                Text(title).lineLimit(1)
+                Text(ui: title).lineLimit(1)
                 Spacer(minLength: Spacing.s)
                 if let shortcut { KeyCap(shortcut) }
             }

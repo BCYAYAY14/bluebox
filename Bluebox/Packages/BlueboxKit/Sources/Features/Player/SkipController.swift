@@ -211,7 +211,7 @@ extension AppModel {
             query.imdbID = try? await metadata.detail(for: show).imdbID
         }
         if let resource = session.currentResource,
-           await registry.source(resource.variant.sourceID) is JellyfinSource {
+           (await registry.source(resource.variant.sourceID) as? JellyfinSource)?.flavour == .jellyfin {  // Emby has no MediaSegments
             query.jellyfin = JellyfinItemRef(streamURL: resource.url, itemID: resource.variant.id)
         }
         return query
@@ -232,6 +232,7 @@ struct SkipPill: View {
     let onWrongTime: () -> Void
     /// "Always for this show" (offered the first time a part comes up for a show).
     var onAlways: (ShowSkipRules.Part) -> Void = { _ in }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let offer = skip.offer {
@@ -285,8 +286,8 @@ struct SkipPill: View {
             .opacity(shown ? 1 : 0)
             .allowsHitTesting(shown)
             .accessibilityHidden(!shown)
-            .animation(.easeInOut(duration: 0.35), value: shown)
-            .transition(.opacity.combined(with: .move(edge: .trailing)))
+            .animation(Motion.standard(reduceMotion), value: shown)
+            .transition(Motion.slide(from: .trailing, reduceMotion))
         }
     }
 

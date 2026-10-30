@@ -22,7 +22,7 @@ public struct SourceCapabilities: OptionSet, Hashable, Codable, Sendable {
 }
 
 public enum SourceKind: String, Codable, Sendable, CaseIterable {
-    case localFolder, directURL, jellyfin, publicCatalog, torrent, downloads, addons
+    case localFolder, directURL, jellyfin, emby, publicCatalog, torrent, downloads, addons, webdav, plex
 }
 
 /// Where the bytes of a variant live.
@@ -54,6 +54,13 @@ public struct MediaVariant: Hashable, Codable, Sendable, Identifiable {
         self.id = id; self.sourceID = sourceID; self.mediaKey = mediaKey; self.displayName = displayName
         self.container = container; self.videoCodec = videoCodec; self.resolution = resolution
         self.sizeBytes = sizeBytes; self.duration = duration; self.location = location; self.isDownloadable = isDownloadable
+    }
+
+    /// The same file matched to another title (Fix Match).
+    public func withMediaKey(_ key: MediaKey?) -> MediaVariant {
+        MediaVariant(id: id, sourceID: sourceID, mediaKey: key, displayName: displayName, container: container,
+                     videoCodec: videoCodec, resolution: resolution, sizeBytes: sizeBytes, duration: duration,
+                     location: location, isDownloadable: isDownloadable)
     }
 }
 

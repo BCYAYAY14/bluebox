@@ -362,6 +362,8 @@ public struct SupabaseAutoSetup: Sendable {
             // runs them: a project set up before them gets them here (setup.sql
             // already has them for a new one).
             if sql != SupabaseSetupFiles.setupSQL { _ = try await api.runQuery(ref, SupabaseSetupFiles.realtimePrivateMigrationSQL) }
+            // Watch Together's room policies aren't in setup.sql: every set-up runs them.
+            _ = try await api.runQuery(ref, SupabaseSetupFiles.watchTogetherMigrationSQL)
         } catch ManagementAPIError.server(let status, let message) where (400..<500).contains(status) {
             throw Failure.sqlFailed(message ?? "error \(status)")
         }

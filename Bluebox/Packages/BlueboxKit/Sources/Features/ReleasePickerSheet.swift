@@ -96,7 +96,7 @@ struct ReleasePickerSheet: View {
                 }
             }
         }
-        .animation(Motion.standard(false), value: loading)
+        .animation(Motion.standard(reduceMotion), value: loading)
         .background(Palette.background.ignoresSafeArea())
         .foregroundStyle(Palette.textPrimary)
         .tint(Palette.brand)
@@ -404,6 +404,9 @@ struct ReleasePickerSheet: View {
             .accessibilityHint("Plays this release")
             detailsButton(r, marks: marks)
         }
+        // In the sheet's own layer: while it's up, the remote moves only among its releases.
+        .remoteFocusable("release:\(r.id)", label: [r.resolution, r.sizeText].compactMap { $0 }.joined(separator: " · "),
+                         cornerRadius: 9, layer: 1) { choose(r) }
         .background(shape.fill(isBest ? Palette.wash : nested ? Palette.chrome : Palette.surface))
         .overlay { shape.strokeBorder(isBest ? Palette.brand : Palette.edge, lineWidth: 1) }
         .padding(.leading, nested ? Spacing.l : 0)
@@ -445,9 +448,6 @@ struct ReleasePickerSheet: View {
         facts(r, marks: marks).map { BlueboxMenuEntry.note($0) }
         BlueboxMenuSection {
             BlueboxMenuButton("Play", systemImage: "play.fill") { choose(r) }
-            if app.canOpenInInfuse(r) {
-                BlueboxMenuButton("Open in Infuse", systemImage: "arrow.up.forward.app") { chooseInInfuse(r) }
-            }
             if r.isDebrid || app.addonsCanStreamTorrents {
                 BlueboxMenuButton("Download", systemImage: "arrow.down.circle") {
                     Task { await app.download(r, for: downloadItem) }
@@ -455,6 +455,7 @@ struct ReleasePickerSheet: View {
             }
             BlueboxMenuButton("Copy Name", systemImage: "doc.on.doc") { copy(r.fileName) }
         }
+        ExternalPlayerMenuSection(players: app.externalPlayers(for: r)) { chooseExternally(r, in: $0) }
     }
 
     /// The add-on, size and seeders, codecs, group and languages, and what the row's marks mean.
@@ -475,9 +476,7 @@ struct ReleasePickerSheet: View {
             ForEach(facts(r, marks: marks), id: \.self) { Text($0) }
         }
         Button { choose(r) } label: { Label("Play", systemImage: "play.fill") }
-        if app.canOpenInInfuse(r) {
-            Button { chooseInInfuse(r) } label: { Label("Open in Infuse", systemImage: "arrow.up.forward.app") }
-        }
+        ExternalPlayerContextMenu(players: app.externalPlayers(for: r)) { chooseExternally(r, in: $0) }
         if r.isDebrid || app.addonsCanStreamTorrents {
             Button { Task { await app.download(r, for: downloadItem) } } label: {
                 Label("Download", systemImage: "arrow.down.circle")
@@ -533,10 +532,10 @@ struct ReleasePickerSheet: View {
         if let onChoose { onChoose(release) } else { Task { await app.play(item, release: release) } }
     }
 
-    private func chooseInInfuse(_ release: AddonRelease) {
+    private func chooseExternally(_ release: AddonRelease, in player: ExternalPlayer) {
         menuRelease = nil
         dismiss()
-        Task { await app.play(item, release: release, inInfuse: true) }
+        Task { await app.play(item, release: release, in: player) }
     }
 }
 
@@ -939,7 +938,7 @@ struct StreamPreparingOverlay: View {
             VStack(spacing: Spacing.l) {
                 if let item {
                     VStack(spacing: Spacing.xs) {
-                        Text(item.title)
+                        Text(ui: item.title)
                             .font(.title2.weight(.heavy))
                             .lineLimit(2)
                         if let subtitle = item.subtitle, !subtitle.isEmpty {

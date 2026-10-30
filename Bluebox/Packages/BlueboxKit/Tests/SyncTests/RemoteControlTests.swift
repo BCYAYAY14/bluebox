@@ -31,6 +31,20 @@ import Testing
             .command(RemoteCommand(target: mac, action: .volume(0.25))),
             .hello(from: "phone"),
             .stopped(deviceID: mac),
+            // The whole app (protocol 3).
+            .command(RemoteCommand(target: mac, action: .scrub(812), from: "phone")),
+            .command(RemoteCommand(target: mac, action: .closePlayer)),
+            .command(RemoteCommand(target: mac, action: .go(.home))),
+            .command(RemoteCommand(target: mac, action: .go(.search("dune")))),
+            .command(RemoteCommand(target: mac, action: .go(.title(.movie(tmdbID: 438631))))),
+            .command(RemoteCommand(target: mac, action: .go(.back))),
+            .command(RemoteCommand(target: mac, action: .focus("episode:tmdb:tv:95396:s1e3"))),
+            .command(RemoteCommand(target: mac, action: .move(.left))),
+            .command(RemoteCommand(target: mac, action: .select)),
+            .command(RemoteCommand(target: mac, action: .play(RemotePlay(key: .movie(tmdbID: 1), title: "Dune", subtitle: "2021",
+                                                                          resume: false, release: Data("{}".utf8))))),
+            .device(RemoteDevice(id: mac, name: "Studio", kind: .mac, controllable: true, playing: "Dune")),
+            .screen(RemoteScreen(deviceID: mac, title: "Severance", focusedID: "play", focusedLabel: "Play S1·E3")),
         ]
         for m in messages {
             #expect(try RemoteMessage.decode(jsonObject: m.jsonObject()) == m)
@@ -175,6 +189,82 @@ import Testing
         r.receive(state(), at: t0)
         #expect(r.displayed(at: t0.addingTimeInterval(29)) != nil)
         #expect(r.displayed(at: t0.addingTimeInterval(31)) == nil)
+    }
+
+    // MARK: Acknowledged commands
+
+    /// Was: a state the Mac sent before it had the seek, 2 s short of the
+    /// target, counted as confirming it, so the remote jumped back.
+    @Test func onlyAStateAfterTheAckConfirms() throws {
+        var r = RemoteReconciler()
+        r.receive(state(position: 100, seq: 10), at: t0)
+        let id = UUID()
+        r.apply(.seek(110), id: id, at: t0)
+        // Published before the Mac had it: near the target by chance, but not the seek's doing.
+        r.receive(state(position: 108.5, seq: 11), at: t0.addingTimeInterval(0.3))
+        #expect(r.isPending(id))
+        r.acknowledged(RemoteAck(commandID: id, deviceID: mac, seq: 11), at: t0.addingTimeInterval(0.4))
+        r.receive(state(position: 110.2, seq: 12), at: t0.addingTimeInterval(0.6))
+        #expect(!r.isPending(id))
+    }
+
+    /// Was: a seek on a slow stream took longer than 4 s to land and the remote
+    /// snapped back to the old time meanwhile. Acknowledged, it waits longer.
+    @Test func anAcknowledgedSeekWaitsForASlowEngine() throws {
+        var r = RemoteReconciler(timeout: 4, ackedTimeout: (15, 8))
+        r.receive(state(position: 100, seq: 10), at: t0)
+        let id = UUID()
+        r.apply(.seek(1_200), id: id, at: t0)
+        r.acknowledged(RemoteAck(commandID: id, deviceID: mac, seq: 10), at: t0.addingTimeInterval(0.2))
+        // Still buffering at the old spot after 6 s.
+        r.receive(state(position: 106, seq: 11), at: t0.addingTimeInterval(6))
+        #expect(try #require(r.displayed(at: t0.addingTimeInterval(6))).position == 1_206)
+        // Unacknowledged it would have given up at 4 s.
+        var lost = RemoteReconciler(timeout: 4)
+        lost.receive(state(position: 100, seq: 10), at: t0)
+        lost.apply(.seek(1_200), id: UUID(), at: t0)
+        lost.receive(state(position: 106, seq: 11), at: t0.addingTimeInterval(6))
+        #expect(try #require(lost.displayed(at: t0.addingTimeInterval(6))).position == 106)
+    }
+
+    @Test func anAbandonedCommandShowsTheMacsWord() throws {
+        var r = RemoteReconciler()
+        r.receive(state(), at: t0)
+        let id = UUID()
+        r.apply(.audio("a2"), id: id, at: t0)
+        #expect(try #require(r.displayed(at: t0)).audioID == "a2")
+        r.abandon(id)
+        #expect(try #require(r.displayed(at: t0)).audioID == "a1")
+    }
+
+    /// Was: a Mac that restarted counted its seq from 1 again, and a phone that
+    /// still held the old Mac's state ignored it until the phone went to the background.
+    @Test func aStaleStateGivesWayToALowerSeq() {
+        var r = RemoteReconciler(staleAfter: 30)
+        r.receive(state(position: 500, seq: 900), at: t0)
+        r.receive(state(position: 10, seq: 3), at: t0.addingTimeInterval(5))
+        #expect(r.published?.seq == 900)  // fresh: a late message, ignored
+        r.receive(state(position: 10, seq: 3), at: t0.addingTimeInterval(40))
+        #expect(r.published?.seq == 3)  // stale: the Mac came back
+    }
+
+    @Test func versionAndAcksRoundTrip() throws {
+        let ack = RemoteMessage.ack(RemoteAck(commandID: UUID(), deviceID: mac, seq: 42))
+        #expect(try RemoteMessage.decode(jsonObject: ack.jsonObject()) == ack)
+        #expect(state().acknowledges)
+        // A state from a build before acks has no version, and isn't retried.
+        var json = try RemoteMessage.state(state()).jsonObject()
+        var body = try #require(json["state"] as? [String: Any])
+        body["version"] = nil
+        json["state"] = body
+        guard case .state(let old) = try RemoteMessage.decode(jsonObject: json) else { Issue.record("not a state"); return }
+        #expect(!old.acknowledges)
+    }
+
+    @Test func accessTokenFraming() {
+        let m = RemoteChannel.accessTokenMessage(topic: "realtime:bluebox-remote:u", token: "jwt2", ref: "9")
+        #expect(m["event"] as? String == "access_token")
+        #expect((m["payload"] as? [String: Any])?["access_token"] as? String == "jwt2")
     }
 
     @Test func positionStaysWithinTheItem() throws {

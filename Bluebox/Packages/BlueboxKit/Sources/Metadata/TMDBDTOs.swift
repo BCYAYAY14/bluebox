@@ -70,6 +70,23 @@ struct TMDBMovieDetail: Decodable {
     let images: TMDBImages?
     let recommendations: TMDBPage<TMDBListItem>?
     let releaseDates: TMDBReleaseDates?
+    let belongsToCollection: TMDBCollectionRef?
+}
+
+struct TMDBCollectionRef: Decodable {
+    let id: Int
+    let name: String?
+    let posterPath: String?
+    let backdropPath: String?
+}
+
+struct TMDBCollection: Decodable {
+    let id: Int
+    let name: String
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let parts: [TMDBListItem]?
 }
 
 struct TMDBSeriesDetail: Decodable {

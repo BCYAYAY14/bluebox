@@ -20,10 +20,14 @@ public struct DeviceProfile: Sendable, Equatable {
     public var decodesAV1: Bool
     public var displaysHDR: Bool
     public var displaysDolbyVision: Bool
+    /// The video goes to an AirPlay receiver: only AVPlayer sends it there,
+    /// and AVPlayer plays MP4, MOV and M4V, not MKV (VLC).
+    public var airPlaying: Bool
 
-    public init(decodesHEVC: Bool, decodesAV1: Bool, displaysHDR: Bool, displaysDolbyVision: Bool) {
+    public init(decodesHEVC: Bool, decodesAV1: Bool, displaysHDR: Bool, displaysDolbyVision: Bool, airPlaying: Bool = false) {
         self.decodesHEVC = decodesHEVC; self.decodesAV1 = decodesAV1
         self.displaysHDR = displaysHDR; self.displaysDolbyVision = displaysDolbyVision
+        self.airPlaying = airPlaying
     }
 
     /// A recent Apple device on an SDR screen: HEVC yes, AV1 no, no HDR.
@@ -31,13 +35,15 @@ public struct DeviceProfile: Sendable, Equatable {
 
     /// Asks VideoToolbox and AVFoundation. HDR depends on the current screen
     /// (a Mac's external display, Low Power Mode), so ask again when it changes.
-    @MainActor public static func current() -> DeviceProfile {
+    /// - Parameter airPlaying: an AirPlay route is active (`AirPlayRoute`).
+    @MainActor public static func current(airPlaying: Bool = false) -> DeviceProfile {
         let hdr = AVPlayer.eligibleForHDRPlayback
         return DeviceProfile(decodesHEVC: VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC),
                              decodesAV1: VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1),
                              displaysHDR: hdr,
                              // Apple's HDR screens all show Dolby Vision; it needs the HEVC decoder.
-                             displaysDolbyVision: hdr && VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC))
+                             displaysDolbyVision: hdr && VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC),
+                             airPlaying: airPlaying)
     }
 }
 
@@ -134,7 +140,9 @@ public struct RankingContext: Sendable {
 /// Orders releases best first. Each release gets a key; keys compare field by
 /// field, so an earlier field always outweighs every later one:
 ///
-/// 1. Mobile data: releases above the quality cap go last.
+/// 1. Mobile data: releases above the quality cap go last. While AirPlaying,
+///    MP4, MOV and M4V (which AVPlayer sends to the receiver) come first,
+///    unless nobody seeds them.
 /// 2. Availability: links that start at once (cached debrid, direct), then
 ///    healthy torrents, thin or unknown swarms, uncached debrid links, dead torrents.
 /// 3. The show's remembered choice (same binge group, then group and resolution).
@@ -154,6 +162,7 @@ public enum ReleaseRanker {
 
     public struct Key: Comparable, Sendable, CustomStringConvertible {
         public var aboveCap: Int
+        public var airPlay: Int
         public var availability: Int
         public var choice: Int
         public var resolution: Double
@@ -166,7 +175,7 @@ public enum ReleaseRanker {
         public var position: Int
 
         var fields: [Double] {
-            [Double(aboveCap), Double(availability), Double(choice), resolution, size, Double(codec),
+            [Double(aboveCap), Double(airPlay), Double(availability), Double(choice), resolution, size, Double(codec),
              Double(dynamicRange), Double(language), Double(seeders), Double(addon), Double(position)]
         }
 
@@ -176,7 +185,7 @@ public enum ReleaseRanker {
         }
 
         public var description: String {
-            "cap \(aboveCap) avail \(availability) choice \(choice) res \(resolution) size \(size) codec \(codec) "
+            "cap \(aboveCap) airplay \(airPlay) avail \(availability) choice \(choice) res \(resolution) size \(size) codec \(codec) "
                 + "range \(dynamicRange) lang \(language) seeders \(seeders) addon \(addon) pos \(position)"
         }
     }
@@ -205,9 +214,11 @@ public enum ReleaseRanker {
             return preferred
         }()
         let dataSaver = context.mobileData?.preferSmallest == true
+        let availability = availability(r)
         return Key(
             aboveCap: context.mobileData?.isAboveCap(r) == true ? 1 : 0,
-            availability: availability(r),
+            airPlay: context.device.airPlaying && !(isAirPlayable(r) && availability < 4) ? 1 : 0,
+            availability: availability,
             choice: ChoiceMatch.of(r, context.showChoice).rawValue,
             resolution: resolutionDistance(r, preferred: preferredLevel),
             size: dataSaver ? Double(r.sizeBytes ?? .max) / 1e12 : Double(sizeFit(r, runtimeMinutes: context.runtimeMinutes).rawValue),
@@ -226,6 +237,13 @@ public enum ReleaseRanker {
         guard let seeders = r.seeders else { return 2 }
         if seeders == 0 { return 4 }
         return seeders >= healthySeeders ? 1 : 2
+    }
+
+    /// Containers AVPlayer opens, so the video can go to an AirPlay receiver.
+    public static let airPlayContainers: Set<String> = ["mp4", "mov", "m4v"]
+
+    public static func isAirPlayable(_ r: AddonRelease) -> Bool {
+        r.info.container.map { airPlayContainers.contains($0.lowercased()) } ?? false
     }
 
     /// 0 at the preferred resolution; a step down costs 1, a step up 1.25

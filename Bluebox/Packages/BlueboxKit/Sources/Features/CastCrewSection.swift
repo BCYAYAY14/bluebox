@@ -163,7 +163,7 @@ private struct CastCircle: View {
         .frame(width: 96)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(Motion.hover, value: hovering)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(person.role.isEmpty ? person.name : "\(person.name) as \(person.role)")
     }

@@ -48,6 +48,21 @@ import Testing
         let speed = ScrollView { SpeedPanel(rate: 1, remaining: 3000) { _ in }.padding(PlayerCardMetrics.padding) }
             .frame(width: 300, height: 400).playerCardSurface().padding(30).background(Color(white: 0.1)).environment(app)
         try write(speed, size: NSSize(width: 360, height: 460), name: "speed")
+        let notices = VStack(spacing: 18) {
+            PlayerNoticeView(notice: .init(message: "Volume 60%", symbol: "speaker.wave.2.fill", level: 0.6, kind: "volume"), action: nil)
+            PlayerNoticeView(notice: .init(message: "Speed 1.5×", symbol: "gauge.with.needle", kind: "speed"), action: nil)
+            PlayerNoticeView(notice: .init(message: "Skipped intro · always for this show", symbol: "forward.end.fill",
+                                           actionTitle: "Stop", kind: "skip"), action: {})
+            PlayerNoticeView(notice: .init(message: "Synced to the audio · +1.2 s", symbol: "waveform",
+                                           actionTitle: "Undo", kind: "sync"), action: {})
+            PlayerNoticeView(notice: .init(message: "Couldn't capture this frame", symbol: "camera", style: .warning, kind: "x"), action: nil)
+            Label("2×", systemImage: "forward.fill").font(.callout.weight(.bold)).labelStyle(NoticeLabelStyle())
+                .padding(.horizontal, 14).padding(.vertical, 9).playerNoticeSurface()
+        }
+        .frame(width: 520, height: 520)
+        .background(LinearGradient(colors: [Color(red: 0.25, green: 0.3, blue: 0.4), Color(red: 0.6, green: 0.5, blue: 0.35)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+        try write(notices, size: NSSize(width: 520, height: 520), name: "notices")
     }
 
     private struct StyleHost: View {

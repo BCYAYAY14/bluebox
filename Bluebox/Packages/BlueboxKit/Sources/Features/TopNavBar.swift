@@ -40,7 +40,7 @@ extension View {
         #if os(iOS)
         toolbarBackground(Palette.chrome, for: .navigationBar)
             .toolbarBackgroundVisibility(scrolled ? .visible : .hidden, for: .navigationBar)
-            .animation(.easeOut(duration: 0.2), value: scrolled)
+            .animation(Motion.appear, value: scrolled)
         #else
         self
         #endif
@@ -68,7 +68,7 @@ struct PageTitle: View {
 
     var body: some View {
         if usesTopNav {
-            Text(title)
+            Text(ui: title)
                 .font(Typography.pageTitle)
                 .padding(.horizontal, inset)
                 .padding(.top, Spacing.s)
@@ -121,7 +121,7 @@ struct TopNavBar: View {
         HStack(spacing: Spacing.l) {
             if canGoBack {
                 TopBarBackButton(action: back)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    .transition(Motion.pop(reduceMotion, scale: 0.8))
             }
             Button { select(.home) } label: { BlueboxWordmark(size: 24) }
                 .buttonStyle(PressableStyle())
@@ -134,6 +134,7 @@ struct TopNavBar: View {
             HStack(spacing: Spacing.l + 2) {
                 NavIcon(symbol: "magnifyingglass", label: "Search", selected: tab == .search) { select(.search) }
                     .keyboardShortcut("f", modifiers: .command)
+                PlayOnButton()
                 ProfileMenu(size: 28, showsChevron: true, openSettings: openSettings)
             }
         }
@@ -143,7 +144,7 @@ struct TopNavBar: View {
         .padding(.top, fullScreenInset)
         .frame(maxWidth: .infinity)
         .background(alignment: .top) { background }
-        .animation(.easeOut(duration: 0.25), value: scrolled)
+        .animation(Motion.appear, value: scrolled)
         .animation(Motion.snappy(reduceMotion), value: canGoBack)
     }
 
@@ -166,7 +167,7 @@ struct TopNavBar: View {
     private func select(_ new: AppTab) {
         guard new != tab else { chose(new, true); return }
         chose(new, false)
-        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.18)) { tab = new }
+        withAnimation(Motion.snappy(reduceMotion)) { tab = new }
     }
 
     @ViewBuilder private var navItems: some View {
@@ -316,7 +317,7 @@ private struct NavLabel: View {
 
     private var content: some View {
         HStack(spacing: 5) {
-            Text(title)
+            Text(ui: title)
                 .font(.system(size: 14, weight: selected ? .semibold : .regular))
                 .foregroundStyle(selected || hovering ? Palette.textPrimary : Palette.textSecondary)
             if badge > 0 {
@@ -403,6 +404,7 @@ struct CompactHomeHeader: View {
                     .buttonStyle(PressableStyle())
                     .accessibilityLabel("Bluebox, Home")
                 Spacer()
+                PlayOnButton()
                 ProfileMenu(size: 28, openSettings: openSettings)
             }
             .frame(height: 44)
@@ -420,7 +422,7 @@ struct CompactHomeHeader: View {
             }
             .ignoresSafeArea(edges: .top)
         }
-        .animation(.easeOut(duration: 0.25), value: scrolled.wrappedValue)
+        .animation(Motion.appear, value: scrolled.wrappedValue)
         .selectionHaptic(category)
         .task(id: app.catalogMode) { await genres.load(app) }
     }
@@ -440,7 +442,7 @@ struct CompactHomeHeader: View {
                     }
                     .buttonStyle(PressableStyle())
                     .accessibilityLabel("Show Everything")
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(Motion.pop(reduceMotion, scale: 0.5))
                 }
                 ForEach([HomeCategory.series, .movies], id: \.self) { c in
                     if category == .all || category == c {

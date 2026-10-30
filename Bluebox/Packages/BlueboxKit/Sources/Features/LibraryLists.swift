@@ -250,11 +250,17 @@ extension AppModel {
             return
         }
         showToast(AppToast(title.name, message: on ? "Added to \(list.name)" : "Removed from \(list.name)", actionTitle: "Undo") { [weak self] in
-            Task {
-                try? await self?.store.setOnList(title, listID: list.id, !on)
-                self?.noteLibraryChanged()
-            }
+            Task { await self?.undoSetOnList(title, list: list, on) }
         })
+    }
+
+    private func undoSetOnList(_ title: Title, list: UserList, _ on: Bool) async {
+        do {
+            try await store.setOnList(title, listID: list.id, !on)
+            noteLibraryChanged()
+        } catch {
+            report(error, title: "Couldn't undo") { [weak self] in await self?.undoSetOnList(title, list: list, on) }
+        }
     }
 
     /// Creates a list (from the editor), optionally with a first title on it.
@@ -347,6 +353,7 @@ extension AppModel {
                   let target = SeriesCursor.target(series: t.key, progress: progress, seasons: detail.seasons) else { return nil }
             return await resolveEpisode(target.key, detail: detail)
         }
+        await learnCertificationIfNeeded(for: t.key)
         guard maturityBlock(for: t.key) == nil else { return nil }
         let variant: MediaVariant
         if let saved = downloadedVariant(for: t.key) {

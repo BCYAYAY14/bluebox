@@ -67,8 +67,9 @@ struct ProfileOwnerCaption: View {
 
 // MARK: - Languages
 
-/// Settings › (profile) › Languages: the audio track and subtitle languages
-/// this profile prefers. Also opens from the profile editor for any profile.
+/// Settings › Language: the app's own language (this device), then the
+/// audio track and subtitle languages this profile prefers. Also opens from
+/// the profile editor for any profile, without the app's language.
 struct ProfileLanguagesPage: View {
     @Environment(AppModel.self) private var app
     /// nil: the current profile.
@@ -80,6 +81,9 @@ struct ProfileLanguagesPage: View {
 
     var body: some View {
         SettingsForm(.languages) {
+            if profileID == nil {
+                AppLanguageSection()
+            }
             Section {
                 ProfileOwnerCaption(profile: profile)
             }
@@ -127,37 +131,6 @@ struct ProfileLanguagesPage: View {
             v[keyPath: path] = new
             values = v
             app.setProfileSettings(v, for: id)
-        }
-    }
-}
-
-// MARK: - Playback
-
-/// Settings › (profile) › Playback: what happens when an episode ends, for this profile.
-struct ProfilePlaybackPage: View {
-    @Environment(AppModel.self) private var app
-
-    var body: some View {
-        @Bindable var settings = app.settings
-        SettingsForm(.myPlayback) {
-            Section {
-                ProfileOwnerCaption(profile: app.currentProfile)
-            }
-            Section {
-                Toggle("Autoplay Next Episode", isOn: $settings.autoplayNextEpisode)
-                    .settingsRow("Autoplay Next Episode")
-            } header: {
-                Text("Episodes")
-            } footer: {
-                Text(settings.autoplayNextEpisode
-                     ? "Up Next counts down, then plays the next episode. The countdown's length is in Player, for everyone."
-                     : "Playback stops when an episode ends.")
-            }
-            Section {
-                SettingsLink("Player", value: SettingsPage.everyoneTitle) { PlaybackSettingsPage() }
-            } footer: {
-                Text("The player, skipping, speed and sound are the same for everyone.")
-            }
         }
     }
 }

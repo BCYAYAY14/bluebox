@@ -14,23 +14,38 @@ import Domain
 import Foundation
 import Observation
 import Persistence
+import Playback
 
 extension AppModel {
     /// Gives the add-on source what ranking needs, and keeps it current.
     /// Called once at start.
     func configureAddonRanking() async {
-        await addons.setDevice(DeviceProfile.current())
+        airPlayRoute.onChange = { [weak self] _ in Task { await self?.updateRankingDevice() } }
+        airPlayRoute.start()
+        await updateRankingDevice()
         await addons.setAudioLanguage(settings.preferredAudioLanguage)
         await addons.setRuntimeProvider { [weak self] key in
             await self?.addonRuntimeMinutes(key)
         }
         observeAudioLanguageForRanking()
-        let addons = addons
         // HDR eligibility changes with the screen (a Mac's external display, Low Power Mode).
         NotificationCenter.default.addObserver(forName: AVPlayer.eligibleForHDRPlaybackDidChangeNotification,
-                                               object: nil, queue: .main) { _ in
-            Task { @MainActor in await addons.setDevice(DeviceProfile.current()) }
+                                               object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.updateRankingDevice() }
         }
+    }
+
+    /// What ranking knows of this device, AirPlay included: while a route is
+    /// active, MP4 releases (which AVPlayer can send there) come first.
+    func updateRankingDevice() async {
+        await addons.setDevice(DeviceProfile.current(airPlaying: airPlayRoute.isActive || airPlayingVideo))
+    }
+
+    /// The player says whether AVPlayer is showing the video over AirPlay.
+    func noteAirPlayingVideo(_ active: Bool) {
+        guard active != airPlayingVideo else { return }
+        airPlayingVideo = active
+        Task { await updateRankingDevice() }
     }
 
     private func observeAudioLanguageForRanking() {
@@ -86,8 +101,10 @@ extension AppModel {
         var settings = addonSettings
         settings.addons.append(addon)
         settings.customLinks[addon.id] = base.absoluteString
+        // Its catalogs, for Home: shown while Home has fewer than six.
+        settings.updateCatalogs(of: addon.id, from: manifest)
         setAddonSettings(settings)
-        return addon
+        return settings.addons.last ?? addon
     }
 
     /// Gives an add-on added by link its link again, on a device that has the
@@ -95,11 +112,12 @@ extension AppModel {
     /// same host. Throws `AddonError` with a message to show.
     public func setAddonLink(_ id: String, link: String) async throws {
         guard let addon = addonSettings.addons.first(where: { $0.id == id }), case .custom(let origin) = addon.kind else { return }
-        let (base, _) = try await addons.inspectAddon(link: link)
+        let (base, manifest) = try await addons.inspectAddon(link: link)
         guard AddonURL.origin(base.absoluteString) == origin else { throw AddonError.wrongAddonHost(AddonURL.displayHost(origin)) }
         try? secrets.write(base.absoluteString, for: SecretAccount.addonLink(id))
         var settings = addonSettings
         settings.customLinks[id] = base.absoluteString
+        settings.updateCatalogs(of: id, from: manifest)
         setAddonSettings(settings)
     }
 

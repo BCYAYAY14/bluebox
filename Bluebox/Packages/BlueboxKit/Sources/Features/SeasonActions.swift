@@ -114,6 +114,7 @@ extension AppModel {
             }
         }
         noteLibraryChanged()
+        reportWatchedToServers(episodes.map(\.key), watched: watched)  // Jellyfin and Emby
         if watched { downloadsFollowProgress(episodes.map(\.key), fromOtherDevice: false) }  // Smart Downloads
     }
 

@@ -73,11 +73,24 @@ public enum DebridProvider: String, CaseIterable, Identifiable, Codable, Sendabl
         }
     }
 
+    /// The account page: plan, expiry and limits.
+    public var accountURL: URL? {
+        switch self {
+        case .none: nil
+        case .realDebrid: URL(string: "https://real-debrid.com/account")
+        case .premiumize: URL(string: "https://www.premiumize.me/account")
+        case .allDebrid: URL(string: "https://alldebrid.com/account/")
+        case .torBox: URL(string: "https://torbox.app/settings")
+        case .debridLink: URL(string: "https://debrid-link.com/webapp/account")
+        }
+    }
+
     public var requiresKey: Bool { self != .none }
 
     /// Whether Bluebox can ask the service itself which torrents it holds
-    /// (TorBox and Premiumize publish an endpoint; the others removed theirs).
-    public var canCheckCache: Bool { self == .torBox || self == .premiumize }
+    /// (TorBox, Premiumize and Debrid-Link publish an endpoint; Real-Debrid
+    /// and AllDebrid removed theirs).
+    public var canCheckCache: Bool { self == .torBox || self == .premiumize || self == .debridLink }
 }
 
 /// Release qualities that can be hidden. Raw values are Torrentio's `qualityfilter` names.
@@ -173,11 +186,20 @@ public struct InstalledAddon: Codable, Sendable, Hashable, Identifiable {
     public var summary: String?
     /// "movie", "series".
     public var types: [String]
+    /// Its catalogs Home can show, in your order with your switches
+    /// (`AddonSettings.updateCatalogs`). Nil until its manifest has been read
+    /// for them (one added before Home showed add-on catalogs); presets have none.
+    public var catalogs: [AddonCatalog]?
+    /// It offers lists but no streams, so release searches leave it out.
+    /// Optional so settings saved before it read as nil (streams).
+    public var catalogsOnly: Bool?
 
     public init(id: String, kind: Kind, name: String, isEnabled: Bool = true, version: String? = nil,
-                summary: String? = nil, types: [String] = ["movie", "series"]) {
+                summary: String? = nil, types: [String] = ["movie", "series"], catalogs: [AddonCatalog]? = nil,
+                catalogsOnly: Bool? = nil) {
         self.id = id; self.kind = kind; self.name = name; self.isEnabled = isEnabled
-        self.version = version; self.summary = summary; self.types = types
+        self.version = version; self.summary = summary; self.types = types; self.catalogs = catalogs
+        self.catalogsOnly = catalogsOnly
     }
 
     public static func preset(_ preset: AddonPreset, enabled: Bool = true) -> InstalledAddon {
@@ -190,7 +212,7 @@ public struct InstalledAddon: Codable, Sendable, Hashable, Identifiable {
     public static func custom(base: URL, manifest: AddonManifest) -> InstalledAddon {
         InstalledAddon(id: "custom.\(UUID().uuidString.lowercased())", kind: .custom(base: AddonURL.origin(base.absoluteString)),
                        name: manifest.name, version: manifest.version, summary: manifest.description,
-                       types: manifest.streamTypes)
+                       types: manifest.streamTypes, catalogsOnly: manifest.streamTypes.isEmpty ? true : nil)
     }
 
     public var preset: AddonPreset? {
@@ -237,7 +259,7 @@ public struct AddonSettings: Codable, Sendable, Equatable {
     public var preferredResolution: String? = "1080p"
     /// Prefer the release group and resolution last played for a show.
     public var rememberShowChoices = true
-    /// Ask TorBox or Premiumize which releases are cached before ranking.
+    /// Ask TorBox, Premiumize or Debrid-Link which releases are cached before ranking.
     public var checkDebridCache = true
     /// How long one add-on may take before it's given up on.
     public var addonTimeoutSeconds = 10
@@ -408,9 +430,11 @@ public struct AddonSettings: Codable, Sendable, Equatable {
     /// The add-ons to ask, turned on and in order, with their configured
     /// URLs. A preset that can't work with these settings (Comet without a
     /// shared debrid key) is left out; so are duplicates of the same link.
-    public func resolvedAddons(debridKey: String) -> [ResolvedAddon] {
+    /// `includingCatalogsOnly`: also add-ons with only lists (Home's rows);
+    /// release searches leave them out.
+    public func resolvedAddons(debridKey: String, includingCatalogsOnly: Bool = false) -> [ResolvedAddon] {
         var seen = Set<URL>()
-        return addons.filter(\.isEnabled).compactMap { addon -> ResolvedAddon? in
+        return addons.filter { $0.isEnabled && (includingCatalogsOnly || $0.catalogsOnly != true) }.compactMap { addon -> ResolvedAddon? in
             let base: URL?
             switch addon.kind {
             case .preset(let preset): base = AddonPresetURL.base(for: preset, settings: self, debridKey: debridKey)

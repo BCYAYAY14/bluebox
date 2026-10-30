@@ -43,7 +43,7 @@ struct SeasonPickerButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Spacing.s) {
-                Text(title).font(.subheadline.weight(.bold))
+                Text(ui: title).font(.subheadline.weight(.bold))
                 if enabled {
                     Image(systemName: "chevron.down").font(.caption2.weight(.heavy)).foregroundStyle(Palette.textSecondary)
                 }

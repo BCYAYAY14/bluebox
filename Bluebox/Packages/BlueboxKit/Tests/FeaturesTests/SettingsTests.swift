@@ -54,6 +54,19 @@ import Testing
         #expect(SettingsSearchIndex.search("real-debrid").first?.title == "Debrid Service")
         #expect(SettingsSearchIndex.search("clear stream").first?.title == "Clear Stream Cache")
         #expect(SettingsSearchIndex.search("   ").isEmpty)
+        #expect(SettingsSearchIndex.search("theme").first?.page == .appearance)
+        #expect(SettingsSearchIndex.search("language").first?.title == "App Language")
+        #expect(SettingsSearchIndex.search("autoplay").first?.page == .playback)
+    }
+
+    /// Every page is in the sidebar once, and the old profile Playback page isn't.
+    @MainActor @Test func everyPageIsGroupedOnce() {
+        let listed = SettingsPage.profileGroup + SettingsPage.groups.flatMap(\.pages)
+        #expect(Set(listed).count == listed.count)
+        #expect(!listed.contains(.myPlayback))
+        let expected = SettingsPage.available.filter { $0 != .statistics }
+        #expect(Set(listed) == Set(expected))
+        #expect(SettingsSearchIndex.entries.filter(SettingsSearchIndex.isAvailable).allSatisfy { SettingsPage.available.contains($0.page) })
     }
 
     @Test func addonOrderIsYourOrder() {

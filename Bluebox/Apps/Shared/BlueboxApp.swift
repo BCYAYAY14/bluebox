@@ -1,3 +1,4 @@
+import CoreSpotlight
 import Features
 import SwiftUI
 import UserNotifications
@@ -62,7 +63,7 @@ struct BlueboxApp: App {
     @State private var launchError: String?
     /// A link opened before the library finished loading.
     @State private var pendingURL: URL?
-    /// A Handoff that arrived before the library finished opening.
+    /// A Handoff (or Spotlight result) that arrived before the library finished opening.
     @State private var pendingHandoff: NSUserActivity?
     /// Home is built only once the launch ident's sweep has played: building
     /// it stalls the main thread, which would freeze the sweep.
@@ -101,7 +102,7 @@ struct BlueboxApp: App {
             .preferredColorScheme(.dark)
             .task { await launch() }
             .updateStatus()
-            // Links from another device (bluebox://connect…) and refused sign-in links (bluebox://auth-callback…)
+            // Links from another device (bluebox://connect…), party invites (bluebox://party…) and refused sign-in links (bluebox://auth-callback…)
             .onOpenURL { url in
                 if let model { model.handleOpenURL(url) } else { pendingURL = url }
             }
@@ -109,6 +110,10 @@ struct BlueboxApp: App {
             .onContinueUserActivity(WatchActivityPayload.activityType) { activity in
                 guard let model else { pendingHandoff = activity; return }
                 Task { await model.continueWatching(from: activity) }
+            }
+            // A Bluebox result in Spotlight (Features/AppModel+System.swift).
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                if let model { model.continueFromSpotlight(activity) } else { pendingHandoff = activity }
             }
             #if os(macOS)
             .frame(minWidth: 820, minHeight: 560)
@@ -130,7 +135,20 @@ struct BlueboxApp: App {
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.presented)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                // Videos, folders and .torrent files (Features/ExternalOpen.swift).
+                Button("Open…") { model?.pickingFiles = true }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .disabled(model == nil)
+                // File › Join a Party… (Watch Party; Start a Party is under a title's Play).
+                if model?.party != nil {
+                    Button("Leave Party") { Task { await model?.leaveParty() } }
+                } else {
+                    Button("Join a Party…") { model?.partyJoin = PartyJoinRequest() }
+                        .keyboardShortcut("j", modifiers: [.command, .shift])
+                        .disabled(model == nil)
+                }
+            }
             AboutCommands()
             MainWindowCommands()
             // ⌘W closes the player first, not the whole window under it.
@@ -205,6 +223,8 @@ struct BlueboxApp: App {
     @MainActor
     private func launch() async {
         guard model == nil else { return }
+        // Mac: the Dock icon in the theme colour (Settings › Appearance).
+        ThemeIcon.applyAtLaunch()
         let args = ProcessInfo.processInfo.arguments
         do {
             // A background refresh may already have opened the library (AppModel.current).
@@ -220,6 +240,7 @@ struct BlueboxApp: App {
             #if DEBUG
             if args.contains("-ui-testing") && args.contains("-seed-screens") { await m.seedScreensForReview() }
             if args.contains("-ui-testing") && args.contains("-seed-profiles") { m.seedProfilesForReview() }
+            if args.contains("-ui-testing") && args.contains("-seed-remote") { m.remote.seedForReview() }
             #endif
             model = m
             #if os(macOS)
@@ -228,7 +249,15 @@ struct BlueboxApp: App {
             if let url = pendingURL { pendingURL = nil; m.handleOpenURL(url) }
             if let handoff = pendingHandoff {
                 pendingHandoff = nil
-                await m.continueWatching(from: handoff)
+                if handoff.activityType == CSSearchableItemActionType {
+                    m.continueFromSpotlight(handoff)
+                } else {
+                    await m.continueWatching(from: handoff)
+                }
+            }
+            // Widgets, Spotlight and Siri's titles, kept up to date from here on.
+            if !args.contains("-ui-testing") {
+                m.startSystemSurfaces { BlueboxShortcuts.updateAppShortcutParameters() }
             }
             #if DEBUG
             await m.runPlayerDebugLaunchArguments(args)  // simulated Handoff, for checking the player

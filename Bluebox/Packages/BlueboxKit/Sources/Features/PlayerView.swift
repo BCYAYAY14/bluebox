@@ -5,6 +5,7 @@ import Downloads
 import Metadata
 import Playback
 import SkipSegments
+import Sync
 import Subtitles
 import SwiftUI
 import TorrentStreaming
@@ -24,7 +25,9 @@ struct PlayerView: View {
     @State private var lastInteraction = Date()
     @State private var scrubFraction: Double?
     @State private var jumping = false
-    @State private var toast: PlayerToast?
+    @State private var toast: PlayerNotice?
+    /// Sync to the Audio, here rather than in its page so it outlives the card.
+    @State private var audioSync = SubtitleAudioSync()
     /// The toast's button (Undo), when it has one.
     @State private var toastAction: (() -> Void)?
     /// The card open over the video (Audio & Subtitles, Episodes, Speed, Tools, Chapters).
@@ -94,6 +97,10 @@ struct PlayerView: View {
     @State private var stageSize: CGSize = .zero
     #if os(macOS)
     @State private var window = PlayerWindowModel()
+    #else
+    /// The swipe under way (Settings › Playback › Swipe Gestures).
+    @State private var swipe: PlayerSwipe?
+    @State private var swipeSeekTarget: Double?
     #endif
     @FocusState private var focused: Bool
 
@@ -129,14 +136,10 @@ struct PlayerView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            stage
-            if styleOpen {
-                SubtitleStyleInspector(style: Bindable(app).subtitleStyle, session: session, onClose: closeStyle)
-                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
-            }
-        }
+        partyLayout
         .animation(Motion.snappy(reduceMotion), value: styleOpen)
+        .animation(Motion.snappy(reduceMotion), value: app.party?.chatOpen)
+        .background { partyKeys }
         .background(Color.black.ignoresSafeArea())
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
@@ -183,6 +186,63 @@ struct PlayerView: View {
 
     private var canSearchSubtitles: Bool { app.canSearchSubtitlesOnline(for: session.item?.key) }
 
+    // MARK: Watch Party
+
+    /// Mac and iPad: the party's panel beside the video. iPhone: over the
+    /// right of the video in landscape, under it upright (PartyPanel).
+    @ViewBuilder private var partyLayout: some View {
+        let party = app.party
+        let panelOpen = party?.chatOpen == true
+        #if os(iOS)
+        if platform == .phone, let party, panelOpen, verticalSizeClass == .regular {
+            // Upright: the film on top, the chat under it, like a live stream.
+            VStack(spacing: 0) {
+                stage.aspectRatio(16 / 9, contentMode: .fit)
+                PartyPanel(party: party, compact: true)
+            }
+        } else if platform == .phone, let party, panelOpen {
+            stage.overlay(alignment: .trailing) {
+                PartyPanel(party: party, compact: true)
+                    .frame(width: min(max(stageSize.width / 3, 260), 340))
+                    .opacity(0.97)
+                    .transition(.move(edge: .trailing))
+            }
+        } else {
+            sideBySide(party: party, panelOpen: panelOpen)
+        }
+        #else
+        sideBySide(party: party, panelOpen: panelOpen)
+        #endif
+    }
+
+    private func sideBySide(party: WatchParty?, panelOpen: Bool) -> some View {
+        HStack(spacing: 0) {
+            stage
+            if styleOpen {
+                SubtitleStyleInspector(style: Bindable(app).subtitleStyle, session: session, onClose: closeStyle)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+            } else if let party, panelOpen {
+                PartyPanel(party: party)
+                    .frame(width: PartyPanel.width)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+            }
+        }
+    }
+
+    /// ⌘/ opens and closes the chat; ⌥1–6 react.
+    @ViewBuilder private var partyKeys: some View {
+        if let party = app.party {
+            ZStack {
+                Button("Party Chat") { party.chatOpen.toggle() }.keyboardShortcut("/", modifiers: .command)
+                ForEach(Array(TogetherReaction.quick.enumerated()), id: \.offset) { i, emoji in
+                    Button("React \(emoji)") { party.react(emoji) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .option)
+                }
+            }
+            .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+        }
+    }
+
     /// Controls draw over the video unless a message card (error, end of
     /// film) asks what to do next. They stay while a panel card is open, and
     /// while the video opens or stalls; playing or paused they fade when idle.
@@ -202,6 +262,7 @@ struct PlayerView: View {
     /// A film (or an episode with nothing queued after it) played to the end.
     private var showsEndCard: Bool {
         session.snapshot.status == .ended && session.upNext == nil && !session.isLoadingNext && session.item != nil
+            && app.party?.room.upNext == nil
     }
 
     private var stage: some View {
@@ -252,6 +313,7 @@ struct PlayerView: View {
             }, onPressingChanged: { pressing in
                 if !pressing { endBoost() }
             })
+            .simultaneousGesture(swipeGesture, isEnabled: app.settings.swipeGestures)
             #endif
             if let skipFlash { skipIndicator(skipFlash) }
             // Mac: nothing sits over the middle of the picture except the
@@ -270,6 +332,12 @@ struct PlayerView: View {
             }
             if controlsShown {
                 controls.transition(.opacity)
+            }
+            if let party = app.party, !locked {
+                PartyOverlay(party: party, controlsShown: controlsShown,
+                             topInset: stageSize.height < 500 ? 56 : 64,
+                             bottomInset: controlsShown ? max(stageSize.height - barTop, 0) : Spacing.l)
+                    .zIndex(1)
             }
             if !locked, !previewing, panel == nil, session.upNext == nil, !showsCard {
                 SkipPill(skip: skip, controlsShown: controlsShown, onAccept: { perform(skip.accept()) }, onWrongTime: wrongSkipTime, onAlways: alwaysSkip)
@@ -293,9 +361,10 @@ struct PlayerView: View {
             }
             if boostedFrom != nil {
                 Label("2×", systemImage: "forward.fill")
-                    .font(.subheadline.weight(.bold))
-                    .padding(.horizontal, Spacing.m).padding(.vertical, 6)
-                    .background(.black.opacity(0.7), in: Capsule())
+                    .font(.callout.weight(.bold))
+                    .labelStyle(NoticeLabelStyle())
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .playerNoticeSurface()
                     .frame(maxHeight: .infinity, alignment: .top)
                     .padding(.top, Spacing.xl)
                     .transition(.opacity)
@@ -306,15 +375,15 @@ struct PlayerView: View {
             #if os(iOS)
             if showsRotatePrompt { rotatePrompt.zIndex(3) }
             #endif
-            if let upNext = session.upNext { upNextCard(upNext) }
+            if let upNext = session.upNext { upNextCard(upNext).transition(Motion.nudge(from: .bottom, reduceMotion)) }
             if session.isLoadingNext {
-                HStack(spacing: Spacing.s) {
-                    ProgressView().tint(.white)
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small).tint(Palette.brandBright)
                     Text(switchingTo.map { k in k.episodeNumbers.map { "Opening S\($0.season)·E\($0.episode)…" } ?? "Opening…" }
-                         ?? "Finding the next episode…").font(.subheadline.weight(.semibold))
+                         ?? "Finding the next episode…").font(.callout.weight(.semibold))
                 }
-                .padding(.horizontal, Spacing.l).padding(.vertical, Spacing.m)
-                .background(.black.opacity(0.75), in: Capsule())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .playerNoticeSurface()
                 .transition(.opacity)
                 .accessibilityElement(children: .combine)
             }
@@ -333,20 +402,29 @@ struct PlayerView: View {
                     // A strip just under the top bar, clear of the play and skip buttons.
                     .padding(.top, controlsShown ? (stageSize.height < 500 ? 58 : 70) : Spacing.m)
                     .padding(.horizontal, Spacing.l)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    // A nudge, not `.move`: the frame is the stage's height, so a move flew it in from far above.
+                    .transition(Motion.nudge(from: .top, reduceMotion))
                     .zIndex(3)
             }
             if let toast {
-                toastView(toast)
-                    .frame(maxHeight: .infinity, alignment: .top).padding(.top, 70)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .zIndex(5)
+                PlayerNoticeView(notice: toast, action: toastAction.map { action in {
+                    withAnimation(Motion.disappear) { self.toast = nil }
+                    toastAction = nil
+                    action()
+                } })
+                .id(toast.kind)
+                .padding(.horizontal, Spacing.l)
+                .frame(maxHeight: .infinity, alignment: .top).padding(.top, 70)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
+                .zIndex(5)
             }
         }
         .animation(Motion.standard(reduceMotion), value: app.networkSwitchedToCellularDuringPlayback)
         .animation(Motion.snappy(reduceMotion), value: boostedFrom != nil)
         .animation(Motion.standard(reduceMotion), value: statsShown)
         .animation(Motion.standard(reduceMotion), value: showsCard)
+        .animation(Motion.standard(reduceMotion), value: session.upNext == nil)
+        .animation(Motion.standard(reduceMotion), value: session.isLoadingNext)
         .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: panel)
         .coordinateSpace(.named(Self.stageSpace))
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
@@ -391,8 +469,28 @@ struct PlayerView: View {
         .focused($focused)
         .onAppear { focused = true }
         .onChange(of: panel) { _, open in if open == nil { focused = true } }
+        // A sync that finishes with its card closed says so here, with Undo.
+        .onChange(of: audioSync.phase) { _, phase in
+            guard panel != .tracks else { return }
+            switch phase {
+            case .done(let offset, _, let drift):
+                flash("Synced to the audio · \(offset.label)" + (drift ? ", drift fixed" : ""), symbol: "waveform", action: "Undo") {
+                    audioSync.undo(session)
+                }
+            case .failed(let message): flash(message, symbol: "waveform.slash", style: .warning)
+            default: break
+            }
+        }
+        .onDisappear {
+            audioSync.cancel(); app.noteAirPlayingVideo(false)
+            #if os(iOS)
+            ScreenBrightness.restore()
+            #endif
+        }
         // Picture in Picture can't show the overlay: the lines go into the picture.
         .onChange(of: pipActive, initial: true) { _, active in session.drawsSubtitlesInPicture = active }
+        // Release ranking prefers MP4 while the video goes to AirPlay.
+        .onChange(of: session.snapshot.isExternalPlaybackActive, initial: true) { _, active in app.noteAirPlayingVideo(active) }
         .modifier(PlayerKeys(actions: keyActions))
         .task(id: session.snapshot.status == .playing || session.snapshot.status == .paused) { await autoHide() }
         // Pausing shows the controls (they fade again after a while, so a paused frame reads as it played).
@@ -434,7 +532,7 @@ struct PlayerView: View {
             stylePreviewTask = Task {
                 try? await Task.sleep(for: .seconds(2.5))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeIn(duration: 0.25)) { showsStylePreview = false }
+                withAnimation(Motion.disappear) { showsStylePreview = false }
             }
         }
         // How long it's been loading, for the loading words.
@@ -446,13 +544,13 @@ struct PlayerView: View {
         // that is still opening shows it straight away.
         .task(id: waiting) {
             guard waiting else {
-                if showsWaiting { withAnimation(.easeOut(duration: 0.2)) { showsWaiting = false } }
+                if showsWaiting { withAnimation(Motion.disappear) { showsWaiting = false } }
                 return
             }
             let opening = session.snapshot.status == .loading && session.snapshot.duration == nil
             if !opening { try? await Task.sleep(for: .milliseconds(900)) }
             guard !Task.isCancelled, waiting else { return }
-            withAnimation(.easeIn(duration: 0.2)) { showsWaiting = true }
+            withAnimation(Motion.appear) { showsWaiting = true }
         }
         // Torrent streams: swarm numbers for the loading words, and which parts
         // of the file are in for the timeline. Every second while it waits,
@@ -617,11 +715,11 @@ struct PlayerView: View {
                 let kind = skip.activeSegment.map { ShowSkipRules.Part($0.kind) } ?? .intro
                 if settings.alwaysSkips(kind, for: key) {
                     // The show's own rule did it: say so, with the way back.
-                    flash("Skipped \(kind.title.lowercased()) · always for this show", action: "Stop") {
+                    flash("Skipped \(kind.title.lowercased()) · always for this show", symbol: "forward.end.fill", action: "Stop") {
                         settings.setAlwaysSkip(false, kind, for: key)
                     }
                 } else {
-                    flash("Skipped \(kind.title.lowercased())")
+                    flash("Skipped \(kind.title.lowercased())", symbol: "forward.end.fill")
                 }
             }
         }
@@ -632,7 +730,7 @@ struct PlayerView: View {
         guard let key = session.item?.key else { return }
         app.settings.setAlwaysSkip(true, part, for: key)
         perform(skip.accept())
-        flash("Always skipping the \(part.title.lowercased()) of this show", action: "Undo") {
+        flash("Always skipping the \(part.title.lowercased()) of this show", symbol: "forward.end.alt.fill", action: "Undo") {
             app.settings.setAlwaysSkip(false, part, for: key)
         }
     }
@@ -652,10 +750,10 @@ struct PlayerView: View {
         let source = skip.activeSegment?.source.displayName ?? "Community"
         app.settings.setCrowdSkipsAllowed(false, for: key)
         skip.reset()
-        flash("\(source) timestamps off for this show", action: "Undo") {
+        flash("\(source) timestamps off for this show", symbol: "clock.badge.xmark", action: "Undo") {
             app.settings.setCrowdSkipsAllowed(true, for: key)
             skip.reset()
-            flash("\(source) timestamps back on")
+            flash("\(source) timestamps back on", symbol: "clock.badge.checkmark")
         }
     }
 
@@ -690,6 +788,55 @@ struct PlayerView: View {
         #endif
     }
 
+    #if os(iOS)
+    /// Sideways seeks (on release, so a stream isn't asked for every point on
+    /// the way); up and down on the left sets brightness, on the right volume.
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 16, coordinateSpace: .local)
+            .onChanged { v in
+                guard !locked, !subtitleEditing, panel == nil, scrubFraction == nil,
+                      session.videoFraming.zoom <= 1 else { return }
+                if swipe == nil {
+                    // A 2× hold that then moves stays a hold.
+                    guard boostedFrom == nil, let kind = PlayerSwipe.kind(startLocation: v.startLocation, translation: v.translation, in: stageSize)
+                    else { return }
+                    let start = switch kind {
+                    case .seek: session.snapshot.position
+                    case .brightness: ScreenBrightness.level
+                    case .volume: Double(session.volume)
+                    }
+                    swipe = PlayerSwipe(kind: kind, start: start)
+                }
+                guard let swipe else { return }
+                switch swipe.kind {
+                case .seek:
+                    let target = PlayerSwipe.seekTarget(from: swipe.start, dx: v.translation.width, width: stageSize.width,
+                                                        duration: session.snapshot.duration)
+                    swipeSeekTarget = target
+                    let delta = target - swipe.start
+                    flash("\(delta < 0 ? "−" : "+")\(Formatters.duration(abs(delta))) · \(Formatters.duration(target))",
+                          symbol: delta < 0 ? "backward.fill" : "forward.fill", kind: "swipeSeek")
+                case .brightness:
+                    let level = PlayerSwipe.level(from: swipe.start, dy: v.translation.height, height: stageSize.height)
+                    ScreenBrightness.set(level)
+                    flash("Brightness \(Int((level * 100).rounded()))%", symbol: "sun.max.fill", level: level, kind: "brightness")
+                case .volume:
+                    let level = PlayerSwipe.level(from: swipe.start, dy: v.translation.height, height: stageSize.height)
+                    session.setVolume(Float(level))
+                    flash(level < 0.005 ? "Muted" : "Volume \(Int((level * 100).rounded()))%",
+                          symbol: Self.volumeSymbol(Float(level)), level: level, kind: "volume")
+                }
+            }
+            .onEnded { _ in
+                if swipe?.kind == .seek, let target = swipeSeekTarget {
+                    Task { await session.seek(to: target) }
+                }
+                swipe = nil
+                swipeSeekTarget = nil
+            }
+    }
+    #endif
+
     private func doubleTapSkip(forward: Bool) {
         let seconds = forward ? app.settings.skipForwardSeconds : app.settings.skipBackSeconds
         // Repeated double-taps on the same side add up, like YouTube.
@@ -697,10 +844,10 @@ struct PlayerView: View {
         Task { await session.skip(by: forward ? Double(seconds) : -Double(seconds)) }
         if forward { skipForward += 1 } else { skipBack += 1 }
         let flash = SkipFlash(forward: forward, seconds: total)
-        withAnimation(.easeOut(duration: 0.15)) { skipFlash = flash }
+        withAnimation(Motion.appear) { skipFlash = flash }
         Task {
             try? await Task.sleep(for: .seconds(0.9))
-            if skipFlash == flash { withAnimation(.easeIn(duration: 0.25)) { skipFlash = nil } }
+            if skipFlash == flash { withAnimation(Motion.disappear) { skipFlash = nil } }
         }
     }
 
@@ -735,29 +882,31 @@ struct PlayerView: View {
                 boostedFrom = nil  // a speed picked during a 2× hold is the one kept
                 let r = PlaybackSpeed.stepped(session.snapshot.rate, by: steps)
                 session.setRate(r)
-                flash("Speed \(PlaybackSpeed.label(r))")
+                flash("Speed \(PlaybackSpeed.label(r))", symbol: "gauge.with.needle")
             },
             volume: { d in
                 session.setVolume(session.volume + d)
-                flash(session.volume < 0.005 ? "Muted" : "Volume \(Int((session.volume * 100).rounded()))%")
+                flash(session.volume < 0.005 ? "Muted" : "Volume \(Int((session.volume * 100).rounded()))%",
+                      symbol: Self.volumeSymbol(session.volume), level: Double(session.volume), kind: "volume")
                 poke()
             },
-            mute: { session.setMuted(!session.isMuted); flash(session.isMuted ? "Muted" : "Sound on") },
+            mute: { session.setMuted(!session.isMuted); flash(session.isMuted ? "Muted" : "Sound on", symbol: Self.volumeSymbol(session.volume, muted: session.isMuted), kind: "volume") },
             episodes: { if episodes.isSeries { toggle(.episodes) } },
             episodeStep: { forward in stepEpisode(forward: forward) },
             nudgeSubtitles: { d in
                 session.nudgeSubtitles(by: d)
-                flash(session.canAdjustSubtitleTiming ? "Subtitle delay \(session.subtitleOffset.label)" : "Timing works with subtitle files")
+                flash(session.canAdjustSubtitleTiming ? "Subtitle delay \(session.subtitleOffset.label)" : "Timing works with subtitle files",
+                      symbol: "captions.bubble", kind: "subtitleDelay")
             },
             subtitleSize: { d in
                 app.subtitleStyle.relativeSize = SubtitleStyle.clampSize(app.subtitleStyle.relativeSize + d)
-                flash("Subtitle size \(Int((app.subtitleStyle.relativeSize / 0.045 * 100).rounded()))%")
+                flash("Subtitle size \(Int((app.subtitleStyle.relativeSize / 0.045 * 100).rounded()))%", symbol: "textformat.size")
             },
             cycleSubtitles: cycleSubtitles,
             cycleAudio: cycleAudio,
             stepFrame: { session.stepFrame(by: $0) },
             aspect: cycleAspect, crop: cycleCrop, zoom: cycleZoom,
-            rotate: { session.videoFraming.rotate(); flash("Rotated \(Int(session.videoFraming.rotationDegrees))°") },
+            rotate: { session.videoFraming.rotate(); flash("Rotated \(Int(session.videoFraming.rotationDegrees))°", symbol: "rotate.right") },
             loop: cycleLoop,
             snapshot: { Task { await saveSnapshot() } },
             tools: { toggle(.tools) },
@@ -766,7 +915,7 @@ struct PlayerView: View {
             line: { next in
                 Task {
                     let moved = await session.jumpToLine(next: next)
-                    if !moved { flash(session.subtitleSelection == .off ? "Subtitles are off" : next ? "No next line" : "No earlier line") }
+                    if !moved { flash(session.subtitleSelection == .off ? "Subtitles are off" : next ? "No next line" : "No earlier line", symbol: "captions.bubble") }
                 }
                 poke()
             },
@@ -776,12 +925,13 @@ struct PlayerView: View {
                 case .off: "Off"
                 case .embedded(let id), .external(let id): TrackLabel.labels(for: session.allSubtitleTracks)[id]?.spoken ?? "On"
                 }
-                flash(now == .off && session.allSubtitleTracks.isEmpty ? "No subtitles" : "Subtitles: \(label)")
+                flash(now == .off && session.allSubtitleTracks.isEmpty ? "No subtitles" : "Subtitles: \(label)",
+                      symbol: now == .off ? "captions.bubble" : "captions.bubble.fill", kind: "subtitles")
             },
             seekPercent: { n in
                 guard let duration = session.snapshot.duration, duration > 0 else { return }
                 Task { await session.seek(to: duration * Double(n) / 10) }
-                flash("\(n * 10)%")
+                flash("\(n * 10)% through", symbol: "clock", level: Double(n) / 10, kind: "seekPercent")
                 poke()
             }
         )
@@ -795,7 +945,7 @@ struct PlayerView: View {
 
     private func cycleLoop() {
         session.cycleLoop()
-        flash(session.loopEnd != nil ? "Repeating A–B" : session.loopStart != nil ? "A set. Press L again at B." : "Repeat off")
+        flash(session.loopEnd != nil ? "Repeating A–B" : session.loopStart != nil ? "A set. Press L again at B." : "Repeat off", symbol: "repeat")
     }
 
     /// → on the Mac: a tap skips forward; held, it plays at 2× until released.
@@ -855,16 +1005,16 @@ struct PlayerView: View {
         case .embedded(let id), .external(let id):
             TrackLabel.labels(for: session.allSubtitleTracks)[id]?.spoken ?? "On"
         }
-        flash("Subtitles: \(label)")
+        flash("Subtitles: \(label)", symbol: "captions.bubble.fill", kind: "subtitles")
     }
 
     private func cycleAudio() {
         let tracks = session.snapshot.audioTracks
-        guard tracks.count > 1 else { flash("Only one audio track"); return }
+        guard tracks.count > 1 else { flash("Only one audio track", symbol: "waveform"); return }
         let i = tracks.firstIndex { $0.id == session.snapshot.selectedAudioID } ?? -1
         let next = tracks[(i + 1) % tracks.count]
         session.selectAudio(next.id)
-        flash("Audio: \(TrackLabel.labels(for: tracks)[next.id]?.spoken ?? next.label)")
+        flash("Audio: \(TrackLabel.labels(for: tracks)[next.id]?.spoken ?? next.label)", symbol: "waveform")
     }
 
     // MARK: Video
@@ -894,69 +1044,57 @@ struct PlayerView: View {
         let all = VideoFraming.Ratio.allCases
         let next = all[((all.firstIndex(of: session.videoFraming.aspect) ?? 0) + 1) % all.count]
         session.videoFraming.aspect = next
-        flash("Aspect ratio: \(next.label)")
+        flash("Aspect ratio: \(next.label)", symbol: "aspectratio")
     }
 
     private func cycleCrop() {
         let all: [VideoFraming.Ratio] = [.auto, .r16x9, .r1_85, .r2_35, .r2_39, .r4x3]
         let next = all[((all.firstIndex(of: session.videoFraming.crop) ?? 0) + 1) % all.count]
         session.videoFraming.crop = next
-        flash("Crop: \(next == .auto ? "None" : next.label)")
+        flash("Crop: \(next == .auto ? "None" : next.label)", symbol: "crop")
     }
 
     private func cycleZoom() {
         let steps = [1.0, 1.25, 1.5, 2]
         let i = steps.firstIndex { abs($0 - session.videoFraming.zoom) < 0.01 } ?? 0
         session.videoFraming.setZoom(steps[(i + 1) % steps.count])
-        flash(String(format: "Zoom %.2g×", session.videoFraming.zoom))
+        flash(String(format: "Zoom %.2g×", session.videoFraming.zoom), symbol: "plus.magnifyingglass")
     }
 
-    /// A short message at the top. With an action (Undo) it stays longer and can be tapped.
-    private func flash(_ message: String, action title: String? = nil, perform: (() -> Void)? = nil) {
-        let shown = PlayerToast(message: message, actionTitle: perform == nil ? nil : title)
-        withAnimation(.easeOut(duration: 0.15)) { toast = shown }
+    /// A short message at the top. With an action (Undo) it stays longer and can
+    /// be tapped. Another of the same kind (volume again) updates it in place.
+    private func flash(_ message: String, symbol: String? = nil, level: Double? = nil,
+                       style: PlayerNotice.Style = .normal, kind: String? = nil,
+                       action title: String? = nil, perform: (() -> Void)? = nil) {
+        let kind = kind ?? symbol ?? message
+        let shown = PlayerNotice(message: message, symbol: symbol, level: level, style: style,
+                                 actionTitle: perform == nil ? nil : title, kind: kind)
+        if let current = toast, current.kind == kind {
+            withAnimation(.snappy(duration: 0.18)) { toast = shown }
+        } else {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.3, bounce: 0.2)) { toast = shown }
+        }
         toastAction = perform
+        AccessibilityNotification.Announcement(message).post()
+        let stay: Double = perform != nil ? 5 : style == .warning ? 3 : 1.6
         Task {
-            try? await Task.sleep(for: .seconds(perform == nil ? 1.6 : 5))
-            if toast == shown { withAnimation(.easeIn(duration: 0.25)) { toast = nil }; toastAction = nil }
+            try? await Task.sleep(for: .seconds(stay))
+            if toast?.id == shown.id { withAnimation(Motion.disappear) { toast = nil }; toastAction = nil }
         }
     }
 
-    private func toastView(_ t: PlayerToast) -> some View {
-        HStack(spacing: Spacing.m) {
-            Text(t.message).font(.subheadline.weight(.semibold))
-            if let title = t.actionTitle, let action = toastAction {
-                Button {
-                    withAnimation(.easeIn(duration: 0.2)) { toast = nil }
-                    toastAction = nil
-                    action()
-                } label: {
-                    Text(title).font(.subheadline.weight(.bold)).foregroundStyle(Palette.brandBright)
-                        .padding(.horizontal, Spacing.s)
-                        .frame(minHeight: 32)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PressableStyle())
-                .accessibilityIdentifier("toastAction")
-            }
-        }
-        .padding(.leading, Spacing.l)
-        .padding(.trailing, t.actionTitle == nil ? Spacing.l : Spacing.s)
-        .padding(.vertical, t.actionTitle == nil ? Spacing.s : 2)
-        .background(.black.opacity(0.8), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-        .allowsHitTesting(t.actionTitle != nil)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isStaticText)
+    private static func volumeSymbol(_ volume: Float, muted: Bool = false) -> String {
+        if muted || volume < 0.005 { return "speaker.slash.fill" }
+        return volume < 0.34 ? "speaker.wave.1.fill" : volume < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
     }
 
     private func saveSnapshot() async {
-        guard let image = await session.captureFrame() else { flash("Couldn't capture this frame"); return }
+        guard let image = await session.captureFrame() else { flash("Couldn't capture this frame", symbol: "camera", style: .warning); return }
         do {
             let place = try await SnapshotSaver.save(image, title: session.item?.title ?? "Bluebox", at: session.snapshot.position)
-            flash("Saved to \(place)")
+            flash("Saved to \(place)", symbol: "camera.fill")
         } catch {
-            flash(error.localizedDescription)
+            flash(error.localizedDescription, symbol: "exclamationmark.triangle.fill", style: .warning)
         }
     }
 
@@ -1029,6 +1167,7 @@ struct PlayerView: View {
                 Spacer(minLength: Spacing.s)
             }
             HStack(spacing: Spacing.xs) {
+                if let party = app.party { PartyChatButton(party: party) }
                 if platform != .mac, pipAvailable {
                     PlayerIconButton(symbol: pipActive ? "pip.exit" : "pip.enter",
                                      label: pipActive ? "Exit Picture in Picture" : "Picture in Picture") { togglePiP() }
@@ -1039,7 +1178,13 @@ struct PlayerView: View {
                         .frame(width: 44, height: 44)
                         .accessibilityLabel("AirPlay")
                         .help("AirPlay")
+                } else if vlcEngine != nil {
+                    // Dimmed rather than gone, so it can say why and point at an MP4 release.
+                    PlayerIconButton(symbol: "airplay.video", label: "AirPlay Isn't Available with VLC") { explainNoAirPlay() }
+                        .opacity(0.4)
+                        .accessibilityIdentifier("airPlayUnavailable")
                 }
+                openInMenu
                 #if os(iOS)
                 if PlayerOrientation.isPhone {
                     // Landscape ⇄ portrait, for watching upright (or turning back).
@@ -1056,6 +1201,46 @@ struct PlayerView: View {
             // Balances the close button so the title stays centred.
             .frame(minWidth: 44, alignment: .trailing)
         }
+    }
+
+    /// Open In…: the installed players, for what's playing. It closes here and
+    /// opens there, from the start or wherever that app remembers.
+    @ViewBuilder private var openInMenu: some View {
+        let players = ExternalPlayer.installed
+        if let item = session.item, let resource = session.currentResource, ExternalPlayer.canOpen(resource), !players.isEmpty {
+            BlueboxMenu("Open In") {
+                ExternalPlayerMenuSection(players: players) { player in
+                    Task {
+                        await app.closePlayer()
+                        await app.play(item, variant: resource.variant, in: player)
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel("Open In")
+            .help("Open in Another App")
+            .accessibilityIdentifier("openInMenu")
+        }
+    }
+
+    /// VLC plays MKV and the rest, but only AVPlayer can AirPlay: says so, and
+    /// offers the release picker (with add-ons) to choose an MP4 instead.
+    private func explainNoAirPlay() {
+        let container = (session.currentResource?.variant.container ?? session.currentResource?.url.pathExtension)
+            .flatMap { $0.isEmpty ? nil : $0.uppercased() }
+        let message = "This video plays in VLC\(container.map { " (\($0))" } ?? ""), which can't AirPlay. An MP4 release can."
+        if let item = session.item, canChooseRelease(for: item.key) {
+            flash(message, symbol: "airplay.video", kind: "airPlay", action: "Releases…") {
+                releaseRequest = TitleDetailView.ReleaseRequest(item: item)
+            }
+        } else {
+            flash(message, symbol: "airplay.video", style: .warning, kind: "airPlay")
+        }
+        poke()
     }
 
     /// "Harbor Lights · S2:E3 Signal Fires": one line in the bar, two in the top bar.
@@ -1450,6 +1635,7 @@ struct PlayerView: View {
                         onAddFile: { closePanel(); importingSubtitle = true },
                         onSearch: { closePanel(); searchingSubtitles = true },
                         onStyle: openStyle)
+                .environment(audioSync)
         case .speed:
             SpeedPanel(rate: session.snapshot.rate,
                        remaining: session.snapshot.duration.map { max($0 - session.snapshot.position, 0) }) { r in
@@ -1477,7 +1663,7 @@ struct PlayerView: View {
             await session.switchItem { await app.resolveEpisode(key) }
             if session.item?.key != key {
                 switchingTo = nil
-                flash("Couldn't open that episode")
+                flash("Couldn't open that episode", symbol: "exclamationmark.triangle.fill", style: .warning)
             }
         }
     }
@@ -1531,11 +1717,11 @@ struct PlayerView: View {
         } label: {
             Label(PlayerOrientation.mode == .landscape ? "Rotate to Landscape" : "Rotate to Portrait",
                   systemImage: PlayerOrientation.mode == .landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, Spacing.l)
+                .font(.callout.weight(.semibold))
+                .labelStyle(NoticeLabelStyle())
+                .padding(.horizontal, 16)
                 .frame(minHeight: 44)
-                .background(.black.opacity(0.75), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
+                .playerNoticeSurface()
         }
         .buttonStyle(PressableStyle())
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1684,7 +1870,7 @@ struct PlayerView: View {
 
     private func poke() {
         lastInteraction = Date()
-        if !controlsVisible { withAnimation(.easeOut(duration: 0.2)) { controlsVisible = true } }
+        if !controlsVisible { withAnimation(Motion.appear) { controlsVisible = true } }
     }
 
     /// Controls fade 3 s after the last touch, click or pointer move while
@@ -1696,7 +1882,7 @@ struct PlayerView: View {
             guard !Task.isCancelled else { return }
             let idle = Date().timeIntervalSince(lastInteraction) > 3
             if idle, controlsVisible, scrubFraction == nil, panel == nil, !hoveringControls, !subtitleEditing, boostedFrom == nil {
-                withAnimation(.easeIn(duration: 0.3)) { controlsVisible = false }
+                withAnimation(Motion.disappear) { controlsVisible = false }
                 #if os(macOS)
                 window.hidePointer()
                 #endif
@@ -1893,6 +2079,7 @@ struct PlayerIconButton: View {
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityLabel(label)
         .help(label)
     }
@@ -2035,9 +2222,3 @@ struct JumpToTimeSheet: View {
     }
 }
 
-/// A message at the top of the player, optionally with one action (Undo).
-struct PlayerToast: Equatable {
-    let message: String
-    var actionTitle: String?
-    let id = UUID()
-}

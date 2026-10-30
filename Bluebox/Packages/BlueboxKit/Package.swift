@@ -16,6 +16,8 @@ let package = Package(
         .library(name: "Domain", targets: ["Domain"]),
         // The Live Activity's attributes and look, shared with the iOS widget extension.
         .library(name: "DownloadsActivity", targets: ["DownloadsActivity"]),
+        // The library snapshot and bluebox:// links, shared with the widgets and Siri.
+        .library(name: "SystemSnapshot", targets: ["SystemSnapshot"]),
         // The Mac updater's signature check, linked by Apps/macOSUpdater alone.
         .library(name: "UpdateVerification", targets: ["UpdateVerification"]),
     ],
@@ -27,6 +29,8 @@ let package = Package(
         .target(name: "Domain"),
         // No dependencies, so the widget extension stays small.
         .target(name: "DownloadsActivity"),
+        // Foundation only, for the same reason.
+        .target(name: "SystemSnapshot"),
         // Foundation and Security only: the unsandboxed updater links nothing else.
         .target(name: "UpdateVerification"),
         // libtorrent 2.1 + Bluebox's Objective-C++ wrapper (BBTorrent), built from
@@ -70,7 +74,7 @@ let package = Package(
                 "Domain", "DesignSystem", "Metadata", "MediaSources",
                 "Subtitles", "Persistence", "Playback", "Sync", "Torrent", "Downloads",
                 "TorrentStreaming", "VLCPlayback", "Addons", "SkipSegments", "DownloadsActivity",
-                "UpdateVerification",
+                "UpdateVerification", "SystemSnapshot",
             ]
         ),
         .testTarget(name: "DomainTests", dependencies: ["Domain", "TestingSupport"]),
@@ -88,6 +92,7 @@ let package = Package(
         .testTarget(name: "AddonsTests", dependencies: ["Addons"]),
         .testTarget(name: "TorrentStreamingTests", dependencies: ["TorrentStreaming"]),
         .testTarget(name: "UpdateVerificationTests", dependencies: ["UpdateVerification"]),
+        .testTarget(name: "SystemSnapshotTests", dependencies: ["SystemSnapshot"]),
         .testTarget(name: "SyncTests", dependencies: ["Sync", "Persistence", "TestingSupport"]),
     ]
 )

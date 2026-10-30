@@ -23,14 +23,18 @@ public enum Palette {
     /// The faint edge around panels and menus.
     public static let edge = Color.white.opacity(0.07)
 
-    /// Brand blue (#3D7BFF): progress, selection, badges, links, the wordmark.
-    public static let brand = Color(red: 0.24, green: 0.48, blue: 1.0)
-    /// Lighter blue for text and glyphs on black (6.9:1 on `background`).
-    public static let brandBright = Color(red: 0.43, green: 0.61, blue: 1.0)
+    // The accent follows Settings › Appearance › Theme Colour (`ThemeAccent`).
+    // Reading one inside a view's body observes the choice, so a change
+    // repaints everything that uses it, the wordmark included.
+
+    /// Brand blue (#3D7BFF) by default: progress, selection, badges, links, the wordmark.
+    public static var brand: Color { ThemeStore.shared.accent.brand }
+    /// Lighter brand for text and glyphs on black (6.9:1 on `background` for blue).
+    public static var brandBright: Color { ThemeStore.shared.accent.bright }
     /// Pressed/darker brand state.
-    public static let brandDeep = Color(red: 0.16, green: 0.36, blue: 0.84)
-    /// The blue wash behind a hovered or highlighted menu row.
-    public static let wash = Color(red: 0.24, green: 0.48, blue: 1.0).opacity(0.22)
+    public static var brandDeep: Color { ThemeStore.shared.accent.deep }
+    /// The wash behind a hovered or highlighted menu row.
+    public static var wash: Color { ThemeStore.shared.accent.brand.opacity(0.22) }
     /// Kept for older call sites: the dark end of hero gradients and glows,
     /// now neutral so the finish stays black and grey.
     public static let navy = Color(white: 0.043)
@@ -48,6 +52,113 @@ public enum Palette {
     /// Secondary buttons ("My List", "Releases"): solid raised grey, no glass.
     public static let glassFill = Color(white: 0.137)
     public static let glassFillPressed = Color(white: 0.20)
+}
+
+/// Settings › Appearance › Theme Colour: the one accent colour, from a short
+/// list picked to hold up on true black (each `bright` clears 4.5:1 on it).
+/// Blue is Bluebox's own; the rest recolour the wordmark and, where the
+/// platform allows, the app icon (`hueRotation` from the blue icon).
+public enum ThemeAccent: String, CaseIterable, Identifiable, Sendable {
+    case blue, indigo, purple, pink, red, orange, amber, green, teal, graphite
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .blue: "Bluebox Blue"
+        case .indigo: "Indigo"
+        case .purple: "Purple"
+        case .pink: "Pink"
+        case .red: "Red"
+        case .orange: "Orange"
+        case .amber: "Amber"
+        case .green: "Green"
+        case .teal: "Teal"
+        case .graphite: "Graphite"
+        }
+    }
+
+    public var brand: Color {
+        switch self {
+        case .blue: Color(red: 0.24, green: 0.48, blue: 1.0)
+        case .indigo: Color(red: 0.40, green: 0.40, blue: 1.0)
+        case .purple: Color(red: 0.62, green: 0.36, blue: 0.98)
+        case .pink: Color(red: 0.96, green: 0.32, blue: 0.62)
+        case .red: Color(red: 0.94, green: 0.26, blue: 0.27)
+        case .orange: Color(red: 1.0, green: 0.50, blue: 0.16)
+        case .amber: Color(red: 0.93, green: 0.70, blue: 0.16)
+        case .green: Color(red: 0.20, green: 0.74, blue: 0.40)
+        case .teal: Color(red: 0.10, green: 0.70, blue: 0.75)
+        case .graphite: Color(white: 0.62)
+        }
+    }
+
+    public var bright: Color {
+        switch self {
+        case .blue: Color(red: 0.43, green: 0.61, blue: 1.0)
+        case .indigo: Color(red: 0.56, green: 0.56, blue: 1.0)
+        case .purple: Color(red: 0.74, green: 0.56, blue: 1.0)
+        case .pink: Color(red: 1.0, green: 0.52, blue: 0.74)
+        case .red: Color(red: 1.0, green: 0.47, blue: 0.47)
+        case .orange: Color(red: 1.0, green: 0.64, blue: 0.38)
+        case .amber: Color(red: 1.0, green: 0.82, blue: 0.40)
+        case .green: Color(red: 0.40, green: 0.86, blue: 0.56)
+        case .teal: Color(red: 0.36, green: 0.84, blue: 0.88)
+        case .graphite: Color(white: 0.80)
+        }
+    }
+
+    public var deep: Color {
+        switch self {
+        case .blue: Color(red: 0.16, green: 0.36, blue: 0.84)
+        case .indigo: Color(red: 0.28, green: 0.28, blue: 0.82)
+        case .purple: Color(red: 0.46, green: 0.24, blue: 0.80)
+        case .pink: Color(red: 0.78, green: 0.20, blue: 0.48)
+        case .red: Color(red: 0.76, green: 0.16, blue: 0.18)
+        case .orange: Color(red: 0.84, green: 0.38, blue: 0.08)
+        case .amber: Color(red: 0.76, green: 0.54, blue: 0.08)
+        case .green: Color(red: 0.12, green: 0.56, blue: 0.28)
+        case .teal: Color(red: 0.04, green: 0.52, blue: 0.58)
+        case .graphite: Color(white: 0.44)
+        }
+    }
+
+    /// Turns the blue app icon into this colour: degrees round the colour
+    /// wheel (CIHueAdjust's, tuned by eye) from the icon's blue, and how much
+    /// colour to keep. tools/make-theme-icons.swift uses the same numbers.
+    public var iconHueRotation: Double {
+        switch self {
+        case .blue, .graphite: 0
+        case .indigo: 12
+        case .purple: 28
+        case .pink: 88
+        case .red: 118
+        case .orange: 142
+        case .amber: 160
+        case .green: -85
+        case .teal: -45
+        }
+    }
+
+    public var iconSaturation: Double { self == .graphite ? 0 : 1 }
+
+    /// The alternate app icon's name (iOS asset catalog), nil for the main icon.
+    public var alternateIconName: String? { self == .blue ? nil : "AppIcon-\(rawValue.capitalized)" }
+}
+
+/// The chosen accent, kept on this device. Observable, so `Palette.brand`
+/// read inside a body redraws that view when it changes.
+@Observable
+public final class ThemeStore: @unchecked Sendable {
+    public static let shared = ThemeStore()
+    static let key = "bluebox.themeAccent"
+
+    public var accent: ThemeAccent {
+        didSet { UserDefaults.standard.set(accent.rawValue, forKey: Self.key) }
+    }
+
+    init() {
+        accent = UserDefaults.standard.string(forKey: Self.key).flatMap(ThemeAccent.init(rawValue:)) ?? .blue
+    }
 }
 
 public enum Spacing {
@@ -150,6 +261,19 @@ public struct CardMetrics: Sendable {
         case ..<900: posterWidth = 136; landscapeWidth = 272
         case ..<1400: posterWidth = 156; landscapeWidth = 310
         default: posterWidth = 180; landscapeWidth = 350
+        }
+    }
+}
+
+public extension Text {
+    /// Words held in a `String` (a component's title, an enum's name) looked
+    /// up in the app's strings (Apps/Shared/Localizable.xcstrings) like a
+    /// literal would be. Not for catalog text such as a film's name.
+    init(ui string: String) {
+        if string.contains("%") {
+            self.init(verbatim: string)
+        } else {
+            self.init(LocalizedStringKey(string))
         }
     }
 }

@@ -40,6 +40,8 @@ struct SearchFilter: Hashable, Sendable {
     var narrowsTitles: Bool { playableNow || uhd || decade != nil }
     /// "Playable now" and "4K" need to know what's downloaded, in the debrid cloud or found.
     var needsAvailability: Bool { playableNow || uhd }
+    /// Any chip other than All is on: Search offers Clear Filters.
+    var isNarrowed: Bool { self != SearchFilter() }
 
     func matches(_ t: Title, availability: SearchAvailability) -> Bool {
         switch scope {
@@ -67,6 +69,41 @@ struct SearchFilter: Hashable, Sendable {
         SearchSections.build(query: query,
                              titles: includesTitles ? titles.filter { matches($0, availability: availability) } : [],
                              people: includesPeople ? people : [])
+    }
+}
+
+/// A query that ends in a year ("dune 2021", "the thing (1982)"): the
+/// catalog is searched for the words, and titles from that year lead.
+struct SearchQuery: Equatable, Sendable {
+    let text: String
+    let year: Int?
+
+    init(_ query: String) {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var words = q.split(separator: " ")
+        if words.count > 1, let last = words.last,
+           let year = Int(last.trimmingCharacters(in: CharacterSet(charactersIn: "()"))),
+           (1900...2100).contains(year) {
+            words.removeLast()
+            self.text = words.joined(separator: " ")
+            self.year = year
+        } else {
+            self.text = q
+            self.year = nil
+        }
+    }
+
+    /// Titles from `year` first (keeping the catalog's order otherwise).
+    func ranked(_ titles: [Title]) -> [Title] {
+        guard let year else { return titles }
+        let hits = titles.filter { $0.year == year }
+        return hits + titles.filter { $0.year != year }
+    }
+
+    /// Your-library matching: the words, and the year when one was typed.
+    func matches(_ t: Title) -> Bool {
+        guard t.name.localizedStandardContains(text) else { return false }
+        return year == nil || t.year == year
     }
 }
 
@@ -138,6 +175,13 @@ struct RecentSearch: Codable, Hashable, Identifiable, Sendable {
     /// "Harbor Lights · Series", under the query.
     var detail: String?
     var id: String { query.lowercased() }
+}
+
+/// Settings › Privacy › Save Search History: off, nothing new is remembered
+/// (what's there stays until cleared). One switch for the device.
+enum SearchHistoryPreference {
+    static let key = "bluebox.searchHistory.saves"
+    static var saves: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
 }
 
 /// Recent searches, newest first, at most `limit`. Each profile has its own (`ViewMemory`).
@@ -248,7 +292,7 @@ struct FilterChipLabel: View {
     var body: some View {
         HStack(spacing: 4) {
             if let systemImage { Image(systemName: systemImage).font(.caption2.weight(.bold)) }
-            Text(title).lineLimit(1)
+            Text(ui: title).lineLimit(1)
             if opensMenu { Image(systemName: "chevron.down").font(.system(size: 8, weight: .heavy)) }
         }
         .font(.subheadline.weight(.semibold))

@@ -17,6 +17,14 @@ public struct NowPlayingItem: Hashable, Sendable {
     }
 }
 
+/// Something asked of the player's transport (`PlayerSession.onTransport`).
+public enum PlayerTransportEvent: Equatable, Sendable {
+    case play(at: TimeInterval)
+    case pause(at: TimeInterval)
+    case seek(to: TimeInterval, playing: Bool)
+    case rate(Float)
+}
+
 public enum SubtitleSelection: Hashable, Sendable {
     case off
     case embedded(String)
@@ -138,7 +146,19 @@ public final class PlayerSession {
     /// Called after any item starts (first play, Up Next, Next Episode), so the
     /// app can apply its playback defaults (speed, audio language, subtitle delay).
     @ObservationIgnored public var onItemStarted: (@MainActor (NowPlayingItem) async -> Void)?
+    /// Play, pause, seek and speed as they're asked for here (Watch Together
+    /// passes them on to the room). Told before the engine is.
+    @ObservationIgnored public var onTransport: (@MainActor (PlayerTransportEvent) -> Void)?
+    /// Called once per item about `nearEndFraction` of the way through, so the
+    /// app can pick the next episode's release in the background.
+    @ObservationIgnored public var onNearEnd: (@MainActor (MediaKey) -> Void)?
+    @ObservationIgnored private var nearEndNoted = false
+    public static let nearEndFraction = 0.85
     @ObservationIgnored private var subtitleTask: Task<Void, Never>?
+    /// The playhead for subtitle files, between the engine's updates.
+    @ObservationIgnored private var subtitleClock = PlayheadClock()
+    /// Wakes at the next line change, so lines keep their times at any speed.
+    @ObservationIgnored private var cueWake: Task<Void, Never>?
     @ObservationIgnored private var sleepTask: Task<Void, Never>?
     @ObservationIgnored private var looping = false
     /// True while `start` swaps items: the old engine may still report positions, which
@@ -180,7 +200,8 @@ public final class PlayerSession {
         self.item = item
         self.resource = resource
         lastSavedPosition = nil
-        timeline = nil; subtitleText = nil; subtitleError = nil; subtitleSelection = .off
+        nearEndNoted = false
+        timeline = nil; subtitleText = nil; subtitleClock.reset(); subtitleError = nil; subtitleSelection = .off
         secondaryTimeline = nil; secondarySubtitleID = nil; secondarySubtitleText = nil; pendingSyncPoint = nil
         subtitleBeforeOff = nil; cueCache = nil; torrentPickPending = false; lastBurnIn = nil
         // Timing fixes belong to one file: the next episode's starts in sync
@@ -254,6 +275,7 @@ public final class PlayerSession {
         cancelUpNext()
         subtitleTask?.cancel()
         secondaryTask?.cancel()
+        cueWake?.cancel(); cueWake = nil
         sleepTask?.cancel(); sleepTimer = .off
         await persistProgress()
         engine.stop()
@@ -266,6 +288,7 @@ public final class PlayerSession {
     /// Flips at once on screen; the engine catches up (VLC can take a moment).
     public func togglePlayPause() {
         let play = !appearsPlaying
+        onTransport?(play ? .play(at: displayPosition) : .pause(at: displayPosition))
         setOptimistic(play)
         if play { engine.play() } else { engine.pause() }
     }
@@ -283,9 +306,15 @@ public final class PlayerSession {
     }
 
     public func seek(to seconds: TimeInterval) async {
+        await seek(to: seconds, announce: true)
+    }
+
+    private func seek(to seconds: TimeInterval, announce: Bool) async {
         cancelUpNext()
         let target = max(0, snapshot.duration.map { min(seconds, max($0 - 0.5, 0)) } ?? seconds)
+        if announce { onTransport?(.seek(to: target, playing: appearsPlaying)) }
         seekTarget = target
+        subtitleClock.reset()
         await engine.seek(to: target)
         if seekTarget == target { seekTarget = nil }
         updateSubtitleText()
@@ -321,7 +350,8 @@ public final class PlayerSession {
         let resume = isScrubbing ? resumesAfterScrub : snapshot.status.isActive
         isScrubbing = false
         resumesAfterScrub = false
-        await seek(to: seconds)
+        onTransport?(.seek(to: max(0, seconds), playing: resume))
+        await seek(to: seconds, announce: false)
         if resume, !isScrubbing { engine.play() }
     }
 
@@ -332,7 +362,10 @@ public final class PlayerSession {
 
     /// The speed last set in this session: the next episode keeps it.
     public private(set) var chosenRate: Float?
-    public func setRate(_ rate: Float) { chosenRate = rate; engine.setRate(rate) }
+    public func setRate(_ rate: Float) {
+        onTransport?(.rate(rate))
+        chosenRate = rate; engine.setRate(rate)
+    }
 
     public func setVolume(_ volume: Float) {
         self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
@@ -734,11 +767,16 @@ public final class PlayerSession {
     }
 
     private func updateSubtitleText() {
+        let playing = snapshot.status == .playing
+        let t = subtitleClock.time(position: snapshot.position, playing: playing, rate: snapshot.rate)
         var text: String?
+        var files: [SubtitleTimeline] = []
         if case .embedded = subtitleSelection { text = snapshot.embeddedSubtitleText }
-        else { text = timeline?.text(at: snapshot.position, offset: subtitleOffset) }
+        else { text = timeline?.text(at: t, offset: subtitleOffset); files += [timeline].compactMap { $0 } }
         var second = secondaryIsEmbedded ? snapshot.secondaryEmbeddedSubtitleText
-            : secondaryTimeline?.text(at: snapshot.position, offset: subtitleOffset)
+            : secondaryTimeline?.text(at: t, offset: subtitleOffset)
+        if !secondaryIsEmbedded, let secondaryTimeline { files.append(secondaryTimeline) }
+        scheduleCueWake(files, after: t, playing: playing)
         if subtitleStyle.hidesSoundCues {
             text = text.flatMap(SoundCues.strip)
             second = second.flatMap(SoundCues.strip)
@@ -746,6 +784,21 @@ public final class PlayerSession {
         if text != subtitleText { subtitleText = text }
         if second != secondarySubtitleText { secondarySubtitleText = second }
         pushBurnIn()
+    }
+
+    /// The engine reports the position only a few times a second (AVPlayer every
+    /// quarter second of the video, so half a second at 2×): without this a line
+    /// would come up to that late, and a short one at 4× could be skipped.
+    private func scheduleCueWake(_ files: [SubtitleTimeline], after t: TimeInterval, playing: Bool) {
+        cueWake?.cancel(); cueWake = nil
+        guard playing, let next = files.compactMap({ $0.nextChange(after: t, offset: subtitleOffset) }).min() else { return }
+        let wait = (next - t) / Double(max(snapshot.rate, 0.01))
+        guard wait < 2 else { return }  // the engine reports again long before
+        cueWake = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(wait, 0) + 0.002))
+            guard !Task.isCancelled else { return }
+            self?.updateSubtitleText()
+        }
     }
 
     /// The lines Bluebox draws, handed to the engine to draw into the picture
@@ -856,6 +909,11 @@ public final class PlayerSession {
             scheduleSave()
         } else if s.status == .playing, abs(s.position - (lastSavedPosition ?? 0)) >= saveInterval {
             scheduleSave()
+        }
+        if !nearEndNoted, let duration = s.duration, duration > 0, s.position >= duration * Self.nearEndFraction,
+           let key = item?.key {
+            nearEndNoted = true
+            onNearEnd?(key)
         }
         if statusChanged, s.status == .ended {
             if sleepTimer == .endOfItem { sleepTimer = .off; return }  // stop here instead of autoplaying

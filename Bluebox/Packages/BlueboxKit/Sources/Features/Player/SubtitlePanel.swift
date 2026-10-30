@@ -159,7 +159,10 @@ struct SubtitleTimingPage: View {
     @State private var subtitleFPS = 25.0
     @State private var videoFPS = 24000.0 / 1001
     @State private var showsDrift = false
-    @State private var audioSync = SubtitleAudioSync()
+    /// The player's, so a sync carries on when this page or the card closes.
+    @Environment(SubtitleAudioSync.self) private var sharedSync: SubtitleAudioSync?
+    @State private var ownSync = SubtitleAudioSync()
+    private var audioSync: SubtitleAudioSync { sharedSync ?? ownSync }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -219,7 +222,7 @@ struct SubtitleTimingPage: View {
                         .font(.caption.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
                 }
             case .failed(let message):
-                Text(message).font(.caption).foregroundStyle(Palette.warning)
+                Text(ui: message).font(.caption).foregroundStyle(Palette.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -419,7 +422,7 @@ struct StyleRow<Control: View>: View {
 
     var body: some View {
         GridRow {
-            Text(title).font(.subheadline).foregroundStyle(Palette.textSecondary)
+            Text(ui: title).font(.subheadline).foregroundStyle(Palette.textSecondary)
                 .lineLimit(1).fixedSize()
             control.frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -514,7 +517,7 @@ struct PanelSegments<Value: Hashable>: View {
             ForEach(options, id: \.1) { title, value in
                 let on = value == selection
                 Button { selection = value } label: {
-                    Text(title)
+                    Text(ui: title)
                         .font(PanelMetrics.chipFont)
                         .frame(maxWidth: .infinity, minHeight: PanelMetrics.control - 4)
                         .lineLimit(1).minimumScaleFactor(0.8)
@@ -567,7 +570,7 @@ struct ColorSwatches: View {
     var body: some View {
         HStack(spacing: PanelMetrics.dense ? 2 : 6) {
             if showsTitle {
-                Text(title).font(.subheadline)
+                Text(ui: title).font(.subheadline)
                 Spacer(minLength: Spacing.s)
             }
             ForEach(choices, id: \.self) { c in

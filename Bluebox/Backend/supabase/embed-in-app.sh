@@ -30,6 +30,10 @@ out="$here/../../Packages/BlueboxKit/Sources/Sync/SupabaseSetupFiles.swift"
   echo '    /// Backend/supabase/migrations/20261030000000_realtime_private.sql: private Realtime channels. Safe to run again; automatic setup runs it every time.'
   printf '    public static let realtimePrivateMigrationSQL = #"""\n'
   cat "$here/migrations/20261030000000_realtime_private.sql"
+  printf '"""#\n\n'
+  echo '    /// Backend/supabase/migrations/20261031000000_watch_together.sql: Watch Together rooms. Safe to run again; automatic setup runs it every time.'
+  printf '    public static let watchTogetherMigrationSQL = #"""\n'
+  cat "$here/migrations/20261031000000_watch_together.sql"
   printf '"""#\n'
   echo '}'
 } > "$out"

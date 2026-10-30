@@ -47,6 +47,8 @@ struct TorrentsSettingsPage: View {
             guard !loadedKey else { return }
             debridKey = app.debridKey
             loadedKey = true
+            // The plan's days left change daily; read them fresh.
+            await app.refreshDebridAccount()
         }
         .onChange(of: debridKey) { _, new in if loadedKey { app.setDebridKey(new) } }
         // A search hit for an engine setting opens Torrent Engine, which scrolls to it.
@@ -102,6 +104,14 @@ struct TorrentsSettingsPage: View {
                 if settings.debrid.canCheckCache {
                     Toggle("Check What's Cached", isOn: setting(\.checkDebridCache))
                         .settingsRow("Check What's Cached")
+                }
+                if let plan = app.debridPlanSummary {
+                    LabeledContent { Text(ui: plan) } label: { Text("Plan") }
+                        .settingsRow("Debrid Plan")
+                    Toggle("Remind Before the Plan Ends", isOn: Binding(
+                        get: { app.features.remindBeforeDebridPlanEnds },
+                        set: { app.setRemindBeforeDebridPlanEnds($0) }))
+                        .settingsRow("Remind Before the Plan Ends")
                 }
             }
         } header: {

@@ -22,7 +22,7 @@ public struct ProgressRing: View {
                 .trim(from: 0, to: min(max(fraction, 0.02), 1))
                 .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.25), value: fraction)
+                .animation(Motion.progress, value: fraction)
         }
         .padding(lineWidth / 2)
     }
@@ -62,7 +62,7 @@ public struct EdgeProgressBar: View {
             }
         }
         .frame(height: height)
-        .animation(.linear(duration: 0.25), value: fraction)
+        .animation(Motion.progress, value: fraction)
         .accessibilityHidden(true)
     }
 }

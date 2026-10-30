@@ -175,7 +175,7 @@ private func prefs() -> PreferencesStore {
     @Test func kidsProfilesAreCappedAndOldProfilesDecode() throws {
         var p = Profile(id: "k", name: "Kids", updatedAt: .now, maturity: .age16, isKids: true)
         #expect(p.effectiveMaturity == .age7)
-        #expect(p.contentFilter == ContentFilter(maximum: .age7, familyOnlyWhenUnrated: true))
+        #expect(p.contentFilter == ContentFilter(maximum: .age7, familyOnlyWhenUnrated: true, blocksUnrated: true))
         p.isKids = false
         #expect(p.contentFilter == ContentFilter(maximum: .age16))
         p.maturity = .all
@@ -222,10 +222,10 @@ private func prefs() -> PreferencesStore {
         #expect(cache.contentFilter == nil)
         let kids = app.addProfile(name: "Kids", symbol: "pawprint.fill", color: 8, isKids: true)
         await app.switchProfile(to: kids.id)
-        #expect(cache.contentFilter == ContentFilter(maximum: .age7, familyOnlyWhenUnrated: true))
+        #expect(cache.contentFilter == ContentFilter(maximum: .age7, familyOnlyWhenUnrated: true, blocksUnrated: true))
         cache.noteCertification("R", for: .movie(tmdbID: 77))
         #expect(app.maturityBlock(for: .movie(tmdbID: 77)) != nil)
-        #expect(!app.allowsCertification("R") && app.allowsCertification("G") && app.allowsCertification(nil))
+        #expect(!app.allowsCertification("R") && app.allowsCertification("G") && !app.allowsCertification(nil))
         await app.switchProfile(to: Profile.defaultID)
         #expect(cache.contentFilter == nil)
         #expect(app.maturityBlock(for: .movie(tmdbID: 77)) == nil)
@@ -290,5 +290,119 @@ private struct StubCatalogue: MetadataProvider {
         #expect(app.continueWatchingTitle == "Continue Watching for Sam")
         #expect(app.myListTitle == "My List")  // a list's name, the same everywhere
         #expect(app.showsSharedTags)
+    }
+}
+
+// MARK: - Restricted profiles
+
+@MainActor
+@Suite struct RestrictedProfileTests {
+    private func makeApp() throws -> AppModel {
+        AppModel(store: try LibraryStore.make(inMemory: true), secrets: MemorySecretStore(), prefs: prefs(), forceSample: true)
+    }
+
+    @Test func settingsAsksForTheRestrictedProfilesOwnPIN() async throws {
+        let app = try makeApp()
+        let teen = app.addProfile(name: "Sam", symbol: "star.fill", color: 2, maturity: .age13)
+        try app.setPIN("1357", for: teen.id)
+        #expect(!app.settingsNeedsPIN)  // the default profile has no limit
+        await app.switchProfile(to: teen.id)
+        #expect(app.settingsNeedsPIN)
+        #expect(app.settingsPINProfiles.map(\.id) == [teen.id])
+        #expect(!app.unlockSettings(pin: "0000"))
+        #expect(app.settingsNeedsPIN)
+        #expect(app.unlockSettings(pin: "1357"))
+        #expect(!app.settingsNeedsPIN)
+        // Background locks it again; so does changing profile.
+        app.lockSettings()
+        #expect(app.settingsNeedsPIN)
+        #expect(app.unlockSettings(pin: "1357"))
+        await app.switchProfile(to: Profile.defaultID)
+        await app.switchProfile(to: teen.id)
+        #expect(app.settingsNeedsPIN)
+    }
+
+    @Test func aLimitWithoutAPINDoesntAsk() async throws {
+        let app = try makeApp()
+        let teen = app.addProfile(name: "Sam", symbol: "star.fill", color: 2, maturity: .age13)
+        await app.switchProfile(to: teen.id)
+        #expect(!app.settingsNeedsPIN)
+    }
+
+    /// A Kids profile without its own PIN takes a grown-up's.
+    @Test func kidsProfilesTakeAGrownUpsPIN() async throws {
+        let app = try makeApp()
+        let kids = app.addProfile(name: "Kids", symbol: "pawprint.fill", color: 8, isKids: true)
+        await app.switchProfile(to: kids.id)
+        #expect(!app.settingsNeedsPIN)  // no PIN anywhere: nothing to ask for
+        try app.setPIN("8642", for: Profile.defaultID)
+        #expect(app.settingsNeedsPIN)
+        #expect(!app.unlockSettings(pin: "1111"))
+        #expect(app.unlockSettings(pin: "8642"))
+        // Its own PIN, once it has one, is the one asked for.
+        try app.setPIN("1111", for: kids.id)
+        app.lockSettings()
+        #expect(app.settingsPINProfiles.map(\.id) == [kids.id])
+        #expect(!app.unlockSettings(pin: "8642"))
+        #expect(app.unlockSettings(pin: "1111"))
+    }
+
+    /// Turning Kids on for the watching profile from inside Settings doesn't lock you out mid-edit.
+    @Test func restrictingTheWatchingProfileKeepsSettingsOpen() async throws {
+        let app = try makeApp()
+        try app.setPIN("2222", for: Profile.defaultID)
+        var me = app.currentProfile
+        me.isKids = true
+        app.updateProfile(me)
+        #expect(!app.settingsNeedsPIN)
+        app.lockSettings()
+        #expect(app.settingsNeedsPIN)
+    }
+
+    @Test func unratedTitlesAreBlockedOnKidsUnlessAllowed() async throws {
+        let app = try makeApp()
+        let cache = try #require(app.metadata as? CachedMetadataProvider)
+        let kids = app.addProfile(name: "Kids", symbol: "pawprint.fill", color: 8, isKids: true)
+        await app.switchProfile(to: kids.id)
+        #expect(cache.contentFilter?.blocksUnrated == true)
+        #expect(!app.allowsCertification(nil) && !app.allowsCertification("NR"))
+        let unrated = MediaKey.movie(tmdbID: 9_999_001)
+        let block = try #require(app.maturityBlock(for: unrated))
+        #expect(!block.contains("Manage Profiles"))
+        cache.noteCertification("G", for: unrated)
+        #expect(app.maturityBlock(for: unrated) == nil)
+
+        var p = app.currentProfile
+        p.allowsUnrated = true
+        app.updateProfile(p)
+        #expect(cache.contentFilter?.blocksUnrated == false)
+        #expect(app.allowsCertification(nil))
+        #expect(app.maturityBlock(for: .movie(tmdbID: 9_999_002)) == nil)
+        #expect(SettingsSearchIndex.search("unrated").first?.title == "Allow Unrated Titles")
+    }
+
+    @Test func blockMessagesDontSayHowToChangeTheLimit() async throws {
+        let app = try makeApp()
+        let cache = try #require(app.metadata as? CachedMetadataProvider)
+        let teen = app.addProfile(name: "Sam", symbol: "star.fill", color: 2, maturity: .age13)
+        await app.switchProfile(to: teen.id)
+        cache.noteCertification("R", for: .movie(tmdbID: 9_999_003))
+        let block = try #require(app.maturityBlock(for: .movie(tmdbID: 9_999_003)))
+        #expect(block.contains("R") && !block.contains("Manage Profiles") && !block.contains("Change"))
+        #expect(app.maturityBlock(for: .movie(tmdbID: 9_999_004)) == nil)  // unrated plays outside Kids by default
+    }
+
+    @Test func allowUnratedDefaultsAndDecodes() throws {
+        #expect(!Profile(id: "k", name: "K", updatedAt: .now, isKids: true).effectiveAllowsUnrated)
+        #expect(Profile(id: "t", name: "T", updatedAt: .now, maturity: .age13).effectiveAllowsUnrated)
+        #expect(Profile(id: "t", name: "T", updatedAt: .now, maturity: .age13, allowsUnrated: false).contentFilter?.blocksUnrated == true)
+        let old = #"{"id":"a","name":"Al","updatedAt":0,"isKids":true}"#
+        let decoded = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))
+        #expect(decoded.allowsUnrated == nil && decoded.contentFilter?.blocksUnrated == true)
+        // Not synced: a newer profile from the cloud keeps this device's choice.
+        let store = ProfileStore(prefs: prefs())
+        store.save(Profile(id: "k", name: "Kids", updatedAt: .now, isKids: true, allowsUnrated: true))
+        store.applyRemote([Profile(id: "k", name: "Kids", updatedAt: .now.addingTimeInterval(60))])
+        #expect(store.profile("k")?.allowsUnrated == true)
     }
 }

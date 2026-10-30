@@ -48,7 +48,7 @@ public struct ArtworkView: View {
         }
         do {
             let img = try await ImagePipeline.shared.image(for: url, maxPixelWidth: pixelWidth)
-            withAnimation(.easeOut(duration: 0.2)) { image = img }
+            withAnimation(Motion.appear) { image = img }
         } catch {
             if !Task.isCancelled { failed = true }
         }
@@ -354,7 +354,7 @@ public struct BlueboxWordmark: View {
     public init(size: CGFloat = 28) { self.size = size }
     public var body: some View {
         BlueboxLetters.sized(size)
-            .foregroundStyle(LinearGradient(colors: [Palette.brand, Color(red: 0.11, green: 0.30, blue: 0.85)],
+            .foregroundStyle(LinearGradient(colors: [Palette.brand, Palette.brandDeep],
                                             startPoint: .top, endPoint: .bottom))
             .shadow(color: Palette.navy, radius: size * 0.3)
             .accessibilityElement()
@@ -459,13 +459,13 @@ public struct StateMessage: View {
                 symbol
                     .padding(.bottom, Spacing.xs)
                     .accessibilityHidden(true)
-                Text(title)
+                Text(ui: title)
                     .font(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 if let message {
-                    Text(message).font(.callout).foregroundStyle(Palette.textSecondary)
+                    Text(ui: message).font(.callout).foregroundStyle(Palette.textSecondary)
                         .multilineTextAlignment(.center).frame(maxWidth: 420)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -474,7 +474,7 @@ public struct StateMessage: View {
 
             if let actionTitle, let action {
                 Button(action: action) {
-                    Text(actionTitle).lineLimit(1).frame(minWidth: 160)
+                    Text(ui: actionTitle).lineLimit(1).frame(minWidth: 160)
                 }
                 .buttonStyle(PlayButtonStyle())
                 .padding(.top, Spacing.xl)
@@ -526,7 +526,7 @@ public struct InlineNotice: View {
             if let actionTitle, let action {
                 Text("·").font(.footnote).foregroundStyle(Palette.textTertiary).accessibilityHidden(true)
                 Button(action: action) {
-                    Text(actionTitle)
+                    Text(ui: actionTitle)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Palette.brandBright)
                         .frame(minHeight: 32)

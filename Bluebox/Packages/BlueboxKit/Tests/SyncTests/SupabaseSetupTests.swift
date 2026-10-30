@@ -141,8 +141,18 @@ final class StubHTTP: HTTPClient, @unchecked Sendable {
         #expect(old.realtimePrivateMissing)
         #expect(old.warnings.count == 1 && old.warnings[0].contains("20261030000000_realtime_private.sql"))
         #expect(old.warnings[0].contains("Allow public access"))
+        #expect(old.scripts == [.init(fileName: "20261030000000_realtime_private.sql", sql: SupabaseSetupFiles.realtimePrivateMigrationSQL)])
         let current = try await SupabaseProjectProbe.check(config, http: StubHTTP.healthy())
-        #expect(!current.realtimePrivateMissing)
+        #expect(!current.realtimePrivateMissing && current.scripts.isEmpty)
+    }
+
+    /// Set up before account settings: the warning names the migration, and its SQL is there to copy.
+    @Test func reportsMissingSettingsTableWithItsScript() async throws {
+        let old = try await SupabaseProjectProbe.check(config, http: StubHTTP.healthy(missing: ["account_settings", "rpc/bluebox_realtime_private"]))
+        #expect(old.settingsTableMissing && old.realtimePrivateMissing)
+        #expect(old.warnings.count == 2 && old.warnings[0].contains("20261029000000_account_settings.sql"))
+        #expect(old.scripts.map(\.fileName) == ["20261029000000_account_settings.sql", "20261030000000_realtime_private.sql"])
+        #expect(old.scripts[0].sql == SupabaseSetupFiles.accountSettingsMigrationSQL)
     }
 
     @Test func missingTablesSayRunSetupSQL() async {

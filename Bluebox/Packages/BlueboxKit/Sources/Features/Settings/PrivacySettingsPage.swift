@@ -21,6 +21,8 @@ extension SettingsPage {
 /// whose choice it is: the profile's, the account's, or this device's.
 struct PrivacySettingsPage: View {
     @Environment(AppModel.self) private var app
+    @AppStorage(SearchHistoryPreference.key) private var savesSearchHistory = true
+    @State private var confirmClearSearches = false
 
     var body: some View {
         @Bindable var switches = app.featureSwitches
@@ -59,6 +61,25 @@ struct PrivacySettingsPage: View {
                 Text("Your Account")
             } footer: {
                 Text("The same on every device signed in to your account.")
+            }
+
+            Section {
+                FeatureToggle("Save Search History", isOn: $savesSearchHistory,
+                              detail: "Search lists what you searched for recently, with the top result's picture. Off: nothing new is remembered.")
+                    .settingsRow("Save Search History")
+                Button("Clear Search History", role: .destructive) { confirmClearSearches = true }
+                    .settingsRow("Clear Search History")
+                    .confirmationDialog("Clear search history for every profile on this device?",
+                                        isPresented: $confirmClearSearches, titleVisibility: .visible) {
+                        Button("Clear Search History", role: .destructive) {
+                            app.clearSearchHistory()
+                            app.showToast(AppToast("Search History Cleared", style: .success))
+                        }
+                    }
+            } header: {
+                Text("Search")
+            } footer: {
+                Text("Recent searches stay on this device, one list per profile.")
             }
 
             Section {
@@ -120,8 +141,8 @@ private struct FeatureToggle: View {
     var body: some View {
         Toggle(isOn: $isOn) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).foregroundStyle(Palette.textPrimary)
-                Text(detail)
+                Text(ui: title).foregroundStyle(Palette.textPrimary)
+                Text(ui: detail)
                     .font(.footnote)
                     .foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

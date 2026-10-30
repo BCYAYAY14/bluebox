@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 /// Sync to the Audio: lines up words recognised in the soundtrack with the
 /// subtitle text and works out the delay and drift.
@@ -74,13 +75,23 @@ public enum SubtitleAudioAlignment {
                     fitted.setScale(1)
                     fitted.align(cueStart: 0, to: median(inliers.map { $0.heard - $0.cue }))
                 }
-                return Result(offset: fitted, matches: inliers.count, fittedDrift: abs(fitted.scale - 1) >= 0.002)
+                if lands(fitted, inliers) {
+                    return Result(offset: fitted, matches: inliers.count, fittedDrift: abs(fitted.scale - 1) >= 0.002)
+                }
             }
         }
         // Delay only, at the current speed: heard = cue / scale + seconds.
         let delay = median(inliers.map { $0.heard - $0.cue / current.scale })
         offset.align(cueStart: 0, to: delay)
+        // Past what a delay can hold (another cut of the film), or a speed that
+        // doesn't suit what was heard: better nothing than lines in the wrong place.
+        guard lands(offset, inliers) else { return nil }
         return Result(offset: offset, matches: inliers.count, fittedDrift: false)
+    }
+
+    /// True when the timing puts the agreeing words, mostly, where they were heard.
+    static func lands(_ offset: SubtitleOffset, _ points: [(cue: TimeInterval, heard: TimeInterval)]) -> Bool {
+        median(points.map { abs(offset.playerTime(forCueTime: $0.cue) - $0.heard) }) <= tolerance
     }
 
     /// Matches split where nothing was heard for a minute (separate stretches listened to).
@@ -136,6 +147,22 @@ public enum SubtitleAudioAlignment {
         return clean.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
+    }
+
+    /// The language the lines are written in ("en", "fr"), read from their
+    /// text, for the recogniser: a track's tag can be missing or wrong, and
+    /// listening for English to match French lines finds nothing. Nil when
+    /// there's too little text to tell.
+    public static func language(of cues: [SubtitleCue]) -> String? {
+        // A spread of lines from across the file is plenty.
+        let text = Swift.stride(from: 0, to: cues.count, by: max(1, cues.count / 200))
+            .compactMap { SoundCues.strip(cues[$0].text) }.joined(separator: "\n")
+        guard text.count >= 20 else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        guard let (language, confidence) = recognizer.languageHypotheses(withMaximum: 1).first, confidence >= 0.6,
+              language != .undetermined else { return nil }
+        return language.rawValue
     }
 
     static func lineFit(_ points: [(cue: TimeInterval, heard: TimeInterval)]) -> (k: Double, b: Double)? {

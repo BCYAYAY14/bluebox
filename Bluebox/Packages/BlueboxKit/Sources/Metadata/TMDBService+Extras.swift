@@ -82,6 +82,13 @@ extension TMDBService: MetadataExtras {
         let department = try? await person.knownForDepartment
         return try await TMDBMapping.filmography(combined, department: department)
     }
+
+    public func collection(id: Int) async throws -> FilmCollection {
+        let c = try await get(TMDBCollection.self, "collection/\(id)")
+        return FilmCollection(id: c.id, name: c.name, overview: c.overview ?? "", poster: TMDBMapping.art(.poster, c.posterPath),
+                              backdrop: TMDBMapping.art(.backdrop, c.backdropPath),
+                              parts: (c.parts ?? []).compactMap { TMDBMapping.title($0, fallbackKind: .movie) })
+    }
 }
 
 // MARK: Wire formats

@@ -1,6 +1,16 @@
 import Domain
 import Foundation
 
+/// What `RemoteControl` talks through: `RemoteChannel`, or an in-memory one in tests.
+public protocol RemoteTransport: AnyObject, Sendable {
+    func start() async
+    func stop() async
+    /// True when it went out; false while not joined.
+    @discardableResult func send(_ message: RemoteMessage) async -> Bool
+    /// Reconnect at once (see `RemoteChannel.reconnect`).
+    func reconnect() async
+}
+
 /// The remote-control channel: Supabase Realtime broadcast, one private topic
 /// per account (`bluebox-remote:<user id>`). Private means Realtime checks the
 /// realtime.messages policies (migrations/20261030000000_realtime_private.sql)
@@ -9,12 +19,22 @@ import Foundation
 /// `RealtimeListener`, which it borrows the socket URL and heartbeat from.
 ///
 /// Broadcast isn't stored: a message sent while nobody listens is gone. The
-/// protocol is built for that (state is re-published, commands time out in
-/// `RemoteReconciler`), so sends while reconnecting are simply dropped.
-public actor RemoteChannel {
+/// protocol is built for that (state is re-published, commands are
+/// acknowledged and retried by `RemoteControl`), so a send while reconnecting
+/// is dropped and reported as not sent.
+///
+/// Staying joined: a socket can die without closing (the Mac slept, the phone
+/// changed networks), so one that hears nothing, not even heartbeat replies,
+/// for `silenceLimit` is dropped and reconnected. The access token is renewed
+/// on the joined channel shortly before it expires, rather than by
+/// reconnecting, which used to leave a gap every 40 minutes and lost whatever
+/// was sent in it.
+public actor RemoteChannel: RemoteTransport {
     public enum State: Sendable, Equatable { case stopped, connecting, joined }
 
     static let event = "remote"
+    /// Two missed heartbeat replies.
+    static let silenceLimit: Duration = .seconds(60)
 
     let config: SupabaseConfig
     let auth: SupabaseAuth
@@ -23,10 +43,12 @@ public actor RemoteChannel {
     let onState: @Sendable (State) -> Void
 
     private var loop: Task<Void, Never>?
+    private var backoff: Task<Void, Never>?
     private var socket: URLSessionWebSocketTask?
     private var topic: String?
     private var joined = false
     private var ref = 0
+    private var lastHeard = ContinuousClock.now
 
     public init(config: SupabaseConfig, auth: SupabaseAuth, session: URLSession = URLSession(configuration: .ephemeral),
                 onMessage: @escaping @Sendable (RemoteMessage) -> Void, onState: @escaping @Sendable (State) -> Void = { _ in }) {
@@ -40,15 +62,30 @@ public actor RemoteChannel {
 
     public func stop() {
         loop?.cancel(); loop = nil
+        backoff?.cancel(); backoff = nil
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         joined = false
         onState(.stopped)
     }
 
-    /// Sends when joined; otherwise drops it (see the type's comment).
-    public func send(_ message: RemoteMessage) async {
-        guard joined, let socket, let topic, let payload = try? message.jsonObject() else { return }
-        try? await send(socket, Self.broadcastMessage(topic: topic, payload: payload, ref: nextRef()))
+    /// Sends when joined; otherwise drops it (see the type's comment). True when it went out.
+    @discardableResult
+    public func send(_ message: RemoteMessage) async -> Bool {
+        guard joined, let socket, let topic, let payload = try? message.jsonObject() else { return false }
+        do {
+            try await send(socket, Self.broadcastMessage(topic: topic, payload: payload, ref: nextRef()))
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Connect again now: after waking from sleep, or when the other side
+    /// stopped answering. Skips the wait between attempts and drops a socket
+    /// that may be dead without knowing it.
+    public func reconnect() {
+        backoff?.cancel()
+        socket?.cancel(with: .goingAway, reason: nil)
     }
 
     private func run() async {
@@ -65,8 +102,14 @@ public actor RemoteChannel {
             joined = false; socket = nil
             if Task.isCancelled { break }
             onState(.connecting)
-            failures = Date().timeIntervalSince(started) > 120 ? 1 : failures + 1
-            try? await Task.sleep(for: .seconds(min(60, 2 << min(failures, 5))))
+            // A connection that held for a while: try again at once; one that keeps failing, less and less often.
+            failures = Date().timeIntervalSince(started) > 120 ? 0 : failures + 1
+            guard failures > 0 else { continue }
+            let seconds = min(60, 1 << min(failures, 6))
+            let wait = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
+            backoff = wait
+            await wait.value
+            backoff = nil
         }
     }
 
@@ -80,18 +123,24 @@ public actor RemoteChannel {
         defer { socket.cancel(with: .goingAway, reason: nil) }
 
         let joinRef = nextRef()
+        lastHeard = .now
         try await send(socket, Self.joinMessage(topic: topic, token: token, ref: joinRef))
         let heartbeat = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: RealtimeListener.heartbeatInterval)
                 guard let self, !Task.isCancelled else { return }
-                try? await self.send(socket, RealtimeListener.heartbeatMessage(ref: await self.nextRef()))
+                await self.keepAlive(socket)
             }
         }
         defer { heartbeat.cancel() }
-        let refresh = Task {
-            try? await Task.sleep(for: RealtimeListener.tokenRefreshInterval)
-            socket.cancel(with: .normalClosure, reason: nil)  // reconnects with a new token
+        let refresh = Task { [weak self] in
+            while !Task.isCancelled {
+                // Until shortly before the token expires; `accessToken()` renews it inside its last minute.
+                let expires = await self?.auth.currentSession?.expiresAt ?? Date().addingTimeInterval(40 * 60)
+                try? await Task.sleep(for: .seconds(max(expires.timeIntervalSinceNow - 30, 5)))
+                guard let self, !Task.isCancelled else { return }
+                await self.renewToken(socket, topic: topic)
+            }
         }
         defer { refresh.cancel() }
 
@@ -102,6 +151,7 @@ public actor RemoteChannel {
             case .string(let s): data = Data(s.utf8)
             @unknown default: continue
             }
+            lastHeard = .now
             switch Self.classify(data, topic: topic, joinRef: joinRef) {
             case .joined:
                 joined = true
@@ -110,6 +160,31 @@ public actor RemoteChannel {
             case .closed(let why): throw RealtimeError.closed(why)
             case .other: break
             }
+        }
+    }
+
+    /// A heartbeat, and the check that the socket is still alive: a failed
+    /// send, or nothing heard for `silenceLimit`, drops it so `run` reconnects.
+    private func keepAlive(_ socket: URLSessionWebSocketTask) async {
+        guard ContinuousClock.now - lastHeard < Self.silenceLimit else {
+            Log.sync.notice("Remote channel: silent for too long, reconnecting")
+            socket.cancel(with: .goingAway, reason: nil)
+            return
+        }
+        do {
+            try await send(socket, RealtimeListener.heartbeatMessage(ref: nextRef()))
+        } catch {
+            socket.cancel(with: .goingAway, reason: nil)
+        }
+    }
+
+    /// A fresh token for the joined channel; if that fails, reconnect, which fetches one.
+    private func renewToken(_ socket: URLSessionWebSocketTask, topic: String) async {
+        do {
+            let token = try await auth.accessToken()
+            try await send(socket, Self.accessTokenMessage(topic: topic, token: token, ref: nextRef()))
+        } catch {
+            socket.cancel(with: .normalClosure, reason: nil)
         }
     }
 
@@ -134,6 +209,11 @@ public actor RemoteChannel {
                 "access_token": token,
             ] as [String: Any],
         ]
+    }
+
+    /// Realtime's in-place token renewal for a joined channel (what realtime-js sends).
+    static func accessTokenMessage(topic: String, token: String, ref: String) -> [String: Any] {
+        ["topic": topic, "event": "access_token", "ref": ref, "payload": ["access_token": token]]
     }
 
     static func broadcastMessage(topic: String, payload: [String: Any], ref: String) -> [String: Any] {

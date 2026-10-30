@@ -5,7 +5,8 @@
 //  Written for Bluebox from public documentation (the Stremio add-on SDK's
 //  manifest docs). Settings › Torrents & Debrid › Add-ons: your
 //  add-ons with health dots, turning them on and off, the order they're
-//  asked in, adding any Stremio add-on by its link, and the presets.
+//  asked in, which of their catalogs are rows on Home, adding any Stremio
+//  add-on by its link, and the presets.
 //
 
 import Addons
@@ -83,6 +84,23 @@ struct AddonsSettingsPage: View {
                 Text((settings.addons.contains(where: settings.needsLink)
                       ? "Add-ons added by link keep their link in this device's Keychain, and it follows to your other devices only with Sync API Keys on (Settings › Account). "
                       : "") + "Every add-on that's on is asked at once; a slow one is skipped for a few minutes after repeated timeouts. When two releases are equally good, the add-on higher in the list wins.")
+            }
+
+            let withCatalogs = settings.addons.filter { !($0.catalogs ?? []).isEmpty }
+            if !withCatalogs.isEmpty {
+                Section {
+                    ForEach(withCatalogs) { addon in
+                        let catalogs = addon.catalogs ?? []
+                        SettingsLink(addon.name, value: "\(catalogs.filter(\.isShown).count) of \(catalogs.count)") {
+                            AddonCatalogsPage(addonID: addon.id)
+                        }
+                        .settingsRow("Add-on Catalogs on Home")
+                    }
+                } header: {
+                    Text("Rows on Home")
+                } footer: {
+                    Text("Lists your add-ons publish, shown on Home after Bluebox's own rows. A new add-on's first few are on; turn on the ones you want. Titles without an IMDb or TMDB ID are left out.")
+                }
             }
 
             Section {
@@ -213,6 +231,7 @@ struct AddonSettingsRow: View {
     private var subtitle: String {
         var parts = [addon.hostLabel]
         if addon.preset?.requiresDebrid == true { parts.append("Debrid only") }
+        if addon.catalogsOnly == true { parts.append("Catalogs only") }
         if addon.isEnabled, let health { parts.append(health.summary()) }
         return parts.joined(separator: " · ")
     }
@@ -224,6 +243,50 @@ struct AddonSettingsRow: View {
         case .healthy: SwarmHealth.good
         case .slow: SwarmHealth.fair
         case .failing, .skipped: SwarmHealth.poor
+        }
+    }
+}
+
+/// Settings › Torrents & Debrid › Add-ons › (an add-on): a switch for each
+/// of its catalogs, and drag to set their order on Home. The names are the
+/// add-on's, shown as they are.
+private struct AddonCatalogsPage: View {
+    @Environment(AppModel.self) private var app
+    let addonID: String
+
+    var body: some View {
+        let addon = app.addonSettings.addons.first { $0.id == addonID }
+        List {
+            Section {
+                ForEach(addon?.catalogs ?? []) { catalog in
+                    Toggle(isOn: Binding { catalog.isShown } set: { app.setAddonCatalog(catalog.id, of: addonID, shown: $0) }) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: catalog.name).lineLimit(1)
+                            Text(Self.kind(catalog)).font(.caption).foregroundStyle(Palette.textSecondary)
+                        }
+                    }
+                    .settingsRow("Add-on Catalogs on Home")
+                    .listRowBackground(Palette.background)
+                }
+                .onMove { from, to in app.moveAddonCatalogs(of: addonID, from: from, to: to) }
+            } footer: {
+                Text("Turned-on catalogs are rows on Home, in this order. Drag to reorder.")
+            }
+        }
+        #if os(iOS)
+        .toolbar { EditButton() }
+        #endif
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .blueboxScreen()
+        .navigationTitle(addon?.name ?? "")
+    }
+
+    private static func kind(_ catalog: AddonCatalog) -> LocalizedStringKey {
+        switch catalog.type {
+        case "movie": "Movies"
+        case "anime": "Anime"
+        default: "Series"
         }
     }
 }

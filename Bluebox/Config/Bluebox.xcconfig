@@ -7,8 +7,9 @@ TRAKT_CLIENT_ID =
 TRAKT_CLIENT_SECRET =
 // Sign in with Apple needs the capability on your App ID. Set YES in Secrets.xcconfig
 // to use the entitlements files that include it (see SETUP.md).
+// iOS: both include the App Group the widgets read the library snapshot from.
 ENABLE_APPLE_SIGN_IN = NO
-BLUEBOX_IOS_ENTITLEMENTS_NO =
+BLUEBOX_IOS_ENTITLEMENTS_NO = Apps/iOS/Bluebox.entitlements
 BLUEBOX_IOS_ENTITLEMENTS_YES = Apps/iOS/AppleSignIn.entitlements
 BLUEBOX_MAC_ENTITLEMENTS_NO = Apps/macOS/Bluebox.entitlements
 BLUEBOX_MAC_ENTITLEMENTS_YES = Apps/macOS/Bluebox-AppleSignIn.entitlements

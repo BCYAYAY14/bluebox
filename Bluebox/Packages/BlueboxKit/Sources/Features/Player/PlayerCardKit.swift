@@ -64,7 +64,7 @@ struct PlayerCardHeader<Trailing: View>: View {
                 Button(action: onBack) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.backward").font(.subheadline.weight(.bold))
-                        Text(title).font(.subheadline.weight(.bold))
+                        Text(ui: title).font(.subheadline.weight(.bold))
                     }
                     .frame(minHeight: PanelMetrics.control)
                     .contentShape(Rectangle())
@@ -73,7 +73,7 @@ struct PlayerCardHeader<Trailing: View>: View {
                 .accessibilityLabel("Back")
                 .accessibilityHint(title)
             } else {
-                Text(title).font(.subheadline.weight(.bold))
+                Text(ui: title).font(.subheadline.weight(.bold))
                     .accessibilityAddTraits(.isHeader)
             }
             Spacer(minLength: Spacing.s)
@@ -108,7 +108,7 @@ struct PlayerPageChip: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 if let symbol { Image(systemName: symbol).font(.caption.weight(.semibold)) }
-                Text(title)
+                Text(ui: title)
                 if let value { Text(value).foregroundStyle(Palette.brandBright).monospacedDigit() }
                 Image(systemName: "chevron.forward").font(.caption2.weight(.bold)).foregroundStyle(Palette.textSecondary)
             }

@@ -3,7 +3,7 @@ import Foundation
 import Metadata
 
 /// Your debrid cloud library as a source: the videos you've added to
-/// Real-Debrid, Premiumize or TorBox, matched to catalog titles by name, and
+/// Real-Debrid, Premiumize, TorBox, AllDebrid or Debrid-Link, matched to catalog titles by name, and
 /// played with a fresh link each time.
 ///
 /// Registered before the add-ons, so a title you already have in your cloud
@@ -33,6 +33,8 @@ public actor DebridLibrarySource: MediaSource {
 
     private var api: (any DebridLibraryAPI)?
     private var matcher: MediaMatcher?
+    /// Fix Match choices, read before the matcher.
+    private let overrides: MatchOverrides?
     private var entries: [Entry] = []
     private var loadedAt: Date?
     private var loading: Task<[Entry], Error>?
@@ -41,9 +43,9 @@ public actor DebridLibrarySource: MediaSource {
     private let lifetime: TimeInterval
     private let now: @Sendable () -> Date
 
-    public init(api: (any DebridLibraryAPI)?, matcher: MediaMatcher?, lifetime: TimeInterval = 600,
-                now: @escaping @Sendable () -> Date = Date.init) {
-        self.api = api; self.matcher = matcher; self.lifetime = lifetime; self.now = now
+    public init(api: (any DebridLibraryAPI)?, matcher: MediaMatcher?, overrides: MatchOverrides? = nil,
+                lifetime: TimeInterval = 600, now: @escaping @Sendable () -> Date = Date.init) {
+        self.api = api; self.matcher = matcher; self.overrides = overrides; self.lifetime = lifetime; self.now = now
     }
 
     /// The service and key changed (Settings › Sources). Forgets the old library.
@@ -62,15 +64,24 @@ public actor DebridLibrarySource: MediaSource {
     /// Every video file, matched where possible. Cached for `lifetime`; `refresh` forces a reload.
     public func library(refresh: Bool = false) async throws -> [Entry] {
         guard let api else { throw SourceError.notConfigured }
-        if !refresh, let loadedAt, now().timeIntervalSince(loadedAt) < lifetime { return entries }
-        if let loading { return try await loading.value }
+        if !refresh, let loadedAt, now().timeIntervalSince(loadedAt) < lifetime { return effective(entries) }
+        if let loading { return effective(try await loading.value) }
         let task = Task { try await self.load(api) }
         loading = task
         defer { loading = nil }
         let result = try await task.value
         entries = result
         loadedAt = now()
-        return result
+        return effective(result)
+    }
+
+    /// Entries with Fix Match choices applied over the automatic matches.
+    private func effective(_ list: [Entry]) -> [Entry] {
+        guard let overrides else { return list }
+        return list.map { e in
+            guard let o = overrides.override(source: id, variant: e.id) else { return e }
+            return Entry(file: e.file, parsed: e.parsed, key: o.key)
+        }
     }
 
     private func load(_ api: any DebridLibraryAPI) async throws -> [Entry] {
@@ -148,7 +159,7 @@ public actor DebridLibrarySource: MediaSource {
         if let loadedAt, now().timeIntervalSince(loadedAt) >= lifetime, loading == nil {
             Task { _ = try? await self.library(refresh: true) }
         }
-        return current.filter { $0.key == key }.map(makeVariant)
+        return effective(current).filter { $0.key == key }.map(makeVariant)
     }
 
     public func resolve(_ variant: MediaVariant) async throws -> PlaybackResource {

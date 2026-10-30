@@ -70,7 +70,7 @@ struct SubtitlePresetGrid: View {
     private func button(_ title: String, look: SubtitleStyle.Look, selected: Bool, action: @escaping () -> Void) -> some View {
         var sample = SubtitleStyle(); sample.look = look
         return Button(action: action) {
-            Text(title)
+            Text(ui: title)
                 .font(sample.font(size: 13))
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .padding(.horizontal, 8)

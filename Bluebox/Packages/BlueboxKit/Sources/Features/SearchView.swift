@@ -229,6 +229,12 @@ struct SearchView: View {
         }
         .blueboxScreen()
         .navigationTitle("Search")
+        // Typed on the remote (the Mac's Search, driven from the phone).
+        .onChange(of: app.remoteSearchText, initial: true) { _, text in
+            guard let text else { return }
+            query = text
+            app.remoteSearchText = nil
+        }
         #if os(iOS)
         // Pinned: with the default placement the field stayed hidden in the search tab.
         .modifier(DebouncedSearchable(query: $query, enabled: !usesTopNav, onSubmit: remember))
@@ -242,6 +248,12 @@ struct SearchView: View {
         #endif
         // Restarted (and the last one cancelled) whenever the query changes.
         .task(id: query) { await search(query) }
+        // "Search Bluebox for…" from Siri or a link.
+        .task(id: app.features.searchRequest) {
+            guard let q = app.features.searchRequest else { return }
+            app.features.searchRequest = nil
+            query = SearchDebounce.trimmed(q)
+        }
         .task(id: query) { await searchPeople(query) }
         .task(id: app.catalogMode == .live) { await loadBrowse() }
         .task(id: AvailabilityRequest(needed: filter.needsAvailability, downloads: app.downloadsRevision)) {
@@ -350,6 +362,13 @@ struct SearchView: View {
 
     private func filterChips(inset: CGFloat) -> some View {
         ChipRow(inset: inset) {
+            // Back to All in one go, once any chip narrows the results.
+            if filter.isNarrowed {
+                FilterChip("Clear", systemImage: "xmark", selected: false) { set { $0 = SearchFilter() } }
+                    .accessibilityLabel("Clear Filters")
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                ChipDivider()
+            }
             ForEach(SearchFilter.Scope.allCases, id: \.self) { scope in
                 FilterChip(scope.title, selected: filter.scope == scope) { set { $0.scope = scope } }
             }
@@ -383,10 +402,16 @@ struct SearchView: View {
         guard !q.isEmpty else { await results.reset(nil); return }
         if results.answered(for: q) { return }  // e.g. back from a title page
         let metadata = app.metadata
-        let fetch: (Int) async throws -> Page<Title> = { try await metadata.search(q, page: $0) }
-        if let cache = metadata as? CachedMetadataProvider, let hit = await cache.cachedSearch(q) {
+        // "dune 2021": the words go to the catalog, and that year's titles lead.
+        let parsed = SearchQuery(q)
+        let fetch: (Int) async throws -> Page<Title> = {
+            let page = try await metadata.search(parsed.text, page: $0)
+            return Page(items: parsed.ranked(page.items), page: page.page, totalPages: page.totalPages)
+        }
+        if let cache = metadata as? CachedMetadataProvider, let hit = await cache.cachedSearch(parsed.text) {
             guard !Task.isCancelled else { return }
-            await results.load(q, cached: hit, fetch: fetch)
+            await results.load(q, cached: Page(items: parsed.ranked(hit.items), page: hit.page, totalPages: hit.totalPages),
+                               fetch: fetch)
             return
         }
         guard !Task.isCancelled else { return }
@@ -396,7 +421,8 @@ struct SearchView: View {
     /// People for Search's People row (TMDB only: without it there are no person pages).
     /// Shown from memory at once when searched recently. A failure just leaves the row out.
     private func searchPeople(_ q: String) async {
-        guard !q.isEmpty, app.hasPersonPages, let extras = app.metadata as? any MetadataExtras else {
+        // People have no year: "dune 2021" looks for no one.
+        guard !q.isEmpty, SearchQuery(q).year == nil, app.hasPersonPages, let extras = app.metadata as? any MetadataExtras else {
             people = []; peopleQuery = q
             return
         }
@@ -437,7 +463,8 @@ struct SearchView: View {
     private var libraryMatches: [Title] {
         guard !query.isEmpty, filter.includesTitles else { return [] }
         let known = availability ?? SearchAvailability()
-        return Array(library.filter { $0.name.localizedStandardContains(query) && filter.matches($0, availability: known) }.prefix(12))
+        let parsed = SearchQuery(query)
+        return Array(library.filter { parsed.matches($0) && filter.matches($0, availability: known) }.prefix(12))
     }
 
     private func librarySection(_ titles: [Title], inset: CGFloat) -> some View {
@@ -481,6 +508,7 @@ struct SearchView: View {
     /// A query worth keeping: submitted, or one whose result you opened.
     /// Keeps the top result's picture when the results are this query's.
     private func remember(_ q: String) {
+        guard SearchHistoryPreference.saves else { return }
         let q = q.trimmingCharacters(in: .whitespaces)
         let (art, detail) = results.query == q ? Self.preview(sections.top) : (nil, nil)
         recents.add(q, artwork: art, detail: detail)
@@ -492,9 +520,16 @@ struct SearchView: View {
         recents.save(profile: app.currentProfileID)
     }
 
+    /// Clear All, with Undo: a whole list is easy to lose with one stray tap.
     private func forgetAll() {
+        let cleared = recents
+        let profile = app.currentProfileID
         withAnimation(Motion.standard(reduceMotion)) { recents.removeAll() }
-        recents.save(profile: app.currentProfileID)
+        recents.save(profile: profile)
+        app.showToast(AppToast("Cleared Recent Searches", actionTitle: "Undo") { [app] in
+            cleared.save(profile: profile)
+            app.searchHistoryRevision += 1
+        })
     }
 
     /// The picture and line a recent search shows for its top result.
@@ -624,12 +659,12 @@ struct GenreView: View {
                 VStack(spacing: Spacing.l) {
                     PageTitle(title: genre.name, inset: Spacing.pageInset(for: geo.size.width))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Picker("Type", selection: $kind) {
-                        Text("Movies").tag(TitleKind.movie)
-                        Text("Series").tag(TitleKind.series)
+                    HStack(spacing: Spacing.s) {
+                        CategoryChip("Movies", selected: kind == .movie) { kind = .movie }
+                        CategoryChip("Series", selected: kind == .series) { kind = .series }
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 320)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Spacing.pageInset(for: geo.size.width))
                     if let error = results.error {
                         if app.settings.isOffline || UserFacingError.isOffline(error) {
                             OfflineMessage(reason: "Genres need the internet.") { Task { await reload() } }

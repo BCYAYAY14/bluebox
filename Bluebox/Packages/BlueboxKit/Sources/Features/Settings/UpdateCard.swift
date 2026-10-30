@@ -86,7 +86,7 @@ struct UpdateCard: View {
 
     private var text: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+            Text(ui: title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
             Text(detail).font(.callout).foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentTransition(.numericText())
@@ -205,7 +205,7 @@ struct UpdateCard: View {
             ForEach(Array(notes.sections.enumerated()), id: \.offset) { _, section in
                 VStack(alignment: .leading, spacing: 3) {
                     if let title = section.title {
-                        Text(title).font(.caption.weight(.bold)).textCase(.uppercase).tracking(0.5)
+                        Text(ui: title).font(.caption.weight(.bold)).textCase(.uppercase).tracking(0.5)
                             .foregroundStyle(Palette.textPrimary)
                             .accessibilityAddTraits(.isHeader)
                     }

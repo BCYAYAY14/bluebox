@@ -139,6 +139,8 @@ struct NewHotView: View {
                         }
                         CatalogFooter(mode: app.catalogMode).padding(.horizontal, inset)
                     }
+                    // The skeleton fades into the feed instead of cutting to it.
+                    .animation(Motion.standard(reduceMotion), value: phase == .loading)
                     .padding(.vertical, Spacing.l)
                 }
                 .scrollIndicators(.hidden)
@@ -193,7 +195,7 @@ struct NewHotView: View {
         .overlay(alignment: .bottom) {
             Palette.separator.frame(height: 1).opacity(scrolled.wrappedValue ? 1 : 0)
         }
-        .animation(.easeOut(duration: 0.2), value: scrolled.wrappedValue)
+        .animation(Motion.appear, value: scrolled.wrappedValue)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .selectionHaptic(section)
         .animation(Motion.snappy(reduceMotion), value: section)

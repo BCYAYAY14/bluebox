@@ -83,7 +83,7 @@ struct AccountStep<Links: View>: View {
             .frame(width: 22, alignment: .leading)
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title).font(.headline.weight(.bold))
+                Text(ui: title).font(.headline.weight(.bold))
                 if let detail {
                     detail.font(.subheadline).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

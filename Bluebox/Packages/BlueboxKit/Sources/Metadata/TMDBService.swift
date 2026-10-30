@@ -163,7 +163,11 @@ public struct TMDBService: MetadataProvider {
                 genres: (d.genres ?? []).map { Genre(id: $0.id, name: $0.name) }, cast: people.cast, crew: people.crew,
                 logo: TMDBMapping.logo(d.images, language: lang),
                 related: (d.recommendations?.results ?? []).compactMap { TMDBMapping.title($0, fallbackKind: .movie) },
-                certification: cert, imdbID: TMDBMapping.imdbID(d.imdbId)
+                certification: cert, imdbID: TMDBMapping.imdbID(d.imdbId),
+                collection: d.belongsToCollection.flatMap { c in
+                    c.name.map { CollectionRef(id: c.id, name: $0, poster: TMDBMapping.art(.poster, c.posterPath),
+                                               backdrop: TMDBMapping.art(.backdrop, c.backdropPath)) }
+                }
             )
         } else {
             let d = try await get(TMDBSeriesDetail.self, "tv/\(id)", query: [

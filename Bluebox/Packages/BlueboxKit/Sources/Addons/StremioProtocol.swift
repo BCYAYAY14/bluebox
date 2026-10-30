@@ -47,6 +47,59 @@ public struct AddonManifest: Decodable, Sendable, Equatable {
         public var configurationRequired: Bool?
     }
 
+    /// A list the add-on publishes (`/catalog/{type}/{id}.json`). `extra`
+    /// names what it can be asked with ("genre", "skip", "search"); the old
+    /// form lists names in `extraSupported` and `extraRequired`.
+    public struct Catalog: Decodable, Sendable, Equatable {
+        public struct Extra: Decodable, Sendable, Equatable {
+            public var name: String
+            public var isRequired: Bool
+            public var options: [String]
+
+            public init(name: String, isRequired: Bool = false, options: [String] = []) {
+                self.name = name; self.isRequired = isRequired; self.options = options
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                name = try c.decode(String.self, forKey: .name)
+                isRequired = (try? c.decodeIfPresent(Bool.self, forKey: .isRequired)) ?? false
+                options = ((try? c.decodeIfPresent([String].self, forKey: .options)) ?? []).filter { !$0.isEmpty }
+            }
+
+            private enum CodingKeys: String, CodingKey { case name, isRequired, options }
+        }
+
+        public var type: String
+        public var id: String
+        public var name: String?
+        public var extra: [Extra]
+
+        public init(type: String, id: String, name: String? = nil, extra: [Extra] = []) {
+            self.type = type; self.id = id; self.name = name; self.extra = extra
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            type = try c.decode(String.self, forKey: .type)
+            id = try c.decode(String.self, forKey: .id)
+            name = try? c.decodeIfPresent(String.self, forKey: .name)
+            if let extra = try? c.decodeIfPresent([Extra].self, forKey: .extra) {
+                self.extra = extra
+            } else {
+                let required = (try? c.decodeIfPresent([String].self, forKey: .extraRequired)) ?? []
+                let supported = (try? c.decodeIfPresent([String].self, forKey: .extraSupported)) ?? []
+                var seen = Set<String>()
+                extra = (required + supported).filter { seen.insert($0).inserted }
+                    .map { Extra(name: $0, isRequired: required.contains($0)) }
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey { case type, id, name, extra, extraRequired, extraSupported }
+
+        public func extra(_ name: String) -> Extra? { extra.first { $0.name == name } }
+    }
+
     public var id: String
     public var name: String
     public var version: String?
@@ -55,6 +108,7 @@ public struct AddonManifest: Decodable, Sendable, Equatable {
     public var types: [String]
     public var idPrefixes: [String]?
     public var resources: [Resource]
+    public var catalogs: [Catalog]
     public var behaviorHints: BehaviorHints?
 
     public init(from decoder: any Decoder) throws {
@@ -67,11 +121,18 @@ public struct AddonManifest: Decodable, Sendable, Equatable {
         types = (try? c.decodeIfPresent([String].self, forKey: .types)) ?? []
         idPrefixes = try? c.decodeIfPresent([String].self, forKey: .idPrefixes)
         resources = (try? c.decodeIfPresent([Resource].self, forKey: .resources)) ?? []
+        // One odd catalog doesn't cost the rest.
+        catalogs = ((try? c.decodeIfPresent([LenientCatalog].self, forKey: .catalogs)) ?? []).compactMap(\.value)
         behaviorHints = try? c.decodeIfPresent(BehaviorHints.self, forKey: .behaviorHints)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, version, description, logo, types, idPrefixes, resources, behaviorHints
+        case id, name, version, description, logo, types, idPrefixes, resources, catalogs, behaviorHints
+    }
+
+    private struct LenientCatalog: Decodable {
+        let value: Catalog?
+        init(from decoder: any Decoder) throws { value = try? Catalog(from: decoder) }
     }
 
     /// Whether the add-on answers stream requests for this type ("movie",

@@ -117,14 +117,22 @@ public final class AppSettings {
     public var crowdSkipDisabledShows: Set<String> { didSet { save(crowdSkipDisabledShows, PlayerFeatureKey.crowdSkipDisabledShows) } }
     /// Frames above the time bubble while scrubbing.
     public var scrubThumbnails: Bool { didSet { save(scrubThumbnails, PlayerFeatureKey.scrubThumbnails) } }
+    /// iPhone and iPad: swipe across the picture to seek, up and down for brightness (left) and volume (right).
+    public var swipeGestures: Bool { didSet { save(swipeGestures, PlayerFeatureKey.swipeGestures) } }
     /// Default for Dialogue Boost (centre channel and speech frequencies up).
     public var dialogueBoost: Bool { didSet { save(dialogueBoost, PlayerFeatureKey.dialogueBoost) } }
     /// Default for Night Mode (compressor and limiter: quiet and loud scenes even out).
     public var nightMode: Bool { didSet { save(nightMode, PlayerFeatureKey.nightMode) } }
     /// Offer what's playing to your other devices (Handoff).
     public var handoff: Bool { didSet { save(handoff, PlayerFeatureKey.handoff) } }
-    /// Hand every video Infuse can reach to Infuse (this device only: Infuse may not be on the others).
-    public var alwaysOpenInInfuse: Bool { didSet { save(alwaysOpenInInfuse, PlayerFeatureKey.alwaysOpenInInfuse) } }
+    /// Open Videos In: hand every video it can reach to this app; nil plays in
+    /// Bluebox (this device only: the app may not be on the others).
+    public var openVideosIn: ExternalPlayer? {
+        didSet {
+            save(openVideosIn, PlayerFeatureKey.openVideosIn)
+            save(Bool?.none, PlayerFeatureKey.alwaysOpenInInfuse)  // chosen now: the old switch no longer counts
+        }
+    }
 
     @ObservationIgnored private let prefs: PreferencesStore
     @ObservationIgnored private let monitor = NetworkMonitor()
@@ -156,10 +164,11 @@ public final class AppSettings {
         skipDisabledShows = prefs.value(Set<String>.self, for: PlayerFeatureKey.skipDisabledShows) ?? []
         crowdSkipDisabledShows = prefs.value(Set<String>.self, for: PlayerFeatureKey.crowdSkipDisabledShows) ?? []
         scrubThumbnails = prefs.value(Bool.self, for: PlayerFeatureKey.scrubThumbnails) ?? true
+        swipeGestures = prefs.value(Bool.self, for: PlayerFeatureKey.swipeGestures) ?? true
         dialogueBoost = prefs.value(Bool.self, for: PlayerFeatureKey.dialogueBoost) ?? false
         nightMode = prefs.value(Bool.self, for: PlayerFeatureKey.nightMode) ?? false
         handoff = prefs.value(Bool.self, for: PlayerFeatureKey.handoff) ?? true
-        alwaysOpenInInfuse = prefs.value(Bool.self, for: PlayerFeatureKey.alwaysOpenInInfuse) ?? false
+        openVideosIn = Self.storedOpenVideosIn(prefs)
         var mobile = prefs.value(MobileDataSettings.self, for: PreferenceKey.mobileData) ?? MobileDataSettings()
         if !allowCellular { mobile.streaming = .never }  // turned off before Mobile Data existed
         mobileData = mobile
@@ -192,10 +201,12 @@ public final class AppSettings {
         load(PlayerFeatureKey.skipDisabledShows, Set<String>(), into: \.skipDisabledShows)
         load(PlayerFeatureKey.crowdSkipDisabledShows, Set<String>(), into: \.crowdSkipDisabledShows)
         load(PlayerFeatureKey.scrubThumbnails, true, into: \.scrubThumbnails)
+        load(PlayerFeatureKey.swipeGestures, true, into: \.swipeGestures)
         load(PlayerFeatureKey.dialogueBoost, false, into: \.dialogueBoost)
         load(PlayerFeatureKey.nightMode, false, into: \.nightMode)
         load(PlayerFeatureKey.handoff, true, into: \.handoff)
-        load(PlayerFeatureKey.alwaysOpenInInfuse, false, into: \.alwaysOpenInInfuse)
+        let openIn = Self.storedOpenVideosIn(prefs)
+        if openVideosIn != openIn { openVideosIn = openIn }
         load(PreferenceKey.mobileData, MobileDataSettings(), into: \.mobileData)
         load(PreferenceKey.pictureDefaults, PictureDefaults(), into: \.pictureDefaults)
         loadProfile(profileID)
@@ -262,12 +273,19 @@ public final class AppSettings {
         crowdSkipDisabledShows = []
         showSkipRules = ShowSkipRules()
         scrubThumbnails = true
+        swipeGestures = true
         dialogueBoost = false
         nightMode = false
         handoff = true
-        alwaysOpenInInfuse = false
+        openVideosIn = nil
         mobileData = MobileDataSettings()
         pictureDefaults = PictureDefaults()
+    }
+
+    /// Open Videos In, or Always Open in Infuse from before there was a choice.
+    private static func storedOpenVideosIn(_ prefs: PreferencesStore) -> ExternalPlayer? {
+        if let player = prefs.value(ExternalPlayer.self, for: PlayerFeatureKey.openVideosIn) { return player }
+        return prefs.value(Bool.self, for: PlayerFeatureKey.alwaysOpenInInfuse) == true ? .infuse : nil
     }
 
     // MARK: Skipping, per show
@@ -371,13 +389,17 @@ public enum PlayerFeatureKey {
     public static let crowdSkipDisabledShows = "bluebox.playback.crowdSkipDisabledShows"
     /// Bool: preview frames while scrubbing.
     public static let scrubThumbnails = "bluebox.playback.scrubThumbnails"
+    /// Bool: swipe gestures over the picture (iOS).
+    public static let swipeGestures = "bluebox.playback.swipeGestures"
     /// Bool: Dialogue Boost on for new videos.
     public static let dialogueBoost = "bluebox.audio.dialogueBoost"
     /// Bool: Night Mode on for new videos.
     public static let nightMode = "bluebox.audio.nightMode"
     /// Bool: advertise what's playing for Handoff.
     public static let handoff = "bluebox.playback.handoff"
-    /// Bool: hand videos to Infuse. Not synced.
+    /// String (`ExternalPlayer`): hand videos to that app. Not synced.
+    public static let openVideosIn = "bluebox.playback.openVideosIn"
+    /// Bool: hand videos to Infuse, before Open Videos In. Read once, as `.infuse`.
     public static let alwaysOpenInInfuse = "bluebox.playback.alwaysInfuse"
 }
 

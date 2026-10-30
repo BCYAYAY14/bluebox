@@ -14,7 +14,7 @@ settings:
     SWIFT_VERSION: "6.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: Z6Z3BJY3S7
-    MARKETING_VERSION: "1.1"
+    MARKETING_VERSION: "1.2"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -29,7 +29,7 @@ targets:
       - Apps/Shared
     dependencies:
       - package: BlueboxKit
-      # The Downloads Live Activity (Apps/iOSWidgets).
+      # The Downloads Live Activity and the library widgets (Apps/iOSWidgets).
       - target: Bluebox-iOS-Widgets
     settings:
       base:
@@ -47,10 +47,14 @@ targets:
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Settings › Appearance › Theme Colour (tools/make-theme-icons.swift).
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Indigo AppIcon-Purple AppIcon-Pink AppIcon-Red AppIcon-Orange AppIcon-Amber AppIcon-Green AppIcon-Teal AppIcon-Graphite
     info:
       path: Apps/iOS/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        # Settings › Language (Apps/Shared/Localizable.xcstrings).
+        CFBundleLocalizations: [en, es, fr, de, it, pt-BR, ja, ko, zh-Hans]
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # audio: also keeps torrent downloads running in the background (DownloadLifecycle).
         # processing: resumes them while the device charges (AppModel.downloadResumeTaskID).
@@ -64,6 +68,31 @@ targets:
         # The Downloads Live Activity (Features/DownloadsPresence.swift). Needs no entitlement.
         NSSupportsLiveActivities: true
         NSPhotoLibraryAddUsageDescription: Bluebox saves video frames you capture with Snapshot to your photo library.
+        # Videos and .torrent files open in Bluebox from Files and the share sheet (AppModel.handleOpenURL).
+        # In place: Bluebox plays the file where it is rather than a copy in its Inbox.
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.movie, org.matroska.mkv]
+          - CFBundleTypeName: BitTorrent File
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [org.bittorrent.torrent]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.bittorrent.torrent
+            UTTypeDescription: BitTorrent File
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [torrent]
+              public.mime-type: [application/x-bittorrent]
+          - UTTypeIdentifier: org.matroska.mkv
+            UTTypeDescription: Matroska Video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification:
+              public.filename-extension: [mkv]
+              public.mime-type: [video/x-matroska]
         SupabaseURL: $(SUPABASE_URL)
         SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
         TraktClientID: $(TRAKT_CLIENT_ID)
@@ -72,16 +101,18 @@ targets:
         NSLocalNetworkUsageDescription: Bluebox connects to media servers on your local network that you add in Settings.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        # Open in Infuse checks Infuse is installed (Features/Infuse.swift).
-        LSApplicationQueriesSchemes: [infuse]
+        # Open In… lists the players that are installed (Features/ExternalPlayer.swift).
+        LSApplicationQueriesSchemes: [infuse, vlc-x-callback, nplayer-http, open-vidhub]
         # Sign-in links in Supabase emails come back as bluebox://auth-callback.
         CFBundleURLTypes:
           - CFBundleURLName: app.bluebox.auth
             CFBundleTypeRole: Viewer
             CFBundleURLSchemes: [bluebox]
 
-  # Live Activities only, for now. Its bundle ID sits under the app's, and it
-  # signs with the same team and automatic signing; it needs no capabilities.
+  # The Downloads Live Activity, and the Continue Watching and Up Next widgets.
+  # Its bundle ID sits under the app's, and it signs with the same team and
+  # automatic signing. Its one capability is the app's App Group, where the
+  # app writes the library snapshot (SystemSnapshot).
   Bluebox-iOS-Widgets:
     type: app-extension
     platform: iOS
@@ -90,12 +121,15 @@ targets:
     dependencies:
       - package: BlueboxKit
         product: DownloadsActivity
+      - package: BlueboxKit
+        product: SystemSnapshot
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
     settings:
       base:
         PRODUCT_NAME: BlueboxWidgets
         PRODUCT_BUNDLE_IDENTIFIER: app.bluebox.Bluebox.widgets
+        CODE_SIGN_ENTITLEMENTS: Apps/iOSWidgets/BlueboxWidgets.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Bluebox
@@ -142,6 +176,8 @@ targets:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        # Settings › Language (Apps/Shared/Localizable.xcstrings).
+        CFBundleLocalizations: [en, es, fr, de, it, pt-BR, ja, ko, zh-Hans]
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSUserActivityTypes: [app.bluebox.watch]
         # Sync to the Audio (Features/Player/SubtitleAudioSync.swift): on-device speech recognition of the soundtrack.

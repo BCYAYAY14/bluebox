@@ -96,7 +96,9 @@ public final class AVPlayerEngine: PlaybackEngine {
     /// Opens the asset, builds an item and makes it current. Throws `PlaybackError`.
     /// A resume point (`isResume`) in the file's closing stretch starts over instead.
     private func attach(_ resource: PlaybackResource, startAt: TimeInterval?, isResume: Bool = false) async throws {
-        let asset = AVURLAsset(url: resource.url)
+        // A server login (WebDAV) rides on every media request as a header.
+        let asset = AVURLAsset(url: resource.url, options: resource.httpHeaders.isEmpty ? nil
+                                   : ["AVURLAssetHTTPHeaderFieldsKey": resource.httpHeaders])
         if let streams, streams.canProvide(resource.url) {
             let loader = StreamResourceLoader(provider: streams)
             asset.resourceLoader.setDelegate(loader, queue: loader.queue)
@@ -145,6 +147,9 @@ public final class AVPlayerEngine: PlaybackEngine {
         guard self.resource == resource else { throw CancellationError() }
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 0  // let AVFoundation choose
+        // Voices keep their pitch at every speed offered (0.25–4×): the time-domain
+        // default only stretches 0.5–2× and goes silent outside it.
+        item.audioTimePitchAlgorithm = .spectral
         // Only used to notice frozen video; frames are read and dropped.
         let output = AVPlayerItemVideoOutput(pixelBufferAttributes: nil)
         item.add(output)

@@ -9,6 +9,7 @@ import SwiftUI
 public struct ComingSoonView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.openSettingsPage) private var openSettingsPage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var upcoming: [ComingSoonItem] = []
     @State private var fresh: [NewEpisodeItem] = []
     @State private var isLoading = true
@@ -59,7 +60,7 @@ public struct ComingSoonView: View {
                 // One toggle, not a second row of chips. Without TMDB there are
                 // no general releases, so everything listed is yours anyway.
                 if hasGeneralReleases {
-                    CategoryChip("Yours", selected: yoursOnly) { yoursOnly.toggle() }
+                    CategoryChip("Yours", selected: yoursOnly) { withAnimation(Motion.snappy(reduceMotion)) { yoursOnly.toggle() } }
                         .padding(.trailing, inset)
                         .accessibilityHint(yoursOnly ? "Shows everything coming soon" : "Shows only your shows and reminders")
                         .accessibilityIdentifier("comingSoon.yours")
@@ -87,6 +88,8 @@ public struct ComingSoonView: View {
                 }
             }
         }
+        // The skeleton fades into the rows instead of cutting to them.
+        .animation(Motion.standard(reduceMotion), value: phase == .loading)
     }
 
     /// Upcoming films in general come from TMDB; Cinemeta only knows the
@@ -104,7 +107,7 @@ public struct ComingSoonView: View {
             StateMessage(systemImage: "calendar",
                          title: "Nothing coming from your shows yet",
                          message: "Add shows to My List, or tap Remind Me on a title, to see their next episodes here.",
-                         actionTitle: "Show Everything") { yoursOnly = false }
+                         actionTitle: "Show Everything") { withAnimation(Motion.snappy(reduceMotion)) { yoursOnly = false } }
                 .frame(maxWidth: .infinity)
         } else {
             StateMessage(systemImage: "calendar",

@@ -59,7 +59,7 @@ struct AboutSettingsPage: View {
 
     private func credit(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.subheadline.weight(.semibold))
+            Text(ui: title).font(.subheadline.weight(.semibold))
             Text(detail).font(.footnote).foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

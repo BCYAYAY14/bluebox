@@ -179,3 +179,33 @@ private func person(_ id: Int, _ name: String) -> Person {
         #expect(SearchDebounce.trimmed("   ").isEmpty)
     }
 }
+
+@Suite struct SearchQueryTests {
+    @Test func aTrailingYearIsSplitOff() {
+        #expect(SearchQuery("dune 2021").text == "dune" && SearchQuery("dune 2021").year == 2021)
+        #expect(SearchQuery("the thing (1982)").text == "the thing" && SearchQuery("the thing (1982)").year == 1982)
+        // A year alone, or a number that isn't one, stays the query.
+        #expect(SearchQuery("1917").text == "1917" && SearchQuery("1917").year == nil)
+        #expect(SearchQuery("ocean's 11").year == nil)
+        #expect(SearchQuery("blade runner 2049").year == 2049)
+    }
+
+    @Test func thatYearsTitlesLead() {
+        let found = [movie(3, "Dune", 1984), movie(1, "Dune", 2021), movie(4, "Dune Drifter", 2020)]
+        #expect(SearchQuery("dune 2021").ranked(found).map(\.year) == [2021, 1984, 2020])
+        #expect(SearchQuery("dune").ranked(found) == found)
+    }
+
+    @Test func libraryMatchesTheWordsAndYear() {
+        #expect(SearchQuery("dune 2021").matches(movie(1, "Dune", 2021)))
+        #expect(!SearchQuery("dune 2021").matches(movie(3, "Dune", 1984)))
+        #expect(SearchQuery("DUNE").matches(movie(3, "Dune", 1984)))
+    }
+
+    @Test func anyChipOtherThanAllNarrows() {
+        #expect(!SearchFilter().isNarrowed)
+        var f = SearchFilter()
+        f.decade = 2010
+        #expect(f.isNarrowed)
+    }
+}

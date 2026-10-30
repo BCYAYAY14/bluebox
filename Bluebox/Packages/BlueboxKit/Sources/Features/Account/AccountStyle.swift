@@ -113,7 +113,7 @@ struct AccountTitle: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
-            Text(title)
+            Text(ui: title)
                 .font(.largeTitle.weight(.bold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
@@ -154,7 +154,7 @@ struct FloatingField<Trailing: View>: View {
         VStack(alignment: .leading, spacing: Spacing.s) {
             HStack(spacing: Spacing.s) {
                 ZStack(alignment: .leading) {
-                    Text(label)
+                    Text(ui: label)
                         .font(floating ? .caption.weight(.medium) : .body)
                         .foregroundStyle(Palette.textSecondary)
                         .offset(y: floating ? -12 : 0)
@@ -369,7 +369,7 @@ struct AccountTextButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Text(title)
+                Text(ui: title)
                 if let systemImage { Image(systemName: systemImage).font(.caption.weight(.bold)) }
             }
             .font(.subheadline.weight(.semibold))
@@ -421,7 +421,7 @@ struct CopyButton: View {
 struct AccountSectionHeader: View {
     let title: String
     var body: some View {
-        Text(title)
+        Text(ui: title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Palette.textSecondary)
             .padding(.top, Spacing.xxl)
@@ -445,7 +445,7 @@ struct AccountInfoRow<Value: View>: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: Spacing.l) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body)
+                    Text(ui: title).font(.body)
                     if let detail {
                         Text(detail).font(.subheadline).foregroundStyle(Palette.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -481,7 +481,7 @@ struct AccountActionRow: View {
             Button(action: action) {
                 HStack(spacing: Spacing.l) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.body).foregroundStyle(destructive ? AccountTheme.error : Palette.textPrimary)
+                        Text(ui: title).font(.body).foregroundStyle(destructive ? AccountTheme.error : Palette.textPrimary)
                         if let detail {
                             Text(detail).font(.subheadline).foregroundStyle(Palette.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -507,6 +507,7 @@ struct AccountActionRow: View {
             .buttonStyle(PressableStyle())
             .disabled(working)
             .onHover { hovering = $0 }
+            .animation(Motion.hover, value: hovering)
             Hairline()
         }
     }

@@ -1,6 +1,7 @@
 import DesignSystem
 import Domain
 import Downloads
+import MediaSources
 import Playback
 import SwiftUI
 import VLCPlayback
@@ -53,6 +54,10 @@ struct LibraryView: View {
     @State private var libraryFailed = false
     /// Sources that couldn't be reached on the last load (their titles from before stay).
     @State private var unreachableSources: [String] = []
+    /// Folders that couldn't be read, and why (moved, or no longer permitted).
+    @State private var folderProblems: [String] = []
+    /// Fix Match for a file in My Sources.
+    @State private var fixingMatch: FixMatchRequest?
     @State private var listFilter: MyListFilter = .all
     @State private var listSort: MyListSort = .recentlyAdded
     @State private var scrolled = false
@@ -134,6 +139,7 @@ struct LibraryView: View {
             rearrange()
         }
         .reloadsWhenBackOnline(!unreachableSources.isEmpty) { await load() }
+        .fixMatchSheet($fixingMatch)
     }
 
     /// My List, Continue Watching and My Sources as Bluebox chips, like New &
@@ -186,6 +192,7 @@ struct LibraryView: View {
 
         var built: [SourceGroup] = []
         var unreachable: [String] = []
+        var problems: [String] = []
         // The debrid library has its own page (the entry above), not a list of raw
         // files here, and downloads have their own tab.
         for source in await app.registry.enabled(with: .browse)
@@ -193,6 +200,9 @@ struct LibraryView: View {
             let variants: [MediaVariant]
             do {
                 variants = try await source.catalog()
+            } catch let error as LocalFolderError {
+                problems.append(UserFacingError.message(for: error))
+                continue
             } catch {
                 unreachable.append(source.displayName)
                 if let old = groups.first(where: { $0.id == source.id }) { built.append(old) }
@@ -208,7 +218,9 @@ struct LibraryView: View {
         }
         groups = built
         unreachableSources = unreachable
-        loaded = true
+        folderProblems = problems
+        // The first time, the skeletons fade into the page instead of cutting to it.
+        if !loaded { withAnimation(Motion.standard(reduceMotion)) { loaded = true } }
     }
 
     /// My List filtered and sorted. Runs on load and when the chips or sort
@@ -282,7 +294,7 @@ struct LibraryView: View {
                     StateMessage(systemImage: listFilter == .films ? "film" : "tv",
                                  title: listFilter == .films ? "No films on your list" : "No TV shows on your list",
                                  message: "Your list has \(watchlist.count) title\(watchlist.count == 1 ? "" : "s"), none of them \(listFilter == .films ? "films" : "TV shows").",
-                                 actionTitle: "Show All") { listFilter = .all }
+                                 actionTitle: "Show All") { withAnimation(Motion.snappy(reduceMotion)) { listFilter = .all } }
                 } else {
                     LazyVGrid(columns: grid.columns, alignment: .leading, spacing: Spacing.cardGap) {
                         ForEach(shown) { t in
@@ -496,10 +508,23 @@ struct LibraryView: View {
                          actionTitle: "Retry") { Task { await load() } }
                 .padding(.horizontal, inset)
         }
-        if groups.allSatisfy({ $0.items.isEmpty }) && loaded && unreachableSources.isEmpty {
+        ForEach(folderProblems, id: \.self) { problem in
+            InlineNotice(systemImage: "folder.badge.questionmark", problem, actionTitle: "Settings", action: openSourceSettings)
+                .padding(.horizontal, inset)
+        }
+        if groups.allSatisfy({ $0.items.isEmpty }) && loaded && unreachableSources.isEmpty && folderProblems.isEmpty {
             StateMessage(systemImage: "externaldrive.badge.plus", title: "No media sources",
                          message: "Add a folder of videos, a direct link or a Jellyfin server to watch what you already have.",
                          actionTitle: "Add a Source", action: openSourceSettings)
+        }
+        if sourceFilter == nil {
+            // Videos and folders on this device (on iPhone and iPad, also from Files and other apps' storage).
+            Button { app.pickingFiles = true } label: {
+                Label("Open Files…", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .padding(.horizontal, inset)
+            .accessibilityIdentifier("library.openFiles")
         }
         ForEach(groups.filter { !$0.items.isEmpty }) { group in
             VStack(alignment: .leading, spacing: Spacing.s) {
@@ -519,6 +544,14 @@ struct LibraryView: View {
                                 await app.play(NowPlayingItem(key: key, title: item.title?.name ?? item.variant.displayName,
                                                               subtitle: item.variant.mediaKey?.episodeNumbers.map { "S\($0.season)·E\($0.episode)" }),
                                                variant: item.variant)
+                            }
+                        }
+                        .contextMenu {
+                            // Matched by file name: local folders can be put right by hand.
+                            if item.variant.location == .localFile {
+                                FixMatchMenuItems(variant: item.variant) {
+                                    Task { fixingMatch = await app.fixMatchRequest(for: item.variant) }
+                                }
                             }
                         }
                     }
@@ -684,6 +717,7 @@ struct SourceItemRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if supported { play() } }
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(supported ? .isButton : [])
         .accessibilityHint(supported ? "Plays it" : "This format can't play on this device")
@@ -739,6 +773,7 @@ struct HistoryRow: View {
         }
         .background(hovering ? Palette.surface.opacity(0.6) : .clear)
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityAction(named: "Remove from History", remove)
     }
 }
@@ -771,6 +806,7 @@ struct DebridLibraryEntry: View {
         }
         .buttonStyle(PressableStyle(scale: 1))
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityIdentifier("debridLibraryEntry")
     }
 }

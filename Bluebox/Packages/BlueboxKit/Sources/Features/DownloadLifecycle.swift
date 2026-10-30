@@ -28,7 +28,7 @@ import UserNotifications
 /// - A torrent finishing in the background posts a notification.
 /// With the setting off, Bluebox asks for iOS's ~30 seconds, downloads for
 /// most of it, then stops torrents until it's open again.
-/// While Infuse streams from Bluebox (a torrent or a download over localhost),
+/// While an external player (Infuse, VLC…) streams from Bluebox (a torrent or a download over localhost),
 /// the silent session keeps it running whatever the downloads would decide.
 /// On the Mac the app keeps running, so nothing here applies.
 @MainActor
@@ -40,7 +40,7 @@ final class DownloadLifecycle {
     var isPlaying: () -> Bool = { false }
     /// A player is open, so the audio session mustn't be deactivated. Set by AppModel.
     var isPlayerOpen: () -> Bool = { false }
-    /// Infuse is reading a stream from Bluebox (`AppModel+Infuse`): keep running while it does. Set by AppModel.
+    /// An external player is reading a stream from Bluebox (`AppModel+ExternalPlayer`): keep running while it does. Set by AppModel.
     var isServingExternalPlayer: () -> Bool = { false }
 
     static let notificationCategory = "bluebox.downloads"
@@ -192,7 +192,7 @@ final class DownloadLifecycle {
         }
     }
 
-    /// Infuse is streaming from Bluebox: the silent session keeps it running,
+    /// An external player is streaming from Bluebox: the silent session keeps it running,
     /// whatever downloads would decide. They're left as they are.
     private func keepServing() {
         dormant = false

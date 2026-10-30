@@ -15,6 +15,7 @@ import SwiftUI
 /// row follows its own download's progress.
 struct DownloadQueueView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var ids: [String] = []
     @State private var anyActive = false
     @State private var anyStopped = false
@@ -44,7 +45,7 @@ struct DownloadQueueView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .animation(Motion.standard(false), value: ids)
+        .animation(Motion.standard(reduceMotion), value: ids)
         .background { DownloadsChangeObserver { reload() } }
         .blueboxScreen()
         .navigationTitle("Queue")

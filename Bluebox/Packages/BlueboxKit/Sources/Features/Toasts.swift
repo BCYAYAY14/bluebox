@@ -60,6 +60,7 @@ extension AppModel {
 /// Draws `AppModel.toast` over the app, at the bottom, and dismisses it after a while.
 public struct ToastHost: ViewModifier {
     let model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: AppModel) { self.model = model }
 
@@ -70,7 +71,7 @@ public struct ToastHost: ViewModifier {
                     .padding(.horizontal, Spacing.l)
                     .padding(.bottom, bottomInset)
                     .frame(maxWidth: 560)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(Motion.slide(from: .bottom, reduceMotion))
                     .task(id: toast.id) {
                         AccessibilityNotification.Announcement("\(toast.title). \(toast.message ?? "")").post()
                         try? await Task.sleep(for: toast.duration)
@@ -79,7 +80,7 @@ public struct ToastHost: ViewModifier {
                     .zIndex(10)
             }
         }
-        .animation(.spring(duration: 0.35), value: model.toast)
+        .animation(Motion.standard(reduceMotion), value: model.toast)
     }
 
     private var bottomInset: CGFloat {
@@ -106,9 +107,9 @@ private struct ToastView: View {
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(toast.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                Text(ui: toast.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                 if let message = toast.message {
-                    Text(message).font(.footnote).foregroundStyle(Palette.textSecondary)
+                    Text(ui: message).font(.footnote).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

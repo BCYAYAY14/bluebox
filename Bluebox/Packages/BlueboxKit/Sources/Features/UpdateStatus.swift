@@ -66,7 +66,7 @@ private struct UpdateProgressCapsule: View {
             #endif
         } label: {
             HStack(spacing: 12) {
-                Text(title).font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                Text(ui: title).font(.callout.weight(.medium)).foregroundStyle(Palette.textPrimary)
                 if let fraction {
                     ProgressView(value: fraction).tint(Palette.brand).frame(width: 120)
                     Text("\(Int(fraction * 100))%").font(.callout).monospacedDigit().foregroundStyle(Palette.textSecondary)
@@ -80,7 +80,7 @@ private struct UpdateProgressCapsule: View {
         }
         .buttonStyle(PressableStyle(scale: 1))
         .padding(.bottom, 24)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(Motion.slide(from: .bottom, reduceMotion))
         .accessibilityElement(children: .combine)
         .accessibilityHint("Shows the update in Settings › About")
     }

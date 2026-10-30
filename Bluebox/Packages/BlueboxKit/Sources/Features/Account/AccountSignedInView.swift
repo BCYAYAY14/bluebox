@@ -175,12 +175,18 @@ struct AccountServerRows: View {
         switch account.setupCheck {
         case .idle, .checking:
             EmptyView()
-        case .ok(let warnings):
+        case .ok(let warnings, let scripts):
             VStack(alignment: .leading, spacing: Spacing.s) {
                 if warnings.isEmpty {
                     AccountHelperText(text: "Everything's set up.", ok: true)
                 } else {
                     ForEach(warnings, id: \.self) { AccountErrorText(text: $0) }
+                    if !scripts.isEmpty {
+                        WrappingButtons {
+                            ForEach(scripts, id: \.self) { CopyButton("Copy \($0.fileName)", text: $0.sql) }
+                            DashboardLink("Open SQL Editor", SupabaseDashboard.url(.sqlEditor, ref: account.projectRef))
+                        }
+                    }
                 }
             }
             .padding(.vertical, Spacing.m)
@@ -232,6 +238,14 @@ struct TraktRows: View {
                 Hairline()
             case .connected(let username):
                 AccountInfoRow(title: "Connected as", detail: traktStatus(trakt.status)) { Text(username ?? "Trakt") }
+                AccountInfoRow(title: "Sync Lists with Trakt",
+                               detail: "Your lists also sync with private Trakt lists of the same name. Deleting a list on either side leaves the other alone.") {
+                    Toggle("Sync Lists with Trakt", isOn: Bindable(trakt).syncsLists)
+                        .labelsHidden()
+                        .tint(Palette.brand)
+                        .accessibilityIdentifier("traktSyncListsSwitch")
+                }
+                .settingsRow("Sync Lists with Trakt")
                 AccountActionRow(title: "Sync now", working: trakt.status == .syncing) { Task { await trakt.syncNow() } }
                 AccountActionRow(title: "Disconnect Trakt") { Task { await trakt.disconnect() } }
             }

@@ -9,7 +9,9 @@ import SwiftVLC
 /// Under stream output libVLC ignores `start-time` (it decodes from the
 /// beginning) but stops exactly at `stop-time`. So the player is sent to the
 /// start once it runs, and only the last `duration` seconds are kept: they
-/// end at the stop time whatever came before the seek landed.
+/// end at the stop time whatever came before the seek landed. When a seek
+/// lands late and less than that was decoded, the clip starts later than
+/// asked; `extract` returns where it really starts, so words keep their times.
 @MainActor
 public enum VLCAudioClip {
     public enum Failure: Error, LocalizedError {
@@ -18,7 +20,11 @@ public enum VLCAudioClip {
     }
 
     /// Writes the sound from `start` for `duration` seconds to `destination`.
-    public static func extract(_ url: URL, start: TimeInterval, duration: TimeInterval, to destination: URL) async throws {
+    /// - Parameter headers: the resource's; libVLC takes the user agent and referrer.
+    /// - Returns: the time in the video the clip starts at (`start`, or later when less was decoded).
+    @discardableResult
+    public static func extract(_ url: URL, headers: [String: String] = [:], start: TimeInterval, duration: TimeInterval,
+                               to destination: URL) async throws -> TimeInterval {
         try? FileManager.default.removeItem(at: destination)
         let media = try Media(url: url)
         let path = destination.path.replacingOccurrences(of: "\"", with: "")
@@ -27,6 +33,13 @@ public enum VLCAudioClip {
         media.addOption(":no-sout-spu")
         media.addOption(":start-time=\(String(format: "%.2f", max(0, start)))")
         media.addOption(":stop-time=\(String(format: "%.2f", max(0, start) + duration))")
+        for (name, value) in headers {
+            switch name.lowercased() {
+            case "user-agent": media.addOption(":http-user-agent=\(value)")
+            case "referer", "referrer": media.addOption(":http-referrer=\(value)")
+            default: break
+            }
+        }
         let player = Player(instance: .shared)
         try player.play(media)
         defer { player.stop() }
@@ -42,21 +55,28 @@ public enum VLCAudioClip {
                 if !sought { sought = true; try? player.seek(to: .milliseconds(Int64(start * 1000))) }
             case .opening, .buffering, .paused: started = true
             case .stopped, .stopping, .idle:
-                if started { player.stop(); return try keepLast(duration, of: destination) }
+                if started {
+                    player.stop()
+                    // What's kept ends at the stop time.
+                    return max(0, start) + duration - (try keepLast(duration, of: destination))
+                }
             case .error: throw Failure.noSound
             }
         }
         throw Failure.noSound
     }
 
-    /// Cuts the WAV down to its last `seconds` (16 kHz mono, 16-bit) with a fresh header.
-    static func keepLast(_ seconds: TimeInterval, of url: URL) throws {
+    /// Cuts the WAV down to its last `seconds` (16 kHz mono, 16-bit) with a
+    /// fresh header, and returns how many seconds it holds.
+    @discardableResult
+    static func keepLast(_ seconds: TimeInterval, of url: URL) throws -> TimeInterval {
         let data = try Data(contentsOf: url)
         guard let marker = data.range(of: Data("data".utf8)), marker.upperBound + 4 <= data.count else { throw Failure.noSound }
         let samples = data[(marker.upperBound + 4)...]
         let keep = min(samples.count / 2 * 2, Int(seconds * 16_000) * 2)
         guard keep > 16_000 else { throw Failure.noSound }  // under half a second of sound
         try (wavHeader(dataBytes: keep) + samples.suffix(keep)).write(to: url)
+        return Double(keep / 2) / 16_000
     }
 
     static func wavHeader(dataBytes: Int) -> Data {

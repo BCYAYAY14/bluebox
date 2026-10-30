@@ -11,7 +11,11 @@ import UIKit
 /// existing cases keep their names.
 public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable {
     case account, profiles
-    /// The profile group: the current profile's own settings.
+    /// Theme colour and the app's language (AppearanceSettingsPage).
+    case appearance
+    /// Languages: the app's, then the profile's audio and subtitles.
+    /// myPlayback: the profile's old Playback page, now a section of Playback
+    /// (kept so stored selections and links still open somewhere).
     case languages, myPlayback, hiddenTitles
     case playback, subtitles, picture
     case torrents, downloads, sources, catalog
@@ -28,11 +32,11 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         switch self {
         case .account: "Account & Sync"
         case .profiles: "Profiles"
-        case .languages: "Languages"
+        case .appearance: "Appearance"
+        case .languages: "Language"
         case .myPlayback: "Playback"
         case .hiddenTitles: "Hidden Titles"
-        // The shared player settings; "Playback" is the profile's own page.
-        case .playback: "Player"
+        case .playback: "Playback"
         case .subtitles: "Subtitles"
         case .picture: "Picture"
         case .torrents: "Torrents & Debrid"
@@ -54,6 +58,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         switch self {
         case .account: "person.crop.circle"
         case .profiles: "person.2"
+        case .appearance: "paintpalette"
         case .languages: "globe"
         case .myPlayback: "play.circle"
         case .hiddenTitles: "eye.slash"
@@ -74,25 +79,52 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         }
     }
 
-    /// Mobile Data is iPhone and iPad only.
+    /// One line under the page's title saying what's on it, so a page can be
+    /// told from its neighbours without opening each one.
+    var summary: String {
+        switch self {
+        case .account: "Sign in, sync your library between devices, and connect Trakt."
+        case .profiles: "Who's watching: add, edit and switch profiles."
+        case .appearance: "The accent colour, which also colours the logo and app icon."
+        case .languages: "The app's language, and the audio and subtitle languages you prefer."
+        case .myPlayback, .playback: "Autoplay, where videos start, skipping, the player and sound."
+        case .hiddenTitles: "Titles you've hidden from Home's recommendations."
+        case .subtitles: "How subtitles look, their timing, and searching for them online."
+        case .picture: "Brightness, contrast and saturation every video starts with."
+        case .torrents: "Add-ons that find releases, your debrid service, and how releases are picked."
+        case .downloads: "Downloading for offline, Smart Downloads, and quality."
+        case .sources: "Your folders, Jellyfin servers, links and torrents."
+        case .catalog: "Where titles, artwork and ratings come from."
+        case .mobileData: "What may use mobile data, and how much it has used."
+        case .notifications: "Alerts for new episodes."
+        case .privacy: "Statistics, Spoiler Guard, search history, remote control and more."
+        case .statistics: "Hours watched, top shows and genres."
+        case .storage: "Space used, caches, and resetting Bluebox."
+        case .advanced: "Diagnostics, logs and the launch intro."
+        case .about: "Version, updates and acknowledgements."
+        }
+    }
+
+    /// Mobile Data is iPhone and iPad only. My Playback is folded into Playback.
     static var available: [SettingsPage] {
         #if os(iOS)
-        allCases
+        allCases.filter { $0 != .myPlayback }
         #else
-        allCases.filter { $0 != .mobileData }
+        allCases.filter { $0 != .mobileData && $0 != .myPlayback }
         #endif
     }
 
     /// The current profile's own pages, at the top of Settings under its avatar and name.
-    static let profileGroup: [SettingsPage] = [.profiles, .languages, .myPlayback, .subtitles, .hiddenTitles]
+    static let profileGroup: [SettingsPage] = [.profiles, .subtitles, .hiddenTitles]
 
-    /// Pages that are the same for every profile, under "Everyone on this Mac".
+    /// Pages that are the same for every profile, each group under its own heading.
     @MainActor static var groups: [(title: String, pages: [SettingsPage])] {
         [
-            (everyoneTitle, [.account, .playback, .picture]),
+            ("General", [.appearance, .languages, .account, .notifications]),
+            ("Watching", [.playback, .picture]),
             ("Finding Things to Watch", [.torrents, .sources, .catalog]),
             ("Data & Storage", [.mobileData, .downloads, .storage]),
-            ("More", [.notifications, .privacy, .advanced, .about]),
+            ("Privacy & More", [.privacy, .advanced, .about]),
         ].map { ($0.0, $0.1.filter(available.contains)) }
     }
 
@@ -159,11 +191,11 @@ public struct SettingsView: View {
     @State private var reveal = SettingsReveal()
     /// iPad and Mac: pages pushed inside the selected category (a profile's editor).
     @State private var detailPath: [SettingsRoute] = []
+    @Environment(\.dismiss) private var dismiss
     #if os(macOS)
     @AppStorage("bluebox.settingsPage") private var selection: SettingsPage = .account
     public init() {}
     #else
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var path: [SettingsRoute]
     @State private var selection: SettingsPage
@@ -186,10 +218,18 @@ public struct SettingsView: View {
     public var body: some View {
         Group {
             #if os(macOS)
-            split(selection: $selection)
-                .frame(minWidth: 860, minHeight: 580)
+            if app.settingsNeedsPIN {
+                // A Kids profile, or one with a limit and a PIN: its PIN first.
+                SettingsPINGate { dismiss() }
+                    .frame(minWidth: 860, minHeight: 580)
+            } else {
+                split(selection: $selection)
+                    .frame(minWidth: 860, minHeight: 580)
+            }
             #else
-            if sizeClass == .regular {
+            if app.settingsNeedsPIN {
+                SettingsPINGate { dismiss() }
+            } else if sizeClass == .regular {
                 split(selection: $selection)
             } else {
                 phoneList
@@ -287,7 +327,7 @@ public struct SettingsView: View {
                                             .accessibilityIdentifier("settings.\(page.rawValue)")
                                     }
                                 } header: {
-                                    Text(group.title)
+                                    Text(ui: group.title)
                                 }
                             }
                         }
@@ -322,6 +362,7 @@ public struct SettingsView: View {
 
 /// iPad and Mac: search, who's watching, and the categories.
 struct SettingsSidebar: View {
+    @Environment(AppModel.self) private var app
     let selection: SettingsPage
     @Binding var query: String
     let select: (SettingsPage, SettingsSearchIndex.Entry?) -> Void
@@ -350,22 +391,16 @@ struct SettingsSidebar: View {
                         SettingsProfileCard(compact: true)
                             .padding(.horizontal, Spacing.m)
                             .padding(.bottom, Spacing.s)
+                        SidebarGroupHeader(title: "Only for \(profileName)")
                         VStack(spacing: 2) {
                             ForEach(SettingsPage.profileGroup) { page in
                                 SidebarRow(page: page, selected: page == selection) { select(page, nil) }
                             }
                         }
                         .padding(.bottom, Spacing.m)
-                        Text(SettingsPage.everyoneTitle)
-                            .font(.caption.weight(.semibold))
-                            .textCase(.uppercase)
-                            .tracking(0.5)
-                            .foregroundStyle(Palette.textTertiary)
-                            .padding(.horizontal, 10)
-                            .padding(.top, Spacing.s)
-                            .padding(.bottom, Spacing.xs)
-                            .accessibilityAddTraits(.isHeader)
+                        // Every other group is the same for everyone on this device, under its own heading.
                         ForEach(SettingsPage.groups, id: \.title) { group in
+                            SidebarGroupHeader(title: group.title)
                             VStack(spacing: 2) {
                                 ForEach(group.pages) { page in
                                     SidebarRow(page: page, selected: page == selection) { select(page, nil) }
@@ -386,9 +421,31 @@ struct SettingsSidebar: View {
         .foregroundStyle(Palette.textPrimary)
         .background(Palette.chrome.ignoresSafeArea())
     }
+
+    private var profileName: String { app.currentProfile.name }
+}
+
+/// A group's small grey heading in the sidebar.
+private struct SidebarGroupHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(ui: title)
+            .font(.caption.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(0.5)
+            .foregroundStyle(Palette.textTertiary)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.top, Spacing.xs)
+            .padding(.bottom, Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 private struct SidebarRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let page: SettingsPage
     let selected: Bool
     let action: () -> Void
@@ -401,7 +458,7 @@ private struct SidebarRow: View {
                     .font(.system(size: 14, weight: selected ? .semibold : .regular))
                     .frame(width: 20)
                     .accessibilityHidden(true)
-                Text(page.title)
+                Text(ui: page.title)
                     .font(SettingsMetrics.rowFont.weight(selected ? .bold : .medium))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -420,10 +477,18 @@ private struct SidebarRow: View {
             #endif
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(selected ? Palette.elevated : hovering ? Palette.surface : .clear))
+            .overlay(alignment: .leading) {
+                // The selected page's accent mark, in the theme colour.
+                Capsule().fill(Palette.brand).frame(width: 3, height: selected ? 16 : 0)
+                    .opacity(selected ? 1 : 0)
+                    .offset(x: -1)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle(scale: 1))
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
+        .animation(Motion.snappy(reduceMotion), value: selected)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("settings.\(page.rawValue)")
     }
@@ -454,7 +519,7 @@ struct SettingsSearchResults: View {
                                     .buttonStyle(SettingsRowPressStyle())
                             }
                         } header: {
-                            Text(page.title)
+                            Text(ui: page.title)
                         }
                     }
                 }
@@ -494,7 +559,12 @@ struct SettingsCategoryRow: View {
 
     var body: some View {
         HStack(spacing: Spacing.l) {
-            Text(page.title).foregroundStyle(Palette.textPrimary).lineLimit(1).layoutPriority(1)
+            Image(systemName: page.symbol)
+                .font(.system(size: 15))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+            Text(ui: page.title).foregroundStyle(Palette.textPrimary).lineLimit(1).layoutPriority(1)
             Spacer(minLength: 0)
             if let status { Text(status).foregroundStyle(Palette.textSecondary).lineLimit(1) }
             SettingsChevron()
@@ -506,7 +576,8 @@ struct SettingsCategoryRow: View {
         switch page {
         case .account: app.account.isSignedIn ? "Signed In" : "Off"
         case .profiles: "\(app.profiles.count)"
-        case .languages: app.settings.preferredAudioLanguage.map(SettingsLanguages.name) ?? "Original"
+        case .appearance: ThemeStore.shared.accent.title
+        case .languages: AppLanguage.current.title
         case .myPlayback: app.settings.autoplayNextEpisode ? "Autoplay On" : "Autoplay Off"
         case .hiddenTitles: nil
         case .catalog: switch app.catalogMode {
@@ -515,7 +586,7 @@ struct SettingsCategoryRow: View {
             case .sample: "Sample"
             }
         case .subtitles: app.subtitleStyle.preferredLanguage.flatMap { Locale.current.localizedString(forLanguageCode: $0) } ?? "Off"
-        case .playback: app.settings.enginePreference == .automatic ? nil : app.settings.enginePreference.title
+        case .playback: app.settings.autoplayNextEpisode ? "Autoplay On" : "Autoplay Off"
         case .picture: app.settings.pictureDefaults.isDefault ? "Original" : "Adjusted"
         case .torrents:
             !app.addonSettings.isEnabled ? "Off" : app.addonSettings.debrid == .none ? "P2P" : app.addonSettings.debrid.title
@@ -607,8 +678,9 @@ struct SettingsPageView: View {
         switch page {
         case .account: AccountSettingsPage()
         case .profiles: SettingsForm(.profiles) { ProfilesSection(); StatisticsLinkSection() }
+        case .appearance: AppearanceSettingsPage()
         case .languages: ProfileLanguagesPage()
-        case .myPlayback: ProfilePlaybackPage()
+        case .myPlayback: PlaybackSettingsPage()
         case .hiddenTitles: HiddenTitlesSettingsPage()
         case .playback: PlaybackSettingsPage()
         case .subtitles: SubtitlesSettingsPage()

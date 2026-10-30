@@ -100,6 +100,8 @@ struct ProfileEditorPage: View {
     @State private var color = 0
     @State private var maturity: MaturityRating = .all
     @State private var isKids = false
+    /// nil: the default for the profile (off for Kids).
+    @State private var allowsUnrated: Bool?
     @State private var loaded = false
     @State private var confirmingDelete = false
     /// A locked profile that isn't the one watching asks for its PIN before editing.
@@ -118,7 +120,11 @@ struct ProfileEditorPage: View {
 
     var body: some View {
         Group {
-            if let profile, app.isLocked(profile.id), profile.id != app.currentProfileID, !unlocked {
+            if app.settingsNeedsPIN {
+                // A restricted profile watching: its PIN before editing itself or adding
+                // a profile (Settings asks too; this covers the Mac picker's Add Profile).
+                SettingsPINGate { dismiss() }
+            } else if let profile, app.isLocked(profile.id), profile.id != app.currentProfileID, !unlocked {
                 ProfilePINEntry(profile: profile, done: { _ in unlocked = true }, cancel: { dismiss() })
             } else {
                 editor
@@ -262,6 +268,15 @@ struct ProfileEditorPage: View {
                     .onChange(of: isKids) { saveIfExisting() }
                     .accessibilityIdentifier("kidsToggle")
             }
+            if isKids || maturity != .all {
+                hairline
+                row {
+                    Toggle("Allow Unrated Titles", isOn: Binding(get: { allowsUnrated ?? !isKids },
+                                                                 set: { allowsUnrated = $0; saveIfExisting() }))
+                        .accessibilityIdentifier("allowUnratedToggle")
+                }
+                .settingsRow("Allow Unrated Titles")
+            }
             Text(maturityFooter)
                 .font(.footnote).foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -339,7 +354,16 @@ struct ProfileEditorPage: View {
         let base = isKids
             ? "Kids profiles show titles rated 7+ or under, and family titles where there's no rating."
             : limit.summary
-        return limit == .all && !isKids ? base : base + " Ratings come from TMDB; titles without one still show in search."
+        guard limit != .all || isKids else { return base }
+        let unrated = (allowsUnrated ?? !isKids)
+            ? " Ratings come from TMDB; titles without one still play."
+            : " Ratings come from TMDB; titles without one don\u{2019}t play."
+        let ownPIN = profile.map { app.isLocked($0.id) } == true
+        let grownUpPIN = isKids && app.profiles.contains { !$0.isKids && app.isLocked($0.id) }
+        let lock = ownPIN || grownUpPIN
+            ? " Settings asks for a PIN while this profile is watching."
+            : " Add a Profile Lock so Settings asks for a PIN while this profile is watching."
+        return base + unrated + lock
     }
 
     private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -358,7 +382,7 @@ struct ProfileEditorPage: View {
         loaded = true
         if let profile {
             name = profile.name; symbol = profile.symbol; color = profile.color
-            maturity = profile.maturity; isKids = profile.isKids
+            maturity = profile.maturity; isKids = profile.isKids; allowsUnrated = profile.allowsUnrated
         } else {
             // A different colour from the profiles that exist, if there is one.
             let used = Set(app.profiles.map(\.color))
@@ -372,14 +396,16 @@ struct ProfileEditorPage: View {
         guard loaded, let id = profile?.id, var p = app.profiles.first(where: { $0.id == id }) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        guard p.name != trimmed || p.symbol != symbol || p.color != color || p.maturity != maturity || p.isKids != isKids else { return }
+        guard p.name != trimmed || p.symbol != symbol || p.color != color || p.maturity != maturity || p.isKids != isKids
+                || p.allowsUnrated != allowsUnrated else { return }
         p.name = trimmed; p.symbol = symbol; p.color = color; p.maturity = maturity; p.isKids = isKids
+        p.allowsUnrated = allowsUnrated
         app.updateProfile(p)
     }
 
     private func create() {
         guard isNew, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        app.addProfile(name: name, symbol: symbol, color: color, maturity: maturity, isKids: isKids)
+        app.addProfile(name: name, symbol: symbol, color: color, maturity: maturity, isKids: isKids, allowsUnrated: allowsUnrated)
         if let created { created() } else { dismiss() }
     }
 

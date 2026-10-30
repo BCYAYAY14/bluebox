@@ -38,11 +38,21 @@ public final class TraktModel {
     }
     static let scrobbleKey = "bluebox.trakt.scrobble"
 
+    /// Account › Trakt › Sync Lists: your own lists sync with private Trakt
+    /// lists of the same name, as My List does with the watchlist (default off).
+    public var syncsLists: Bool {
+        didSet {
+            prefs.set(syncsLists, for: TraktSync.syncListsKey)
+            if syncsLists { Task { await syncNow() } }
+        }
+    }
+
     init(config: TraktConfig?, http: any HTTPClient, secrets: any SecretStore, store: LibraryStore, prefs: PreferencesStore,
          resolveTitle: @escaping @Sendable (MediaKey) async -> Title?) {
         self.prefs = prefs
         ratings = TraktRatingsStore(prefs: prefs)
         scrobbles = prefs.value(Bool.self, for: Self.scrobbleKey) ?? true
+        syncsLists = prefs.value(Bool.self, for: TraktSync.syncListsKey) ?? false
         guard let config else { client = nil; engine = nil; return }
         let client = TraktClient(config: config, http: http, secrets: secrets)
         self.client = client

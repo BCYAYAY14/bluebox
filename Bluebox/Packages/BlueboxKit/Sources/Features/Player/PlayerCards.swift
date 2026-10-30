@@ -51,12 +51,12 @@ struct PlayerMessageCard: View {
                         .font(.caption.weight(.heavy)).tracking(1.4)
                         .foregroundStyle(Palette.textTertiary)
                 }
-                Text(title)
+                Text(ui: title)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(Palette.textPrimary)
                     .lineLimit(2)
                 if let message {
-                    Text(message)
+                    Text(ui: message)
                         .font(.callout)
                         .foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -105,7 +105,7 @@ private struct ExtraCard: View {
         .frame(width: width, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(Motion.hover, value: hovering)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(video.kind.label): \(video.name)")
         .accessibilityAddTraits(.isButton)

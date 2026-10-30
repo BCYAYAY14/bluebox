@@ -143,13 +143,13 @@ struct SettingsForm<Content: View, Preview: View>: View {
         .labeledContentStyle(SettingsLabeledContentStyle())
         .buttonStyle(SettingsActionStyle())
         .textFieldStyle(SettingsFieldStyle())
-        .navigationTitle(title)
+        .navigationTitle(LocalizedStringKey(title))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // The big title is in the page; the bar's small one fades in once it scrolls away.
             ToolbarItem(placement: .principal) {
-                Text(title).font(.headline).opacity(scrolledPastTitle ? 1 : 0)
+                Text(ui: title).font(.headline).opacity(scrolledPastTitle ? 1 : 0)
                     .animation(.easeOut(duration: 0.18), value: scrolledPastTitle)
                     .accessibilityHidden(!scrolledPastTitle)
             }
@@ -159,10 +159,19 @@ struct SettingsForm<Content: View, Preview: View>: View {
     }
 
     private var pageTitle: some View {
-        Text(title)
-            .font(SettingsMetrics.titleFont)
-            .foregroundStyle(Palette.textPrimary)
-            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(ui: title)
+                .font(SettingsMetrics.titleFont)
+                .foregroundStyle(Palette.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            // A category page says what's on it; its sub-pages don't.
+            if subpage == nil, let page, page.title == title {
+                Text(ui: page.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     /// Scrolls to the row a search hit named and flashes it. The target is
@@ -359,7 +368,7 @@ struct SettingsLink<Destination: View>: View {
     var body: some View {
         NavigationLink(destination: destination) {
             HStack(spacing: Spacing.l) {
-                Text(title).foregroundStyle(Palette.textPrimary).layoutPriority(1)
+                Text(ui: title).foregroundStyle(Palette.textPrimary).layoutPriority(1)
                 Spacer(minLength: 0)
                 if let value {
                     Text(value).foregroundStyle(Palette.textSecondary).lineLimit(1)
@@ -411,7 +420,7 @@ struct SettingsChoicePage<Value: Hashable>: View {
                         dismiss()
                     } label: {
                         HStack(spacing: Spacing.l) {
-                            Text(option.title).foregroundStyle(Palette.textPrimary)
+                            Text(ui: option.title).foregroundStyle(Palette.textPrimary)
                             Spacer(minLength: 0)
                             Image(systemName: "checkmark")
                                 .font(.body.weight(.semibold))
@@ -473,13 +482,13 @@ struct SettingsPicker<Value: Hashable>: View {
     var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: Spacing.l) {
-                Text(title)
+                Text(ui: title)
                     .foregroundStyle(isEnabled ? Palette.textPrimary : Palette.textTertiary)
                     .layoutPriority(1)
                 Spacer(minLength: 0)
                 HStack(spacing: 6) {
                     if let color = current?.color { Circle().fill(color).frame(width: 10, height: 10) }
-                    Text(current?.title ?? "").lineLimit(1)
+                    Text(ui: current?.title ?? "").lineLimit(1)
                     SettingsChevron(symbol: "chevron.up.chevron.down")
                 }
                 .foregroundStyle(isEnabled ? Palette.textSecondary : Palette.textTertiary)
@@ -530,7 +539,7 @@ struct SettingsSlider: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s) {
             HStack {
-                Text(title)
+                Text(ui: title)
                 Spacer()
                 Text(format(value)).monospacedDigit().foregroundStyle(Palette.textSecondary)
             }

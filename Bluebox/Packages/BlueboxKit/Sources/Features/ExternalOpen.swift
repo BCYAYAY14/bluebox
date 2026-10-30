@@ -22,7 +22,8 @@ enum ExternalItem: Equatable {
     /// An https link to a video file (your own server).
     case videoLink(URL)
 
-    static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "mkv", "avi", "webm", "ts", "m2ts", "wmv", "flv", "mpg", "mpeg"]
+    /// The same list a folder scan uses, so a file that shows in a folder source opens on its own too.
+    static var videoExtensions: Set<String> { LocalFolderSource.videoExtensions }
 
     /// Bluebox's own links (`bluebox://…`) aren't external items: nil.
     /// - Parameter isDirectory: for file URLs; nil checks the disk.
@@ -49,6 +50,21 @@ enum ExternalItem: Equatable {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("\n"), let url = URL(string: trimmed) else { return nil }
         return classify(url, isDirectory: false)
+    }
+}
+
+/// Why a folder couldn't be added as a source.
+enum LocalFolderAddError: Error, Equatable, LocalizedError {
+    case alreadyAdded(String)
+    /// The system wouldn't keep permission to read it after Bluebox quits.
+    case noBookmark(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .alreadyAdded(let name): "That folder is already in My Sources, as “\(name)”."
+        case .noBookmark(let name):
+            "Bluebox couldn't keep permission to read “\(name)”. Try adding it again, or move the videos to a folder in your home folder."
+        }
     }
 }
 
@@ -95,12 +111,41 @@ extension AppModel {
                 externalOpen = ExternalOpenState(source: "Opened from a link", phase: .failed(UserFacingError.message(for: error)))
             }
         case .folder(let url):
-            do {
-                try await addLocalFolder(url)
-                showToast(AppToast(url.lastPathComponent, message: "Added to My Sources", style: .success))
-            } catch {
-                report(error, title: "Couldn't add “\(url.lastPathComponent)”")
+            await addFolderReporting(url)
+        }
+    }
+
+    /// Opens several dropped or picked items: every folder and torrent is added,
+    /// the first video plays. Says so when none of it is something Bluebox opens.
+    func openExternal(_ items: [ExternalItem], ignored: [String] = []) async {
+        if items.isEmpty {
+            let what = ignored.count == 1 ? "“\(ignored[0])”" : "these"
+            alert = AppAlert(title: "Bluebox can't open \(what)",
+                             message: "Open or drop videos (\(LocalFolderSource.extensionList)), folders of videos, .torrent files or magnet links.")
+            return
+        }
+        let videos = items.filter { if case .videoFile = $0 { true } else { false } }
+        for item in items {
+            if case .videoFile = item { continue }
+            await openExternal(item)
+        }
+        if let first = videos.first { await openExternal(first) }
+    }
+
+    /// Adds a folder as a source and says what came of it: how many videos, or
+    /// why it couldn't be added.
+    func addFolderReporting(_ url: URL) async {
+        let name = url.lastPathComponent
+        do {
+            let count = try await addLocalFolder(url)
+            if count == 0 {
+                showToast(AppToast(name, message: "Added, but there are no videos in it yet. Bluebox looks for \(LocalFolderSource.extensionList) files.",
+                                   style: .info))
+            } else {
+                showToast(AppToast(name, message: "Added to My Sources · \(count) video\(count == 1 ? "" : "s")", style: .success))
             }
+        } catch {
+            alert = AppAlert(title: "Couldn't add “\(name)”", message: UserFacingError.message(for: error))
         }
     }
 
@@ -189,7 +234,7 @@ struct ExternalOpenSheet: View {
             buttons(primary: nil)
         case .failed(let message):
             Text("Couldn't open it").font(.title3.weight(.heavy))
-            Text(message).font(.callout).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(ui: message).font(.callout).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
             buttons(primary: nil)
         }
     }
@@ -245,6 +290,52 @@ struct ExternalOpenPresenter: ViewModifier {
     }
 }
 
+/// The picker behind File › Open… and My Sources' Open Files…: videos (MKV
+/// and AVI too, which aren't `public.movie` everywhere), folders and .torrent files.
+struct OpenFilesImporter: ViewModifier {
+    @Environment(AppModel.self) private var app
+    @Binding var isPresented: Bool
+
+    static var contentTypes: [UTType] {
+        var types: [UTType] = [.movie, .video, .folder]
+        if let torrent = UTType(filenameExtension: "torrent") { types.append(torrent) }
+        for ext in LocalFolderSource.videoExtensions.sorted() {
+            if let t = UTType(filenameExtension: ext), !types.contains(t) { types.append(t) }
+        }
+        return types
+    }
+
+    func body(content: Content) -> some View {
+        content.fileImporter(isPresented: $isPresented, allowedContentTypes: Self.contentTypes, allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                let (items, ignored) = Self.classify(urls)
+                Task { await app.openExternal(items, ignored: ignored) }
+            case .failure(let error):
+                app.alert = AppAlert(title: "Couldn't open it", message: UserFacingError.message(for: error))
+            }
+        }
+    }
+
+    /// Picked URLs are security-scoped: telling a folder from a file needs access first.
+    static func classify(_ urls: [URL]) -> ([ExternalItem], [String]) {
+        var items: [ExternalItem] = []
+        var ignored: [String] = []
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            if let item = ExternalItem.classify(url) { items.append(item) } else { ignored.append(url.lastPathComponent) }
+        }
+        return (items, ignored)
+    }
+}
+
+extension View {
+    func openFilesImporter(isPresented: Binding<Bool>) -> some View {
+        modifier(OpenFilesImporter(isPresented: isPresented))
+    }
+}
+
 #if os(macOS)
 /// Drop a magnet, .torrent, video or folder anywhere on the Mac window: a
 /// blue drop target shows while something is over it.
@@ -255,9 +346,8 @@ struct ExternalDropTarget: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onDrop(of: [.fileURL, .url, .plainText], isTargeted: $targeted) { providers in
-                Self.items(from: providers) { items in
-                    guard let first = items.first else { return }
-                    Task { await app.openExternal(first) }
+                Self.items(from: providers) { items, ignored in
+                    Task { await app.openExternal(items, ignored: ignored) }
                 }
                 return true
             }
@@ -285,7 +375,8 @@ struct ExternalDropTarget: ViewModifier {
     }
 
     /// Reads file URLs, links and text from a drop, keeping what Bluebox can open.
-    static func items(from providers: [NSItemProvider], done: @escaping @MainActor ([ExternalItem]) -> Void) {
+    /// `done` gets what can be opened and the names of the files that can't.
+    static func items(from providers: [NSItemProvider], done: @escaping @MainActor ([ExternalItem], [String]) -> Void) {
         let group = DispatchGroup()
         let found = Found()
         for p in providers {
@@ -293,7 +384,9 @@ struct ExternalDropTarget: ViewModifier {
                 || p.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 group.enter()
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
-                    found.add(url.flatMap { ExternalItem.classify($0) })
+                    let item = url.flatMap { ExternalItem.classify($0) }
+                    found.add(item)
+                    if item == nil, let url, url.isFileURL { found.ignore(url.lastPathComponent) }
                     group.leave()
                 }
             } else if p.canLoadObject(ofClass: String.self) {
@@ -305,19 +398,22 @@ struct ExternalDropTarget: ViewModifier {
             }
         }
         group.notify(queue: .main) {
-            let items = found.items
-            MainActor.assumeIsolated { done(items) }
+            let items = found.items, ignored = found.ignored
+            MainActor.assumeIsolated { done(items, ignored) }
         }
     }
 
     private final class Found: @unchecked Sendable {
         private let lock = NSLock()
         private var list: [ExternalItem] = []
+        private var skipped: [String] = []
         func add(_ item: ExternalItem?) {
             guard let item else { return }
             lock.withLock { list.append(item) }
         }
+        func ignore(_ name: String) { lock.withLock { skipped.append(name) } }
         var items: [ExternalItem] { lock.withLock { list } }
+        var ignored: [String] { lock.withLock { skipped } }
     }
 }
 #endif

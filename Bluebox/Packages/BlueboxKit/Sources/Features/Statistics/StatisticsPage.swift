@@ -122,12 +122,11 @@ struct StatisticsPage: View {
             HStack {
                 SectionHeading("When You Watch")
                 Spacer()
-                Picker("When You Watch", selection: $rhythm) {
-                    ForEach(Rhythm.allCases) { Text($0.title).tag($0) }
+                HStack(spacing: Spacing.xs) {
+                    ForEach(Rhythm.allCases) { r in
+                        CategoryChip(r.title, selected: rhythm == r) { rhythm = r }
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 180)
             }
             if let peak, values[peak] > 0 {
                 Text(rhythm == .day ? "Mostly on \(StatFormat.weekdayNames[peak])s." : "Mostly around \(StatFormat.hourLabel(peak)).")
@@ -229,7 +228,7 @@ private struct YearCard: View {
 
     private func line(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
-            Text(label).font(.subheadline).foregroundStyle(Palette.textSecondary).frame(width: 120, alignment: .leading)
+            Text(ui: label).font(.subheadline).foregroundStyle(Palette.textSecondary).frame(width: 120, alignment: .leading)
             Text(value).font(.subheadline.weight(.semibold)).lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -257,7 +256,7 @@ private struct BigFigure: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text(label).font(.caption.weight(.semibold)).foregroundStyle(Palette.textSecondary)
+            Text(ui: label).font(.caption.weight(.semibold)).foregroundStyle(Palette.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)

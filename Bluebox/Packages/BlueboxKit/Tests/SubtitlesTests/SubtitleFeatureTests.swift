@@ -160,3 +160,26 @@ import Testing
         #expect(SubtitleBurnIn(primary: nil, secondary: "", style: SubtitleStyle()).render(frame: CGSize(width: 100, height: 100)) == nil)
     }
 }
+
+@Suite struct SubtitleNextChangeTests {
+    let timeline = SubtitleTimeline(cues: [
+        SubtitleCue(start: 1, end: 3, text: "One"),
+        SubtitleCue(start: 2, end: 6, text: "Two"),
+        SubtitleCue(start: 8, end: 9, text: "Three"),
+    ])
+
+    @Test func nextStartOrEnd() {
+        #expect(timeline.nextChange(after: 0) == 1)
+        #expect(timeline.nextChange(after: 1.5) == 2)
+        #expect(timeline.nextChange(after: 2.5) == 3)
+        #expect(timeline.nextChange(after: 4) == 6)
+        #expect(timeline.nextChange(after: 6) == 8)
+        #expect(timeline.nextChange(after: 9) == nil)
+    }
+
+    @Test func onThePlayersClock() {
+        var offset = SubtitleOffset()
+        offset.nudge(by: 2)
+        #expect(timeline.nextChange(after: 0, offset: offset) == 3)
+    }
+}

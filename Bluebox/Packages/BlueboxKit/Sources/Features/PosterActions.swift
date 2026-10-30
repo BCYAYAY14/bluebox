@@ -17,6 +17,8 @@ import AppKit
 struct QuickActions: Equatable {
     enum Action: Equatable {
         case resume, play, playNext
+        /// Watch Party: start one with this, or (hosting one) add it to the party's queue.
+        case startParty, addToParty
         case addToList, removeFromList
         /// "Add to List…": the card of your lists (UI review decision 11).
         case addToLists
@@ -31,6 +33,9 @@ struct QuickActions: Equatable {
     /// Groups, separated in the menu.
     let groups: [[Action]]
 
+    /// Start a Party (not in one), Add to Party Queue (hosting one), or nothing (a guest).
+    enum PartyOffer: Equatable { case none, start, addToQueue }
+
     /// - Parameters:
     ///   - kind: the card's title kind.
     ///   - episode: the episode a Continue Watching or episode card stands for.
@@ -40,11 +45,17 @@ struct QuickActions: Equatable {
     ///   - canShare: there's a public page to share (TMDB).
     ///   - removable: the card's row can drop it (Continue Watching).
     ///   - hideable: a poster, which "Not Interested" hides from Home's rows.
+    ///   - party: what Watch Party offers here.
     static func build(kind: TitleKind, episode: MediaKey? = nil, inProgress: Bool = false, nearlyFinished: Bool = false,
                       onList: Bool, watched: Bool, downloaded: Bool, canShare: Bool, removable: Bool = false,
-                      hideable: Bool = false) -> QuickActions {
+                      hideable: Bool = false, party: PartyOffer = .none) -> QuickActions {
         var play: [Action] = [inProgress ? .resume : .play]
         if episode != nil, nearlyFinished { play.append(.playNext) }
+        switch party {
+        case .none: break
+        case .start: play.append(.startParty)
+        case .addToQueue: play.append(.addToParty)
+        }
 
         var library: [Action] = [onList ? .removeFromList : .addToList, .addToLists]
         // Watched and Download need one playable thing: a movie, or the episode on the card.
@@ -148,6 +159,11 @@ struct TitleCardLink<Label: View>: View {
         } label: { label.modifier(ZoomSource(id: zoomID, namespace: zoomNamespace)) }
         .buttonStyle(PressableStyle())
         .quickActions(subject, opened: gate)
+        // The remote's touch pad can land on it (the Mac's highlight).
+        .remoteFocusable("title:\(subject.title.key)", label: subject.title.name) {
+            onOpen()
+            pushRoute(route ?? .title(subject.title), zoomFrom: nil)
+        }
     }
 }
 
@@ -231,7 +247,8 @@ private struct QuickActionsMenu: ViewModifier {
                 inProgress: subject.entry.map { !$0.progress.isCompleted && $0.progress.position > 0 } ?? false,
                 nearlyFinished: subject.entry?.progress.isNearlyFinished ?? false,
                 onList: onList, watched: watched, downloaded: single && app.isDownloaded(key),
-                canShare: shareURL != nil, removable: subject.remove != nil, hideable: subject.entry == nil && subject.remove == nil)
+                canShare: shareURL != nil, removable: subject.remove != nil, hideable: subject.entry == nil && subject.remove == nil,
+                party: app.party == nil ? .start : app.party?.isHost == true ? .addToQueue : .none)
             open = true
         }
     }
@@ -277,6 +294,12 @@ private struct QuickActionsMenu: ViewModifier {
             return BlueboxMenuButton("Resume", systemImage: "play.fill") { Task { await app.playQuick(subject) } }
         case .play:
             return BlueboxMenuButton("Play", systemImage: "play.fill") { Task { await app.playQuick(subject) } }
+        case .startParty:
+            return BlueboxMenuButton("Start a Party", systemImage: "person.2.fill") { Task { await app.startPartyQuick(subject) } }
+        case .addToParty:
+            return BlueboxMenuButton("Add to Party Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                Task { await app.addToPartyQuick(subject) }
+            }
         case .playNext:
             return BlueboxMenuButton("Play Next Episode", systemImage: "forward.end") {
                 Task { await app.playNextEpisode(after: key, seriesName: t.name) }
@@ -354,29 +377,42 @@ extension AppModel {
     /// Play from a quick-action menu: the movie, the card's episode, or a
     /// series' next episode (the one the title page would play).
     func playQuick(_ subject: QuickActionSubject) async {
+        if let item = await quickItem(subject, retry: { [weak self] in await self?.playQuick(subject) }) { await play(item) }
+    }
+
+    /// Start a Party from a poster's menu, with what Play would start.
+    func startPartyQuick(_ subject: QuickActionSubject) async {
+        if let item = await quickItem(subject, retry: { [weak self] in await self?.startPartyQuick(subject) }) { await startParty(item) }
+    }
+
+    /// Add to Party Queue from a poster's menu (hosting a party).
+    func addToPartyQuick(_ subject: QuickActionSubject) async {
+        if let item = await quickItem(subject, retry: { [weak self] in await self?.addToPartyQuick(subject) }) { addToParty(item) }
+    }
+
+    /// What Play on a card starts: its episode, the movie, or the series' next episode.
+    private func quickItem(_ subject: QuickActionSubject, retry: @escaping @MainActor () async -> Void) async -> NowPlayingItem? {
         let t = subject.title
         if let entry = subject.entry {
             let p = entry.progress
-            await play(NowPlayingItem(key: p.key, title: t.name, subtitle: p.key.episodeNumbers.map { "S\($0.season)·E\($0.episode)" },
-                                      artworkURL: imageURL(t.backdrop, width: 640)))
-            return
+            return NowPlayingItem(key: p.key, title: t.name, subtitle: p.key.episodeNumbers.map { "S\($0.season)·E\($0.episode)" },
+                                  artworkURL: imageURL(t.backdrop, width: 640))
         }
         guard t.kind == .series else {
-            await play(NowPlayingItem(key: t.key, title: t.name, subtitle: t.year.map(String.init),
-                                      artworkURL: imageURL(t.backdrop, width: 640)))
-            return
+            return NowPlayingItem(key: t.key, title: t.name, subtitle: t.year.map(String.init), artworkURL: imageURL(t.backdrop, width: 640))
         }
         do {
             let progress = (try? await store.progress(forSeries: t.key)) ?? []
             let detail = try await metadata.detail(for: t.key)
             guard let target = SeriesCursor.target(series: t.key, progress: progress, seasons: detail.seasons) else {
                 alert = AppAlert(title: "Nothing to play yet", message: "“\(t.name)” has no episodes listed.")
-                return
+                return nil
             }
-            await play(NowPlayingItem(key: target.key, title: t.name, subtitle: "S\(target.season)·E\(target.episode)",
-                                      artworkURL: imageURL(t.backdrop, width: 640)))
+            return NowPlayingItem(key: target.key, title: t.name, subtitle: "S\(target.season)·E\(target.episode)",
+                                  artworkURL: imageURL(t.backdrop, width: 640))
         } catch {
-            report(error, title: "Couldn't play “\(t.name)”", context: .catalog) { [weak self] in await self?.playQuick(subject) }
+            report(error, title: "Couldn't play “\(t.name)”", context: .catalog) { await retry() }
+            return nil
         }
     }
 
@@ -390,8 +426,16 @@ extension AppModel {
             return
         }
         showToast(AppToast(t.name, message: adding ? "Added to My List" : "Removed from My List", actionTitle: "Undo") { [weak self] in
-            Task { try? await self?.setOnMyList(t, !adding) }
+            Task { await self?.undoMyList(t, adding: adding) }
         })
+    }
+
+    private func undoMyList(_ t: Title, adding: Bool) async {
+        do {
+            try await setOnMyList(t, !adding)
+        } catch {
+            report(error, title: "Couldn't undo") { [weak self] in await self?.undoMyList(t, adding: adding) }
+        }
     }
 
     /// Watched from a menu, with Undo in a toast. A failed save says so, with Try Again.
@@ -404,18 +448,22 @@ extension AppModel {
             return
         }
         showToast(AppToast(name, message: watched ? "Marked as watched" : "Marked as unwatched", actionTitle: "Undo") { [weak self] in
-            Task {
-                guard let self else { return }
-                if var restored = before {
-                    restored.updatedAt = .now
-                    restored.deviceID = self.prefs.deviceID
-                    _ = try? await self.store.save(restored)
-                    self.noteLibraryChanged()
-                } else {
-                    try? await self.setWatched(key, !watched)
-                }
-            }
+            Task { await self?.undoWatched(key, watched, before: before) }
         })
+    }
+
+    /// Puts back the place from before (part-way through, say) through
+    /// `setWatched`, so the undo reaches the cloud and Trakt too.
+    private func undoWatched(_ key: MediaKey, _ watched: Bool, before: WatchProgress?) async {
+        do {
+            if let before {
+                try await setWatched(key, before.isCompleted, position: before.position)
+            } else {
+                try await setWatched(key, !watched)
+            }
+        } catch {
+            report(error, title: "Couldn't undo") { [weak self] in await self?.undoWatched(key, watched, before: before) }
+        }
     }
 }
 

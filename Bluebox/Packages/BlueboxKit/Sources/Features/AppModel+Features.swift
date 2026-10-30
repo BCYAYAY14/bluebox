@@ -123,14 +123,16 @@ extension AppModel {
     // MARK: Watched
 
     /// Marks a movie or episode watched or unwatched. Syncs to the cloud and
-    /// Trakt (unwatching removes the play from Trakt).
-    public func setWatched(_ key: MediaKey, _ watched: Bool) async throws {
+    /// Trakt (unwatching removes the play from Trakt). `position` puts back a
+    /// place part-way through (Undo), instead of the end or the start.
+    public func setWatched(_ key: MediaKey, _ watched: Bool, position: TimeInterval? = nil) async throws {
         let existing = try? await store.progress(for: key)
         let duration = existing?.duration
-        let p = WatchProgress(key: key, position: watched ? (duration ?? 1) : 0, duration: duration, isCompleted: watched,
+        let p = WatchProgress(key: key, position: position ?? (watched ? (duration ?? 1) : 0), duration: duration, isCompleted: watched,
                               updatedAt: .now, deviceID: prefs.deviceID)
         _ = try await store.save(p)
         noteLibraryChanged()
+        reportWatchedToServers([key], watched: watched)  // Jellyfin and Emby
         if watched { downloadsFollowProgress([key], fromOtherDevice: false) }  // Smart Downloads
     }
 
@@ -406,7 +408,9 @@ extension AppModel {
         case .realDebrid: .realDebrid
         case .premiumize: .premiumize
         case .torBox: .torBox
-        default: nil
+        case .allDebrid: .allDebrid
+        case .debridLink: .debridLink
+        case .none: nil
         }
     }
 
@@ -422,6 +426,7 @@ extension AppModel {
         Task {
             await source.update(api: api, matcher: matcher)
             features.noteDebridChanged()
+            await refreshDebridAccount()
         }
     }
 

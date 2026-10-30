@@ -14,6 +14,8 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
     var paths: [String] { lock.withLock { _paths } }
     var missingTables: Set<String> = []
     var goodAccessToken = "good-access"
+    /// Sync RPCs answer 503, as a server that's down would.
+    var rpcsDown = false
     /// Held `/auth/v1/user` calls, to act while a link sign-in is in flight.
     var holdUser = false
     private var held: [CheckedContinuation<Void, Never>] = []
@@ -60,7 +62,7 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
         case "/auth/v1/logout": return (204, "")
         default: break
         }
-        if path.hasPrefix("/rest/v1/rpc/") { return (200, "[]") }
+        if path.hasPrefix("/rest/v1/rpc/") { return lock.withLock({ rpcsDown }) ? (503, "{}") : (200, "[]") }
         if path.hasPrefix("/rest/v1/") {
             let table = String(path.dropFirst("/rest/v1/".count))
             if req.value(forHTTPHeaderField: "Authorization") == nil {
@@ -195,6 +197,58 @@ final class AccountStubServer: HTTPClient, @unchecked Sendable {
         await app.account.resolveAccountChange(.addDeviceLibrary)
         #expect(app.account.accountChange == nil)
         #expect(http.paths.dropFirst(before).contains("/rest/v1/rpc/sync_watchlist_for"))
+        #expect(try await app.store.watchlist().count == 1)
+    }
+
+    /// An older server connects, and its check offers the migration to copy.
+    @Test func anOlderServersCheckOffersItsMigration() async throws {
+        let http = AccountStubServer()
+        http.missingTables = ["account_settings"]
+        let app = try app(http)
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        guard case .ok(let warnings, let scripts) = app.account.setupCheck else {
+            Issue.record("expected a finished check, got \(app.account.setupCheck)"); return
+        }
+        #expect(warnings.count == 1)
+        #expect(scripts.map(\.fileName) == ["20261029000000_account_settings.sql"])
+    }
+
+    // MARK: Signing out
+
+    @Test func signingOutWithChangesNotUploadedAsksFirst() async throws {
+        let http = AccountStubServer()
+        let app = try app(http)
+        app.account.signOutPushLimit = 1
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        try await app.account.createAccount(username: "brian", password: "a long password")
+        await app.account.syncNow()
+        http.rpcsDown = true
+        try await app.store.setWatchlisted(Title(key: .movie(tmdbID: 603), kind: .movie, name: "The Matrix"), true)
+
+        await app.account.signOut()
+        #expect(app.account.isSignedIn)
+        let alert = try #require(app.alert)
+        #expect(alert.title == "1 change hasn't uploaded")
+        #expect(alert.actions.map(\.title) == ["Sign Out Anyway", "Try Again", "Cancel"])
+
+        // Once the server's back, signing out uploads it and goes ahead.
+        http.rpcsDown = false
+        app.alert = nil
+        await app.account.signOut()
+        #expect(!app.account.isSignedIn && app.alert == nil)
+        #expect(http.paths.contains("/rest/v1/rpc/sync_watchlist_for"))
+    }
+
+    @Test func signOutAnywayLeavesTheChangesHere() async throws {
+        let http = AccountStubServer()
+        let app = try app(http)
+        app.account.signOutPushLimit = 1
+        try await app.connectSupabase(url: Self.url, key: Self.key)
+        try await app.account.createAccount(username: "brian", password: "a long password")
+        http.rpcsDown = true
+        try await app.store.setWatchlisted(Title(key: .movie(tmdbID: 603), kind: .movie, name: "The Matrix"), true)
+        await app.account.signOut(force: true)
+        #expect(!app.account.isSignedIn && app.alert == nil)
         #expect(try await app.store.watchlist().count == 1)
     }
 

@@ -98,6 +98,8 @@ struct ProfilePINEntry: View {
         case unlock
         /// Chooses a new PIN (twice).
         case set
+        /// Opens Settings on a restricted profile (`AppModel.settingsPINProfiles`).
+        case settings
     }
 
     let profile: Profile
@@ -120,11 +122,11 @@ struct ProfilePINEntry: View {
         VStack(spacing: 0) {
             Spacer(minLength: Spacing.xl)
             ProfileBadge(symbol: profile.symbol, color: profile.color, size: 84)
-            Text(title)
+            Text(ui: title)
                 .font(.title2.weight(.bold))
                 .padding(.top, Spacing.l)
                 .accessibilityAddTraits(.isHeader)
-            Text(message ?? subtitle)
+            Text(ui: message ?? subtitle)
                 .font(.subheadline)
                 .foregroundStyle(message == nil ? Palette.textSecondary : Palette.destructive)
                 .padding(.top, Spacing.xs)
@@ -136,7 +138,7 @@ struct ProfilePINEntry: View {
                 Button("Cancel", action: cancel)
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("pinCancel")
-                if mode == .unlock {
+                if mode != .set {
                     Button("Forgot PIN?") { forgot() }
                         .accessibilityIdentifier("pinForgot")
                 }
@@ -167,6 +169,7 @@ struct ProfilePINEntry: View {
         switch mode {
         case .unlock: "Enter \(profile.name)\u{2019}s PIN"
         case .set: firstEntry == nil ? "Choose a PIN" : "Enter It Again"
+        case .settings: profile.id == app.currentProfileID ? "Enter \(profile.name)\u{2019}s PIN" : "Ask a Grown-Up"
         }
     }
 
@@ -174,6 +177,7 @@ struct ProfilePINEntry: View {
         switch mode {
         case .unlock: "to open \(profile.name)\u{2019}s profile"
         case .set: "Four digits, asked for when someone opens \(profile.name)."
+        case .settings: profile.id == app.currentProfileID ? "to open Settings" : "Their profile\u{2019}s PIN opens Settings."
         }
     }
 
@@ -241,8 +245,8 @@ struct ProfilePINEntry: View {
     private func finish() {
         let pin = digits
         switch mode {
-        case .unlock:
-            if app.verifyPIN(pin, for: profile.id) {
+        case .unlock, .settings:
+            if mode == .unlock ? app.verifyPIN(pin, for: profile.id) : app.unlockSettings(pin: pin) {
                 done(pin)
             } else {
                 failures += 1
@@ -281,22 +285,42 @@ struct ProfilePINEntry: View {
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            message = "Remove the lock from Manage Profiles on a profile you can open."
+            message = mode == .settings ? "Ask whoever looks after this device."
+                : "Remove the lock from Manage Profiles on a profile you can open."
             return
         }
         let id = profile.id
+        let settings = mode == .settings
         Task { @MainActor in
             do {
                 let ok = try await context.evaluatePolicy(.deviceOwnerAuthentication,
-                                                          localizedReason: "remove the PIN from \(profile.name)\u{2019}s profile")
+                                                          localizedReason: settings ? "open Settings"
+                                                              : "remove the PIN from \(profile.name)\u{2019}s profile")
                 guard ok else { return }
-                try? app.setPIN(nil, for: id)
+                // Settings: opens it, and the PIN stays.
+                if settings { app.unlockSettingsAsDeviceOwner() } else { try? app.setPIN(nil, for: id) }
                 done("")
             } catch {
                 message = "The PIN is still on."
             }
         }
         #endif
+    }
+}
+
+/// Settings' PIN pad on a restricted profile: every way into Settings
+/// (the menu, ⌘, , the profile menu, links to a page, the iPhone sheet)
+/// shows this until the PIN is entered (`AppModel.settingsNeedsPIN`).
+struct SettingsPINGate: View {
+    @Environment(AppModel.self) private var app
+    let cancel: () -> Void
+
+    var body: some View {
+        if let profile = app.settingsPINProfiles.first {
+            ProfilePINEntry(profile: profile, mode: .settings, done: { _ in }, cancel: cancel)
+                .background(Palette.background.ignoresSafeArea())
+                .accessibilityIdentifier("settingsPINGate")
+        }
     }
 }
 

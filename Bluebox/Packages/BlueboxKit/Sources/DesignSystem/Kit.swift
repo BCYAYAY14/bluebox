@@ -345,7 +345,7 @@ public struct CategoryChip: View {
     public var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Text(title)
+                Text(ui: title)
                 if let systemImage { Image(systemName: systemImage).font(.caption.weight(.bold)) }
             }
             .font(.subheadline.weight(selected ? .semibold : .medium))
@@ -358,6 +358,7 @@ public struct CategoryChip: View {
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
+        .animation(Motion.hover, value: hovering)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -372,7 +373,7 @@ public struct SectionHeader: View {
 
     public var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
-            Text(title).font(Typography.rowTitle).lineLimit(1).accessibilityAddTraits(.isHeader)
+            Text(ui: title).font(Typography.rowTitle).lineLimit(1).accessibilityAddTraits(.isHeader)
             Spacer(minLength: Spacing.s)
             if let action {
                 Button(action: action) {

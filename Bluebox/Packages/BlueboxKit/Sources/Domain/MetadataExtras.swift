@@ -296,6 +296,38 @@ public struct TitleCredits: Hashable, Codable, Sendable {
     }
 }
 
+// MARK: - Collections
+
+/// A film franchise (TMDB's collections): its films in release order.
+public struct FilmCollection: Hashable, Codable, Sendable, Identifiable {
+    public let id: Int
+    public let name: String
+    public let overview: String
+    public let poster: Artwork?
+    public let backdrop: Artwork?
+    /// Oldest first; films without a date (announced, not dated) last.
+    public let parts: [Title]
+
+    public init(id: Int, name: String, overview: String = "", poster: Artwork? = nil, backdrop: Artwork? = nil, parts: [Title]) {
+        self.id = id; self.name = name; self.overview = overview; self.poster = poster; self.backdrop = backdrop
+        self.parts = Self.ordered(parts)
+    }
+
+    public var ref: CollectionRef { CollectionRef(id: id, name: name, poster: poster, backdrop: backdrop) }
+
+    /// Release order; undated films last, in the order given.
+    public static func ordered(_ parts: [Title]) -> [Title] {
+        parts.enumerated().sorted { a, b in
+            switch (a.element.releaseDate, b.element.releaseDate) {
+            case let (x?, y?) where x != y: x < y
+            case (_?, nil): true
+            case (nil, _?): false
+            default: a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+}
+
 // MARK: - Provider
 
 /// Optional catalog extras. `MetadataProvider`s adopt this when their
@@ -312,6 +344,8 @@ public protocol MetadataExtras: Sendable {
     func filmography(personID: Int) async throws -> Filmography
     /// People whose name matches `query`, most popular first (Search's People row).
     func searchPeople(_ query: String) async throws -> [Person]
+    /// A film collection by its TMDB ID.
+    func collection(id: Int) async throws -> FilmCollection
 }
 
 public extension MetadataExtras {
@@ -323,4 +357,5 @@ public extension MetadataExtras {
     func filmography(personID: Int) async throws -> Filmography { throw MetadataError.notFound }
     /// No people search: an empty answer, not a failure.
     func searchPeople(_ query: String) async throws -> [Person] { [] }
+    func collection(id: Int) async throws -> FilmCollection { throw MetadataError.notFound }
 }

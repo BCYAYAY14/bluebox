@@ -2,12 +2,15 @@ import DesignSystem
 import Sync
 import SwiftUI
 
-/// Joins the remote channel when this device should (RemoteControl.swift) and,
-/// on iPhone and iPad, draws "Playing on Mac" over the tabs and opens the
-/// remote from it. RootView applies it once; everything else lives here.
+/// Joins the remote channel when this device should (RemoteControl.swift).
+/// On the Mac, hands the remote's app commands to `AppModel` and its
+/// highlight. On iPhone and iPad, draws "Playing on Studio" over the tabs and
+/// opens the remote from it, or when Play went to another device. RootView
+/// applies it once; everything else lives here.
 struct RemoteControlHost: ViewModifier {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showsRemote = false
@@ -15,16 +18,19 @@ struct RemoteControlHost: ViewModifier {
 
     private struct Want: Hashable {
         let wanted: Bool
+        let controllable: Bool
         let player: ObjectIdentifier?
     }
 
     private var want: Want {
         #if os(macOS)
-        let player = app.activePlayer
-        return Want(wanted: app.featureSwitches.allowRemoteControl && app.account.isSignedIn && player != nil,
-                    player: player.map(ObjectIdentifier.init))
+        // Joined whenever it may be controlled, so the remote can open things, not only steer the player.
+        let allowed = app.featureSwitches.allowRemoteControl && app.account.isSignedIn
+        return Want(wanted: allowed, controllable: allowed, player: app.activePlayer.map(ObjectIdentifier.init))
         #else
-        return Want(wanted: app.featureSwitches.useAsRemote && app.account.isSignedIn && scenePhase == .active, player: nil)
+        // Stays joined while merely inactive (Control Center, a notification pulled down), so the remote doesn't blank and rejoin.
+        return Want(wanted: app.featureSwitches.useAsRemote && app.account.isSignedIn && scenePhase != .background,
+                    controllable: false, player: nil)
         #endif
     }
 
@@ -32,35 +38,161 @@ struct RemoteControlHost: ViewModifier {
         content
             .task(id: want) {
                 #if os(macOS)
-                app.remote.update(wanted: want.wanted, account: app.account, player: app.activePlayer)
+                app.remote.handler = app
+                app.remoteFocus.onChange = { [weak app] in app?.remote.screenChanged() }
+                app.remote.update(wanted: want.wanted, controllable: want.controllable, account: app.account, player: app.activePlayer)
                 #else
-                app.remote.update(wanted: want.wanted, account: app.account, player: nil)
+                app.remote.update(wanted: want.wanted, controllable: false, account: app.account, player: nil)
                 #endif
             }
             #if os(iOS)
             .overlay(alignment: .bottom) {
                 if let state = app.remote.nowPlaying, app.activePlayer == nil {
-                    PlayingOnMacBar(state: state, togglePlay: { app.remote.send(.setPaused(!state.paused)) },
-                                    open: { showsRemote = true })
+                    PlayingOnMacBar(state: state, connection: app.remote.connection,
+                                    togglePlay: { app.remote.send(.setPaused(!state.paused)) }, open: { showsRemote = true })
                         // Above the tab bar on iPhone; iPad has no bar at the bottom.
                         .padding(.horizontal, Spacing.m)
                         .padding(.bottom, sizeClass == .compact ? 58 : Spacing.l)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(Motion.slide(from: .bottom, reduceMotion))
                 }
             }
-            .animation(.smooth(duration: 0.3), value: app.remote.nowPlaying == nil)
+            .animation(Motion.standard(reduceMotion), value: app.remote.nowPlaying == nil)
             .sheet(isPresented: $showsRemote) {
                 RemoteControlScreen().environment(app)
             }
             .onChange(of: showsRemote) { _, open in app.remote.screenOpen = open }
+            .onChange(of: app.remote.presentRequest) { showsRemote = true }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { app.remote.wake() } }
+            #if DEBUG
+            .task {
+                // Screenshots of the remote (`-seed-remote`): open it once the seeded state shows.
+                let args = ProcessInfo.processInfo.arguments
+                guard args.contains("-show-remote") else { return }
+                try? await Task.sleep(for: .seconds(1))
+                showsRemote = true
+            }
+            #endif
             #endif
     }
 }
 
+/// "Play on" (the new remote, question 7): This iPhone, or a device online
+/// on the account, playing ones first. With one chosen, Play plays there and
+/// title pages open there too. Hidden on the Mac and while nothing's online.
+struct PlayOnButton: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        #if os(iOS)
+        let remote = app.remote
+        if app.featureSwitches.useAsRemote, !remote.devices.isEmpty || remote.target != nil {
+            let chosen = remote.devices.first { $0.id == remote.target }
+            Menu {
+                Picker("Play On", selection: Binding(get: { remote.target }, set: { remote.target = $0 })) {
+                    Label("This iPhone", systemImage: "iphone").tag(String?.none)
+                    ForEach(remote.devices) { d in
+                        Label {
+                            Text(verbatim: d.name)
+                            if let playing = d.playing { Text("Playing \(playing)") } else { Text("Idle") }
+                        } icon: { Image(systemName: Self.symbol(d.kind)) }
+                        .tag(String?.some(d.id))
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: chosen.map { Self.symbol($0.kind) } ?? "tv.and.mediabox")
+                        .font(.footnote.weight(.semibold))
+                    if let chosen {
+                        Text(verbatim: chosen.name).font(.footnote.weight(.semibold)).lineLimit(1)
+                    }
+                }
+                .foregroundStyle(chosen == nil ? Palette.textPrimary : Palette.brandBright)
+                .padding(.horizontal, chosen == nil ? 7 : 10)
+                .frame(minWidth: 32, minHeight: 32)
+                .background(chosen == nil ? Palette.elevated : Palette.wash, in: Capsule())
+                .overlay(Capsule().strokeBorder(chosen == nil ? Palette.edge : Palette.brand.opacity(0.5)))
+                .contentShape(Capsule())
+            }
+            .accessibilityLabel(chosen.map { "Playing on \($0.name)" } ?? String(localized: "Play On"))
+        }
+        #endif
+    }
+
+    static func symbol(_ kind: RemoteDevice.Kind) -> String {
+        switch kind {
+        case .mac: "laptopcomputer"
+        case .iPhone: "iphone"
+        case .iPad: "ipad"
+        case .appleTV: "appletv"
+        }
+    }
+}
+
 #if os(iOS)
-/// "Playing on Mac": the title, a thin blue line for where it is, and play/pause. Tap for the remote.
+/// The link's state (question 6): a green dot and the device's name, amber
+/// while reconnecting, red with Try Again when the Mac stopped answering. Its
+/// menu picks another device (question 8).
+struct RemoteDevicePill: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let remote = app.remote
+        let name = remote.controlled?.name ?? remote.nowPlaying?.deviceName ?? String(localized: "Mac")
+        HStack(spacing: Spacing.s) {
+            Menu {
+                Picker("Control", selection: Binding(get: { remote.target ?? remote.controlled?.id }, set: { remote.target = $0 })) {
+                    ForEach(remote.devices) { d in
+                        Label {
+                            Text(verbatim: d.name)
+                            if let playing = d.playing { Text("Playing \(playing)") } else { Text("Idle") }
+                        } icon: { Image(systemName: PlayOnButton.symbol(d.kind)) }
+                        .tag(String?.some(d.id))
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(dot(remote.connection)).frame(width: 7, height: 7)
+                    Group {
+                        switch remote.connection {
+                        case .connected: Text(verbatim: name)
+                        case .connecting, .off: Text("Reconnecting…")
+                        case .notAnswering: Text("Not answering")
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    if remote.devices.count > 1 {
+                        Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(Palette.textSecondary)
+                    }
+                }
+                .foregroundStyle(Palette.textPrimary)
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(Palette.elevated, in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.edge))
+            }
+            .disabled(remote.devices.count < 2)
+            if remote.connection == .notAnswering {
+                Button("Try Again") { remote.retry() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.brandBright)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func dot(_ c: RemoteControl.Connection) -> Color {
+        switch c {
+        case .connected: .green
+        case .connecting, .off: .orange
+        case .notAnswering: .red
+        }
+    }
+}
+
+/// "Playing on Studio": the title, a thin line in the theme colour for where it is, and play/pause. Tap for the remote.
 struct PlayingOnMacBar: View {
     let state: RemoteNowPlaying
+    let connection: RemoteControl.Connection
     let togglePlay: () -> Void
     let open: () -> Void
 
@@ -72,11 +204,16 @@ struct PlayingOnMacBar: View {
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Palette.textSecondary)
                         .frame(width: 28)
+                        .overlay(alignment: .topTrailing) {
+                            if connection != .connected {
+                                Circle().fill(connection == .notAnswering ? Color.red : .orange).frame(width: 7, height: 7)
+                            }
+                        }
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Playing on Mac")
+                        Text("Playing on \(state.deviceName)")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(Palette.textSecondary)
-                        Text(state.title)
+                        Text(verbatim: state.title)
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(Palette.textPrimary)
                             .lineLimit(1)
@@ -86,7 +223,7 @@ struct PlayingOnMacBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressableStyle(scale: 1))
-            .accessibilityLabel("Playing on Mac: \(state.title)")
+            .accessibilityLabel("Playing on \(state.deviceName): \(state.title)")
             .accessibilityHint("Opens the remote")
 
             Button(action: togglePlay) {
@@ -101,9 +238,10 @@ struct PlayingOnMacBar: View {
         }
         .padding(.leading, Spacing.m).padding(.trailing, Spacing.xs)
         .frame(height: 56)
+        .opacity(connection == .connected ? 1 : 0.6)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
         .overlay(alignment: .bottom) {
-            // Blue for state: how far through it is.
+            // The theme colour for state: how far through it is.
             GeometryReader { g in
                 Capsule().fill(Palette.brand)
                     .frame(width: g.size.width * progress(state), height: 2)
@@ -120,27 +258,29 @@ struct PlayingOnMacBar: View {
     }
 }
 
-/// The remote: transport, ±10 s, scrub, next episode, audio and subtitle
-/// tracks, and the Mac's volume. Every control answers at once
+/// The remote (the new remote, 31 Oct 2026). Playing: a touch pad first
+/// (swipe to scrub, tap to pause), the timeline under it, ±10 s, Audio &
+/// Subtitles, Next and the Mac's volume. Touch: the same pad moves the Mac's
+/// highlight and presses it, with Back, Home and Search; what's highlighted
+/// is named above it. Every player control answers at once
 /// (`RemoteControl.send`); the Mac's next state settles it.
 struct RemoteControlScreen: View {
+    enum Mode: Hashable { case playing, touch }
+
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    /// While dragging the timeline: where the thumb is (sent on release).
-    @State private var scrubbing: TimeInterval?
-    @State private var volume: Float?
-    @State private var lastVolumeSend = Date.distantPast
+    @State private var mode: Mode = .playing
+    @State private var showsTracks = false
 
     var body: some View {
+        let remote = app.remote
+        let playing = remote.nowPlaying
         VStack(spacing: 0) {
             HStack {
-                Label("Playing on \(app.remote.nowPlaying?.deviceName ?? "Mac")", systemImage: "laptopcomputer")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Palette.textSecondary)
-                    .lineLimit(1)
+                RemoteDevicePill()
                 Spacer()
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "chevron.down")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Palette.textPrimary)
                         .frame(width: 36, height: 36)
@@ -154,84 +294,162 @@ struct RemoteControlScreen: View {
             }
             .padding(.horizontal, Spacing.l).padding(.top, Spacing.m)
 
-            if let s = app.remote.nowPlaying {
-                controls(s)
-            } else {
-                Spacer()
-                ContentUnavailableView("Nothing Playing on Your Mac", systemImage: "laptopcomputer",
-                                       description: Text("Play something in Bluebox on your Mac to control it from here."))
-                Spacer()
+            if playing != nil {
+                // Bluebox's own chips, as Library and New & Hot use: never the system's segmented control.
+                HStack(spacing: Spacing.s) {
+                    CategoryChip("Playing", selected: mode == .playing) { mode = .playing }
+                    CategoryChip("Touch", selected: mode == .touch) { mode = .touch }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Spacing.xl).padding(.top, Spacing.m)
             }
+
+            Group {
+                if let s = playing, mode == .playing {
+                    PlayingRemote(state: s, showsTracks: $showsTracks)
+                } else if remote.controlled != nil {
+                    TouchRemote()
+                } else {
+                    Spacer()
+                    ContentUnavailableView("No Mac to Control", systemImage: "laptopcomputer",
+                                           description: Text("Open Bluebox on your Mac, with Allow Remote Control on in Settings › Privacy."))
+                    Spacer()
+                }
+            }
+            // A tap that can't land shouldn't look like it did.
+            .opacity(remote.connection == .connected ? 1 : 0.45)
+            .disabled(remote.connection != .connected && remote.connection != .notAnswering)
         }
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .presentationBackground(Palette.background)
+        .sheet(isPresented: $showsTracks) {
+            if let s = playing { RemoteTracksSheet(state: s).environment(app) }
+        }
+        #if DEBUG
+        .task {
+            // Screenshots: `-remote-touch` opens on Touch, `-remote-tracks` on Audio & Subtitles.
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-remote-touch") { mode = .touch }
+            if args.contains("-remote-tracks") { try? await Task.sleep(for: .milliseconds(600)); showsTracks = true }
+        }
+        #endif
     }
+}
 
-    @ViewBuilder
-    private func controls(_ s: RemoteNowPlaying) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            Text(s.title)
-                .font(Typography.pageTitle)
-                .foregroundStyle(Palette.textPrimary)
-                .lineLimit(2)
-            if let subtitle = s.subtitle {
-                Text(subtitle).font(Typography.meta).foregroundStyle(Palette.textSecondary).lineLimit(1)
+/// While something plays: the pad (swipe scrubs live, tap pauses), then the
+/// timeline, transport, Audio & Subtitles, Next, ⋯ and volume.
+private struct PlayingRemote: View {
+    let state: RemoteNowPlaying
+    @Binding var showsTracks: Bool
+    @Environment(AppModel.self) private var app
+    /// While scrubbing (the pad or the timeline): where it's going.
+    @State private var scrubbing: TimeInterval?
+    /// Where a pad swipe started: it moves from there, not from the drawn (moving) position.
+    @State private var scrubStart: TimeInterval?
+    @State private var volume: Float?
+    @State private var lastVolumeSend = Date.distantPast
+
+    var body: some View {
+        let s = state
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: s.title)
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(1)
+                if let subtitle = s.subtitle {
+                    Text(verbatim: subtitle).font(Typography.meta).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Spacing.xl).padding(.top, Spacing.xxl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
 
-        Spacer(minLength: Spacing.xl)
+            RemoteTouchPad(hint: "Swipe to scrub · Tap to pause", onTap: { app.remote.send(.setPaused(!s.paused)) },
+                           onHorizontalDrag: { fraction, ended in scrub(by: fraction, ended: ended) })
+                .overlay {
+                    if let t = scrubbing {
+                        Text(Formatters.duration(t))
+                            .font(.largeTitle.weight(.bold).monospacedDigit())
+                            .foregroundStyle(Palette.textPrimary)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
 
-        timeline(s).padding(.horizontal, Spacing.xl)
+            timeline(s).padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
 
-        HStack(spacing: Spacing.xxxl) {
-            transportButton("gobackward.10", label: "Back 10 Seconds", size: 30) { app.remote.skip(by: -10) }
-            Button { app.remote.send(.setPaused(!s.paused)) } label: {
-                Image(systemName: s.paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 76, height: 76)
-                    .background(Color.white, in: Circle())
-                    .contentShape(Circle())
+            HStack(spacing: Spacing.xxxl) {
+                transportButton("gobackward.10", label: "Back 10 Seconds") { app.remote.skip(by: -10) }
+                Button { app.remote.send(.setPaused(!s.paused)) } label: {
+                    Image(systemName: s.paused ? "play.fill" : "pause.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 64, height: 64)
+                        .background(Color.white, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(PressableStyle(haptic: true))
+                .accessibilityLabel(s.paused ? "Play" : "Pause")
+                transportButton("goforward.10", label: "Forward 10 Seconds") { app.remote.skip(by: 10) }
             }
-            .buttonStyle(PressableStyle(haptic: true))
-            .accessibilityLabel(s.paused ? "Play" : "Pause")
-            transportButton("goforward.10", label: "Forward 10 Seconds", size: 30) { app.remote.skip(by: 10) }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, Spacing.xl)
+            .frame(maxWidth: .infinity)
+            .padding(.top, Spacing.m)
 
-        HStack(spacing: Spacing.s) {
-            trackMenu("Audio", systemImage: "waveform", tracks: s.audioTracks, selected: s.audioID, allowsOff: false) { id in
-                if let id { app.remote.send(.audio(id)) }
-            }
-            trackMenu("Subtitles", systemImage: "captions.bubble", tracks: s.subtitleTracks, selected: s.subtitleID, allowsOff: true) { id in
-                app.remote.send(.subtitle(id))
-            }
-            if s.hasNext {
-                Button { app.remote.send(.nextEpisode) } label: {
-                    Label("Next", systemImage: "forward.end.fill")
+            HStack(spacing: Spacing.s) {
+                Button { showsTracks = true } label: {
+                    Label("Audio & Subtitles", systemImage: "captions.bubble")
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                .accessibilityLabel("Next Episode")
+                .disabled(s.audioTracks.isEmpty && s.subtitleTracks.isEmpty)
+                if s.hasNext {
+                    Button { app.remote.send(.nextEpisode) } label: {
+                        Label("Next", systemImage: "forward.end.fill")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .accessibilityLabel("Next Episode")
+                }
+                Menu {
+                    Button("Close Player", systemImage: "xmark") { app.remote.send(.closePlayer) }
+                } label: {
+                    SecondaryButtonLabel { Image(systemName: "ellipsis") }
+                }
+                .accessibilityLabel("More")
             }
+            .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
+
+            volumeRow(s).padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
+            Spacer(minLength: Spacing.l)
         }
-        .padding(.horizontal, Spacing.xl).padding(.top, Spacing.xxl)
+    }
 
-        volumeRow(s).padding(.horizontal, Spacing.xl).padding(.top, Spacing.xl)
-
-        Spacer(minLength: Spacing.xl)
+    /// A swipe across the whole pad moves five minutes, in proportion; the Mac's picture follows.
+    private func scrub(by fraction: CGFloat, ended: Bool) {
+        let duration = state.duration ?? 0
+        guard duration > 0 else { return }
+        let start = scrubStart ?? state.position
+        scrubStart = start
+        let target = min(max(start + Double(fraction) * 300, 0), duration)
+        if ended {
+            app.remote.endScrub(at: target)
+            scrubbing = nil
+            scrubStart = nil
+        } else {
+            scrubbing = target
+            app.remote.scrub(to: target)
+        }
     }
 
     private func timeline(_ s: RemoteNowPlaying) -> some View {
         let duration = max(s.duration ?? 0, 1)
         let position = scrubbing ?? s.position
         return VStack(spacing: Spacing.xs) {
-            Slider(value: Binding(get: { min(position, duration) }, set: { scrubbing = $0 }), in: 0...duration) { editing in
+            Slider(value: Binding(get: { min(position, duration) }, set: { new in
+                scrubbing = new
+                app.remote.scrub(to: new)  // live: the Mac's picture follows (question 2)
+            }), in: 0...duration) { editing in
                 if !editing, let target = scrubbing {
-                    app.remote.send(.seek(target))
+                    app.remote.endScrub(at: target)
                     scrubbing = nil
                 }
             }
@@ -266,10 +484,10 @@ struct RemoteControlScreen: View {
         .font(.footnote)
     }
 
-    private func transportButton(_ symbol: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+    private func transportButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: size, weight: .medium))
+                .font(.system(size: 26, weight: .medium))
                 .foregroundStyle(Palette.textPrimary)
                 .frame(width: 56, height: 56)
                 .contentShape(Rectangle())
@@ -277,19 +495,211 @@ struct RemoteControlScreen: View {
         .buttonStyle(PressableStyle(haptic: true))
         .accessibilityLabel(label)
     }
+}
 
-    private func trackMenu(_ title: String, systemImage: String, tracks: [RemoteTrack], selected: String?, allowsOff: Bool,
-                           choose: @escaping (String?) -> Void) -> some View {
-        Menu {
-            Picker(title, selection: Binding(get: { selected }, set: choose)) {
-                if allowsOff { Text("Off").tag(String?.none) }
-                ForEach(tracks) { t in Text(t.label).tag(String?.some(t.id)) }
+/// Getting around the Mac: the pad moves its highlight (a swipe per step) and
+/// a tap presses it; Back, Home and Search under it. What's highlighted on
+/// the Mac is named above, so you can drive without looking up.
+private struct TouchRemote: View {
+    @Environment(AppModel.self) private var app
+    @State private var searching = false
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
+        let remote = app.remote
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: remote.screen?.title ?? remote.controlled?.name ?? "")
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(1)
+                Text(verbatim: remote.screen?.focusedLabel ?? String(localized: "Swipe to highlight something"))
+                    .font(Typography.meta)
+                    .foregroundStyle(remote.screen?.focusedLabel == nil ? Palette.textTertiary : Palette.brandBright)
+                    .lineLimit(1)
             }
-        } label: {
-            SecondaryButtonLabel { Label(title, systemImage: systemImage) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
+
+            if searching {
+                TextField("Search on \(remote.controlled?.name ?? "Mac")", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .onSubmit { remote.send(.go(.search(query))); searching = false }
+                    .padding(.horizontal, Spacing.xl).padding(.top, Spacing.m)
+                    // Typed straight through to the Mac, a moment after you stop.
+                    .task(id: query) {
+                        guard !query.isEmpty else { return }
+                        try? await Task.sleep(for: .milliseconds(600))
+                        guard !Task.isCancelled else { return }
+                        remote.send(.go(.search(query)))
+                    }
+            }
+
+            RemoteTouchPad(hint: "Swipe to move · Tap to open", onTap: { remote.send(.select) }, onSwipe: { remote.send(.move($0)) })
+                .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
+                .frame(maxHeight: 320)
+
+            HStack(spacing: Spacing.s) {
+                Button { remote.send(.go(.back)) } label: { Label("Back", systemImage: "chevron.backward").fixedSize() }
+                Button { remote.send(.go(.home)) } label: { Label("Home", systemImage: "house").fixedSize() }
+                Button {
+                    searching = true
+                    searchFocused = true
+                    remote.send(.go(.search("")))
+                } label: { Label("Search", systemImage: "magnifyingglass").fixedSize() }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
+
+            if let s = remote.nowPlaying {
+                Button { remote.send(.setPaused(!s.paused)) } label: {
+                    Label(s.paused ? "Play" : "Pause", systemImage: s.paused ? "play.fill" : "pause.fill")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .padding(.top, Spacing.s)
+            }
+            Spacer(minLength: Spacing.l)
         }
-        .disabled(tracks.isEmpty)
-        .accessibilityValue(tracks.first { $0.id == selected }?.label ?? "Off")
+    }
+}
+
+/// The touch surface (the new remote, question 1B). A deliberate tap (short,
+/// still, away from the edges, so holding the phone doesn't pause the film)
+/// presses; a swipe either moves a step per `stepLength` in its direction
+/// (Touch) or reports how far across the pad it has gone (Playing, to scrub).
+struct RemoteTouchPad: View {
+    let hint: LocalizedStringKey
+    var onTap: () -> Void
+    /// Touch: one call per step.
+    var onSwipe: ((RemoteDirection) -> Void)?
+    /// Playing: the drag's width as a fraction of the pad's, and whether it ended.
+    var onHorizontalDrag: ((CGFloat, Bool) -> Void)?
+
+    static let stepLength: CGFloat = 56
+    static let edge: CGFloat = 16
+
+    @State private var size: CGSize = .zero
+    @State private var start: (location: CGPoint, time: Date)?
+    @State private var stepsTaken = CGSize.zero
+    @State private var taps = 0
+    @State private var steps = 0
+    @GestureState private var pressing = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous)
+            .fill(LinearGradient(colors: [Palette.elevated, Palette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous).strokeBorder(pressing ? Palette.brand.opacity(0.6) : Palette.edge))
+            .overlay {
+                Text(hint).font(.footnote).foregroundStyle(Palette.textTertiary).allowsHitTesting(false)
+            }
+            .frame(minHeight: 180)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous))
+            .gesture(drag)
+            .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+            .sensoryFeedback(.selection, trigger: steps)
+            .accessibilityElement()
+            .accessibilityLabel(hint)
+            .accessibilityAddTraits(.allowsDirectInteraction)
+            .accessibilityAction { press() }
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($pressing) { _, state, _ in state = true }
+            .onChanged { value in
+                if start == nil { start = (value.startLocation, Date()); stepsTaken = .zero }
+                let t = value.translation
+                if let onHorizontalDrag {
+                    if abs(t.width) > 8 { onHorizontalDrag(t.width / max(size.width, 1), false) }
+                } else if let onSwipe {
+                    // One step each `stepLength` along the main axis.
+                    let horizontal = abs(t.width) >= abs(t.height)
+                    let along = horizontal ? t.width : t.height
+                    let done = horizontal ? stepsTaken.width : stepsTaken.height
+                    let due = (along / Self.stepLength).rounded(.towardZero)
+                    if due != done {
+                        let direction: RemoteDirection = horizontal ? (due > done ? .right : .left) : (due > done ? .down : .up)
+                        onSwipe(direction)
+                        steps += 1
+                        if horizontal { stepsTaken.width += due > done ? 1 : -1 } else { stepsTaken.height += due > done ? 1 : -1 }
+                    }
+                }
+            }
+            .onEnded { value in
+                defer { start = nil }
+                let t = value.translation
+                let moved = hypot(t.width, t.height)
+                if let onHorizontalDrag, abs(t.width) > 8 { onHorizontalDrag(t.width / max(size.width, 1), true); return }
+                guard moved < 10, let start, Date().timeIntervalSince(start.time) < 0.4 else { return }
+                let p = start.location
+                let inside = p.x > Self.edge && p.y > Self.edge && p.x < size.width - Self.edge && p.y < size.height - Self.edge
+                if inside { press() }
+            }
+    }
+
+    private func press() {
+        taps += 1
+        onTap()
+    }
+}
+
+/// Audio & Subtitles (question 3): both lists in one sheet. A pick is ticked
+/// at once, with a ring until the Mac confirms; the sheet stays open.
+private struct RemoteTracksSheet: View {
+    let state: RemoteNowPlaying
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        // The live state (optimistic picks included), not the one the sheet opened with.
+        let s = app.remote.nowPlaying ?? state
+        let awaiting = app.remote.awaiting
+        NavigationStack {
+            List {
+                if !s.audioTracks.isEmpty {
+                    Section("Audio") {
+                        ForEach(s.audioTracks) { t in
+                            row(t.label, selected: s.audioID == t.id, waiting: awaiting.contains(3)) { app.remote.send(.audio(t.id)) }
+                        }
+                    }
+                }
+                Section("Subtitles") {
+                    row(String(localized: "Off"), selected: s.subtitleID == nil, waiting: awaiting.contains(4)) { app.remote.send(.subtitle(nil)) }
+                    ForEach(s.subtitleTracks) { t in
+                        row(t.label, selected: s.subtitleID == t.id, waiting: awaiting.contains(4)) { app.remote.send(.subtitle(t.id)) }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Palette.surface)
+            .navigationTitle("Audio & Subtitles")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(Palette.surface)
+        .preferredColorScheme(.dark)
+    }
+
+    private func row(_ label: String, selected: Bool, waiting: Bool, choose: @escaping () -> Void) -> some View {
+        Button(action: choose) {
+            HStack {
+                Text(verbatim: label).foregroundStyle(Palette.textPrimary)
+                Spacer()
+                if selected {
+                    if waiting {
+                        ProgressView().controlSize(.small).tint(Palette.brandBright)
+                    } else {
+                        Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Palette.brandBright)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .listRowBackground(Palette.elevated)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 #endif

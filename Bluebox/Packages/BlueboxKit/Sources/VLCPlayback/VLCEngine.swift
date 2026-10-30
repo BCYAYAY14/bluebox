@@ -24,7 +24,7 @@ import AVFoundation
 ///   style through VLC's text renderer variables, set on the player (see
 ///   `VLCTextLook`): size, colour, box, outline and position change live,
 ///   the font and shadow from the next video. Nothing reopens the stream.
-/// - No PiP/AirPlay, no buffered-range reporting, no automatic stream rebuild
+/// - No AirPlay (PiP goes through `VLCPictureInPicture`), no buffered-range reporting, no automatic stream rebuild
 ///   (VLC reconnects HTTP itself via `:http-reconnect`).
 /// - Sharpness and invert adjustments aren't available through VLC's adjust filter.
 @MainActor
@@ -92,8 +92,8 @@ public final class VLCEngine: PlaybackEngine {
     private var burnIn: SubtitleBurnIn?
     private var burnInFile = 0
     private var subtitleTask: Task<Void, Never>?
-    /// The snapshot position and when it was taken, to run the subtitle clock between VLC's updates.
-    private var clockMark: (position: TimeInterval, at: ContinuousClock.Instant)?
+    /// Runs the subtitle clock between VLC's updates, never stepping back on their jitter.
+    private var clock = PlayheadClock()
     /// A seek requested before the media became seekable, or the start point
     /// of media that was just opened (see `mediaOptions`).
     private var pendingSeek: TimeInterval?
@@ -193,8 +193,10 @@ public final class VLCEngine: PlaybackEngine {
     /// With a start point it opens paused and seeks there once seekable.
     private func open(_ resource: PlaybackResource, startAt: TimeInterval?) throws {
         let media: Media
-        do { media = try Media(url: resource.url) } catch {
-            throw PlaybackError.unreachable(error.localizedDescription)
+        let url = Self.mediaURL(for: resource)
+        do { media = try Media(url: url) } catch {
+            // VLC's error names the URL, which may carry a login or token; it gets logged and shown.
+            throw PlaybackError.unreachable(error.localizedDescription.replacingOccurrences(of: url.absoluteString, with: Redactor.redact(url)))
         }
         let start = startAt.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }
         pendingSeek = start
@@ -237,10 +239,31 @@ public final class VLCEngine: PlaybackEngine {
             switch name.lowercased() {
             case "user-agent": options.append(":http-user-agent=\(value)")
             case "referer", "referrer": options.append(":http-referrer=\(value)")
+            case "authorization" where basicLogin(value) != nil: break  // in the URL instead (`mediaURL`)
             default: Log.playback.notice("VLC ignores HTTP header \(name, privacy: .public)")
             }
         }
         return options
+    }
+
+    /// The URL VLC opens. A Basic `Authorization` header (a WebDAV login) goes
+    /// in as the URL's user and password, which VLC answers the server's login
+    /// challenge with; VLC can't send the header itself.
+    static func mediaURL(for resource: PlaybackResource) -> URL {
+        guard !resource.url.isFileURL,
+              let header = resource.httpHeaders.first(where: { $0.key.lowercased() == "authorization" })?.value,
+              let (user, password) = basicLogin(header),
+              var c = URLComponents(url: resource.url, resolvingAgainstBaseURL: false) else { return resource.url }
+        c.user = user
+        c.password = password
+        return c.url ?? resource.url
+    }
+
+    static func basicLogin(_ header: String) -> (String, String)? {
+        guard header.lowercased().hasPrefix("basic "),
+              let data = Data(base64Encoded: String(header.dropFirst(6)).trimmingCharacters(in: .whitespaces)),
+              let pair = String(data: data, encoding: .utf8), let colon = pair.firstIndex(of: ":") else { return nil }
+        return (String(pair[..<colon]), String(pair[pair.index(after: colon)...]))
     }
 
     /// Waits until VLC is playing (tracks known) or fails, like AVFoundation's asset load.
@@ -303,6 +326,7 @@ public final class VLCEngine: PlaybackEngine {
         var target = max(0, seconds)
         if let d = snapshot.duration { target = min(target, max(d - 0.5, 0)) }
         snapshot.position = target
+        clock.reset()
         pendingSeekIsResume = false  // the user chose this point
         if ended || player.state == .stopped {
             restart(resource, at: target)
@@ -480,7 +504,7 @@ public final class VLCEngine: PlaybackEngine {
         eventTask?.cancel(); eventTask = nil
         tickTask?.cancel(); tickTask = nil
         subtitleTask?.cancel(); subtitleTask = nil
-        clockMark = nil
+        clock.reset()
         if resource != nil || player.state != .idle { player.stop() }
         resource = nil
         intendedPaused = true
@@ -1022,14 +1046,9 @@ public final class VLCEngine: PlaybackEngine {
         if snapshot.secondaryEmbeddedSubtitleText != second { snapshot.secondaryEmbeddedSubtitleText = second }
     }
 
-    /// The playhead between VLC's updates: the last position plus the time
-    /// since, at the playback rate, while playing (never more than half a second on).
+    /// The playhead between VLC's updates, at the playback rate (see `PlayheadClock`).
     private func subtitleClock() -> TimeInterval {
-        let now = ContinuousClock.now
-        let position = snapshot.position
-        if clockMark?.position != position { clockMark = (position, now) }
-        guard snapshot.status == .playing, let mark = clockMark else { return position }
-        return mark.position + min(Self.seconds(now - mark.at), 0.5) * Double(snapshot.rate)
+        clock.time(position: snapshot.position, playing: snapshot.status == .playing, rate: snapshot.rate)
     }
 
     /// Picture subtitle codecs (VLC FourCCs): PGS, VobSub, DVB, XSUB, CVD/SVCD.

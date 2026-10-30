@@ -32,6 +32,24 @@ final class CallCounter: @unchecked Sendable {
         await s.end()
     }
 
+    @Test func nearTheEndAsksOnceForTheNextPick() async {
+        let engine = MockEngine()
+        let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in nil })
+        var noted: [MediaKey] = []
+        s.onNearEnd = { noted.append($0) }
+        await s.start(e1, resource: resource("e1"))
+        engine.advance(to: 3600 * 0.8)
+        #expect(noted.isEmpty)
+        engine.advance(to: 3600 * 0.86)
+        engine.advance(to: 3600 * 0.9)
+        #expect(noted == [e1.key])
+        // The next item gets its own.
+        await s.start(e2, resource: resource("e2"))
+        engine.advance(to: 3600 * 0.95)
+        #expect(noted == [e1.key, e2.key])
+        await s.end()
+    }
+
     @Test func nextEpisodeThatCantBeFoundResumesTheCurrentOne() async {
         let engine = MockEngine()
         let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in nil })

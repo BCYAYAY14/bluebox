@@ -5,8 +5,10 @@
 //  Written for Bluebox from public documentation: TorBox's API reference
 //  (GET /v1/api/torrents/checkcached, comma-separated `hash`, `format=list`,
 //  Bearer key) and Premiumize's (POST /api/cache/check with `items[]`,
-//  answering parallel `response` booleans). Real-Debrid and AllDebrid no
-//  longer publish an availability endpoint, so their add-ons' markers are
+//  answering parallel `response` booleans) and Debrid-Link's (GET
+//  /api/v2/seedbox/cached with comma-separated hashes in `url`, Bearer key,
+//  answering `value` keyed by the hashes it holds). Real-Debrid and AllDebrid
+//  no longer publish an availability endpoint, so their add-ons' markers are
 //  trusted instead.
 //
 
@@ -28,6 +30,7 @@ public enum DebridCacheCheck {
             switch service {
             case .torBox: request = torBoxRequest(chunk, key: key, timeout: timeout)
             case .premiumize: request = premiumizeRequest(chunk, key: key, timeout: timeout)
+            case .debridLink: request = debridLinkRequest(chunk, key: key, timeout: timeout)
             default: return nil
             }
             do {
@@ -40,6 +43,7 @@ public enum DebridCacheCheck {
                 switch service {
                 case .torBox: found.formUnion(parseTorBox(data))
                 case .premiumize: found.formUnion(parsePremiumize(data, asked: chunk))
+                case .debridLink: found.formUnion(parseDebridLink(data))
                 default: break
                 }
             } catch {
@@ -88,6 +92,23 @@ public enum DebridCacheCheck {
               json["status"] as? String == "success",
               let answers = json["response"] as? [Bool] else { return [] }
         return Set(zip(asked, answers).compactMap { $1 ? $0 : nil })
+    }
+
+    static func debridLinkRequest(_ hashes: [String], key: String, timeout: TimeInterval) -> URLRequest {
+        var components = URLComponents(string: "https://debrid-link.com/api/v2/seedbox/cached")!
+        components.queryItems = [URLQueryItem(name: "url", value: hashes.joined(separator: ","))]
+        var request = URLRequest(url: components.url!, timeoutInterval: timeout)
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// `{"success": true, "value": {"<hash>": {"name": "…", "files": […]}, …}}`.
+    /// Hashes not listed aren't cached; an empty `value` may come as `[]`.
+    static func parseDebridLink(_ data: Data) -> Set<String> {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["success"] as? Bool == true,
+              let value = json["value"] as? [String: Any] else { return [] }
+        return Set(value.keys.map { $0.lowercased() })
     }
 
     /// Marks debrid links whose hash the service reported. Links it didn't

@@ -27,7 +27,7 @@ extension AppModel {
         case .openSubtitles: return hasOpenSubtitlesKey
         case .subdl: return hasSubdlKey
         case .podnapisi: return true
-        case .jellyfin: return sourceConfigurations.contains { $0.kind == .jellyfin && $0.isEnabled }
+        case .jellyfin: return sourceConfigurations.contains { ($0.kind == .jellyfin || $0.kind == .emby) && $0.isEnabled }
         }
     }
 

@@ -3,18 +3,21 @@ import DownloadsActivity
 import SwiftUI
 import WidgetKit
 
-/// Bluebox's widget extension: for now only the Downloads Live Activity,
-/// started by the app (Features/DownloadsPresence.swift).
+/// Bluebox's widget extension: the Downloads Live Activity, started by the
+/// app (Features/DownloadsPresence.swift), and the Continue Watching and Up
+/// Next widgets (LibraryWidgets.swift).
 @main
 struct BlueboxWidgets: WidgetBundle {
     var body: some Widget {
         DownloadsLiveActivity()
+        ContinueWatchingWidget()
+        UpNextWidget()
     }
 }
 
-private let brand = Color(red: DownloadsActivityStyle.brand.red, green: DownloadsActivityStyle.brand.green,
+let brand = Color(red: DownloadsActivityStyle.brand.red, green: DownloadsActivityStyle.brand.green,
                           blue: DownloadsActivityStyle.brand.blue)
-private let secondary = Color(white: 0.64)
+let secondary = Color(white: 0.64)
 
 /// The whole queue on the Lock Screen and in the Dynamic Island. OLED black,
 /// no poster, blue only for progress.
@@ -105,7 +108,7 @@ private struct TitleLine: View {
     }
 }
 
-private struct ProgressBar: View {
+struct ProgressBar: View {
     let fraction: Double
 
     var body: some View {

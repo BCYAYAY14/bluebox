@@ -7,6 +7,7 @@ import SwiftUI
 /// their intro, recap or credits without asking ("Always for this show" in
 /// the player). Each part can be turned off here, or the whole show removed.
 struct AlwaysSkipListPage: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var app
     @State private var names: [String: String] = [:]
 
@@ -26,7 +27,7 @@ struct AlwaysSkipListPage: View {
                         HStack {
                             Text(names[show] ?? "…").font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
                             Spacer()
-                            Button("Remove") { withAnimation(Motion.snappy(false)) { settings.showSkipRules.removeShow(show) } }
+                            Button("Remove") { withAnimation(Motion.snappy(reduceMotion)) { settings.showSkipRules.removeShow(show) } }
                                 .buttonStyle(TextActionStyle())
                                 .accessibilityLabel("Stop always skipping for \(names[show] ?? "this show")")
                         }
@@ -34,7 +35,7 @@ struct AlwaysSkipListPage: View {
                             ForEach(ShowSkipRules.Part.allCases) { part in
                                 PartChip(title: part.title, isOn: settings.showSkipRules.alwaysSkips(part, show: show)) {
                                     let on = !settings.showSkipRules.alwaysSkips(part, show: show)
-                                    withAnimation(Motion.snappy(false)) { settings.showSkipRules.setAlways(on, part, show: show) }
+                                    withAnimation(Motion.snappy(reduceMotion)) { settings.showSkipRules.setAlways(on, part, show: show) }
                                 }
                             }
                         }
@@ -71,7 +72,7 @@ private struct PartChip: View {
         Button(action: toggle) {
             HStack(spacing: 4) {
                 if isOn { Image(systemName: "checkmark").font(.caption2.weight(.heavy)) }
-                Text(title).font(.caption.weight(.semibold))
+                Text(ui: title).font(.caption.weight(.semibold))
             }
             .foregroundStyle(isOn ? Palette.textPrimary : Palette.textSecondary)
             .padding(.horizontal, 10)

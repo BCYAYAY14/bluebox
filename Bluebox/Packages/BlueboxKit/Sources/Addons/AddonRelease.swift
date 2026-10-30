@@ -158,7 +158,7 @@ public enum AddonError: LocalizedError, Sendable, Equatable {
     case invalidAddonURL
     /// The manifest couldn't be read.
     case invalidManifest
-    /// The add-on doesn't offer streams for movies or series.
+    /// The add-on offers neither streams nor catalogs for movies or series.
     case noStreams(String)
     /// The add-on must be configured on its website first.
     case needsConfiguration(String)
@@ -177,7 +177,7 @@ public enum AddonError: LocalizedError, Sendable, Equatable {
         case .timedOut: "The add-ons took too long to answer. Try again in a moment."
         case .invalidAddonURL: "That isn't an add-on link. Paste the add-on's manifest link (ending in manifest.json)."
         case .invalidManifest: "Bluebox couldn't read that add-on's manifest. Check the link."
-        case .noStreams(let name): "\(name) doesn't offer streams for movies or series, so it can't find releases."
+        case .noStreams(let name): "\(name) doesn't offer streams or catalogs for movies or series, so Bluebox can't use it."
         case .needsConfiguration(let name): "\(name) needs setting up on its website first. Configure it there, then paste the link it gives you."
         case .alreadyInstalled(let name): "\(name) is already in your add-ons."
         case .responseTooLarge: "The add-on sent far more data than a list of streams needs, so Bluebox ignored it."
