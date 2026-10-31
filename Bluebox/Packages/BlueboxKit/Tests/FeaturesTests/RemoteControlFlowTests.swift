@@ -225,6 +225,40 @@ import Testing
         #expect(continuous.allSatisfy { !acked.contains($0) })
     }
 
+    /// Opening a stream can take a minute: the moves and Back sent meanwhile
+    /// land at once, not after it.
+    @Test func aSlowPlayDoesntHoldUpWhatFollows() async {
+        let p = await appPair()
+        p.handler.playTakes = .seconds(5)
+        p.phone.send(.play(RemotePlay(key: .movie(tmdbID: 9), title: "Dune")))
+        #expect(await until { p.handler.log.contains("play Dune") })
+        p.phone.send(.move(.right))
+        p.phone.send(.go(.back))
+        #expect(await until { p.handler.log.contains("move right") && p.handler.log.count >= 3 })
+        #expect(!p.handler.log.contains("opened Dune"))
+    }
+
+    /// The screen carries the Mac's player too, so a phone that misses every
+    /// state still shows the player's controls, and drops them when it closes.
+    @Test func theScreenCarriesThePlayer() async throws {
+        let hub = FakeRemoteHub()
+        hub.dropStates = true
+        let handler = FakeAppHandler()
+        let player = PlayerSession(engine: RemoteTestEngine(), progress: try LibraryStore.make(inMemory: true))
+        await player.start(NowPlayingItem(key: .movie(tmdbID: 3), title: "Dune"), resource: Self.resource)
+        let mac = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
+        mac.handler = handler
+        mac.update(wanted: true, controllable: true, player: player, makeChannel: hub.link("mac").make)
+        let phone = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
+        phone.update(wanted: true, player: nil, makeChannel: hub.link("phone").make)
+        #expect(await until { phone.devices.count == 1 })
+        phone.target = mac.deviceID
+        phone.send(.move(.down))
+        #expect(await until { phone.nowPlaying?.title == "Dune" })
+        mac.update(wanted: true, controllable: true, player: nil, makeChannel: hub.link("mac").make)
+        #expect(await until { phone.nowPlaying == nil })
+    }
+
     /// The Mac reports where it is and what's highlighted; the phone's Touch pad names it.
     @Test func theScreenFollowsTheHighlight() async {
         let p = await appPair()
@@ -330,11 +364,17 @@ import Testing
 final class FakeAppHandler: RemoteAppHandler {
     var log: [String] = []
     var focused: (id: String, label: String)?
+    /// How long Play takes to open the stream.
+    var playTakes: Duration = .zero
 
     func remoteGo(_ destination: RemoteDestination) {
         if case .title(let key) = destination { log.append("go title(\(key))") } else { log.append("go \(destination)") }
     }
-    func remotePlay(_ play: RemotePlay) async { log.append("play \(play.title)") }
+    func remotePlay(_ play: RemotePlay) async {
+        log.append("play \(play.title)")
+        try? await Task.sleep(for: playTakes)
+        log.append("opened \(play.title)")
+    }
     func remoteClosePlayer() async { log.append("close") }
     func remoteFocus(_ id: String, driver: String) { log.append("focus \(id)") }
     func remoteMove(_ direction: RemoteDirection, driver: String) { log.append("move \(direction.rawValue)") }
@@ -362,13 +402,17 @@ final class FakeRemoteHub: @unchecked Sendable {
     private var links: [FakeRemoteLink] = []
     private var _sent: [RemoteMessage] = []
     private var acksToDrop = 0, hellosToDrop = 0
-    private var _dropCommands = false
+    private var _dropCommands = false, _dropStates = false
 
     /// Everything a joined link sent, lost or not.
     var sent: [RemoteMessage] { lock.withLock { _sent } }
     var dropCommands: Bool {
         get { lock.withLock { _dropCommands } }
         set { lock.withLock { _dropCommands = newValue } }
+    }
+    var dropStates: Bool {
+        get { lock.withLock { _dropStates } }
+        set { lock.withLock { _dropStates = newValue } }
     }
     func dropAcks(_ n: Int) { lock.withLock { acksToDrop = n } }
     func dropHellos(_ n: Int) { lock.withLock { hellosToDrop = n } }
@@ -386,6 +430,7 @@ final class FakeRemoteHub: @unchecked Sendable {
             case .ack where acksToDrop > 0: acksToDrop -= 1; return nil
             case .hello where hellosToDrop > 0: hellosToDrop -= 1; return nil
             case .command where _dropCommands: return nil
+            case .state where _dropStates: return nil
             default: return links.filter { $0 !== sender }
             }
         }

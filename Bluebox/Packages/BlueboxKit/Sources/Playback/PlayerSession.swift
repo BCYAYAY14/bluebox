@@ -55,6 +55,8 @@ public final class PlayerSession {
     public private(set) var secondarySubtitleText: String?
     public private(set) var subtitleError: String?
     public private(set) var upNext: UpNext?
+    /// What happened to the video that's playing, for Stats and the diagnostics report.
+    public private(set) var events = PlaybackEventLog()
 
     // VLC-style tools
     /// Picture framing (aspect, crop, zoom, rotation). The view applies it.
@@ -199,6 +201,8 @@ public final class PlayerSession {
         engine.pause()
         self.item = item
         self.resource = resource
+        events.reset()
+        events.record("Opened", detail: (resource.variant.container ?? resource.url.pathExtension).uppercased(), position: 0, at: now())
         lastSavedPosition = nil
         nearEndNoted = false
         timeline = nil; subtitleText = nil; subtitleClock.reset(); subtitleError = nil; subtitleSelection = .off
@@ -217,6 +221,7 @@ public final class PlayerSession {
         }
 
         if let replacement = engineSwitcher?(resource, engine) { replaceEngine(with: replacement) }
+        events.record("Engine", detail: engine.diagnostics().engine, position: 0, at: now())
 
         let saved = resume && explicitStart == nil ? (try? await progress.progress(for: item.key)) ?? nil : nil
         guard generation == mine else { return }
@@ -249,6 +254,7 @@ public final class PlayerSession {
         engine.stop()
         engine = replacement
         engine.onChange = { [weak self] s in self?.engineChanged(s) }
+        if item != nil, !isStarting { events.record("Switched engine", detail: replacement.diagnostics().engine, position: snapshot.position, at: now()) }
         engine.setRate(rate)
         engine.setVideoAdjustments(videoAdjustments)
         engine.setAudioEffects(audioEffects)
@@ -313,6 +319,8 @@ public final class PlayerSession {
         cancelUpNext()
         let target = max(0, snapshot.duration.map { min(seconds, max($0 - 0.5, 0)) } ?? seconds)
         if announce { onTransport?(.seek(to: target, playing: appearsPlaying)) }
+        events.record("Seeked", detail: "\(PlaybackEventLog.clock(displayPosition)) → \(PlaybackEventLog.clock(target))",
+                      position: target, at: now())
         seekTarget = target
         subtitleClock.reset()
         await engine.seek(to: target)
@@ -364,6 +372,7 @@ public final class PlayerSession {
     public private(set) var chosenRate: Float?
     public func setRate(_ rate: Float) {
         onTransport?(.rate(rate))
+        if rate != snapshot.rate { events.record("Speed", detail: Self.rateLabel(rate), position: snapshot.position, at: now()) }
         chosenRate = rate; engine.setRate(rate)
     }
 
@@ -390,6 +399,9 @@ public final class PlayerSession {
 
     /// - Parameter remember: a person chose it: keep the language for the next items.
     public func selectAudio(_ id: String?, remember: Bool = true) {
+        if id != snapshot.selectedAudioID {
+            events.record("Audio track", detail: snapshot.audioTracks.first { $0.id == id }?.label, position: snapshot.position, at: now())
+        }
         engine.selectAudio(id)
         if remember, let id, let t = snapshot.audioTracks.first(where: { $0.id == id }) {
             rememberedAudio = TrackChoice(t, index: snapshot.audioTracks.firstIndex(of: t))
@@ -402,6 +414,12 @@ public final class PlayerSession {
     public func setAudioEffects(_ e: AudioEffects) {
         audioEffects = e
         engine.setAudioEffects(e)
+    }
+
+    /// "1×", "1.25×", for the timeline.
+    public nonisolated static func rateLabel(_ rate: Float) -> String {
+        let r = (Double(rate) * 100).rounded() / 100
+        return r == r.rounded() ? "\(Int(r))×" : "\(r)×"
     }
 
     /// What's loaded now (for preview thumbnails and Handoff). Not observed.
@@ -548,6 +566,13 @@ public final class PlayerSession {
         }
         subtitleTask?.cancel()
         subtitleError = nil
+        if selection != subtitleSelection {
+            let label: String? = switch selection {
+            case .off: "Off"
+            case .embedded(let id), .external(let id): allSubtitleTracks.first { $0.id == id }?.label
+            }
+            events.record("Subtitles", detail: label, position: snapshot.position, at: now())
+        }
         subtitleSelection = selection
         switch selection {
         case .off:
@@ -570,6 +595,7 @@ public final class PlayerSession {
                 } catch {
                     guard !Task.isCancelled, let self else { return }
                     self.subtitleError = (error as? LocalizedError)?.errorDescription ?? "Subtitles couldn't be loaded."
+                    self.events.record("Subtitles failed", detail: self.subtitleError, kind: .error, position: self.snapshot.position, at: self.now())
                     self.subtitleSelection = .off
                 }
             }
@@ -896,6 +922,7 @@ public final class PlayerSession {
     private func engineChanged(_ s: PlaybackSnapshot) {
         let old = snapshot
         snapshot = s
+        if item != nil { events.statusChanged(from: old.status, to: s.status, position: s.position, at: now()) }
         if let o = optimisticPlaying, s.status.isActive == o || s.status == .ended || s.status.isFailure
             || (!o && s.status == .paused) { setOptimistic(nil) }
         updateSubtitleText()

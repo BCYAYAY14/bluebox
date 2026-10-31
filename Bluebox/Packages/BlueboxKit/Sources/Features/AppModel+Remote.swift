@@ -17,13 +17,15 @@ public struct RemoteNavigation: Equatable, Sendable {
 /// While the player is open it covers the window, so the touch pad steers
 /// the player instead (a tap plays or pauses, left and right skip 10 s);
 /// while a stream loads, the pad does nothing, so a second tap can't press
-/// Play again on the page underneath.
+/// Play again on the page underneath, and Back cancels it.
 ///
 /// The better remote's commands (protocol 4) go to `RemoteFocus` too: jumps,
 /// two-finger scrolling, the pointer, a hold's menu and picking from it; the
 /// skip button goes to the player's (`remoteSkip`).
 extension AppModel: RemoteAppHandler {
     public func remoteGo(_ destination: RemoteDestination) {
+        // Back stops a stream that's still loading, as the loading screen's Cancel does.
+        if destination == .back, activePlayer == nil, preparingItem != nil { cancelPreparing(); return }
         // Back closes the top sheet first; going anywhere else closes them all.
         if destination == .back, activePlayer == nil, remoteFocus.dismissTopModal() { return }
         if destination != .back { remoteFocus.dismissAllModals() }

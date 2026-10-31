@@ -71,7 +71,12 @@ public actor RemoteChannel: RemoteTransport {
     /// Sends when joined; otherwise drops it (see the type's comment). True when it went out.
     @discardableResult
     public func send(_ message: RemoteMessage) async -> Bool {
-        guard joined, let socket, let topic, let payload = try? message.jsonObject() else { return false }
+        guard joined, let socket, let topic else { return false }
+        let payload: [String: Any]
+        do { payload = try message.jsonObject() } catch {
+            Log.sync.error("Remote channel: couldn't encode a message: \(String(describing: error), privacy: .public)")
+            return false
+        }
         do {
             try await send(socket, Self.broadcastMessage(topic: topic, payload: payload, ref: nextRef()))
             return true

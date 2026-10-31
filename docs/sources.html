@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sources · Bluebox docs</title>
+<meta name="description" content="Add Stremio add-ons, a debrid service, Jellyfin, Emby, Plex, WebDAV, local files, direct links and torrents to Bluebox, and download for offline.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Sources · Bluebox docs">
+<meta property="og:description" content="Add Stremio add-ons, a debrid service, Jellyfin, Emby, Plex, WebDAV, local files, direct links and torrents to Bluebox, and download for offline.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html" aria-current="page">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>Sources</h1>
+<p class="lede">Bluebox doesn't host anything. Everything it plays comes from a source you add: Stremio add-ons, a debrid service, your media server, a network folder or files on your device.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#how-play-picks">How Play picks a stream</a></li><li><a href="#addons">Stremio add-ons</a></li><li><a href="#debrid">Debrid services</a></li><li><a href="#torrents">Torrents</a></li><li><a href="#media-servers">Jellyfin, Emby and Plex</a></li><li><a href="#webdav">WebDAV folders</a></li><li><a href="#smb">SMB (Windows) shares</a></li><li><a href="#local-files">Files and folders</a></li><li><a href="#direct-links">Direct links</a></li><li><a href="#open-movies">Open Movies</a></li><li><a href="#downloads">Downloads</a></li><li><a href="#catalog">Catalog, ratings and Trakt</a></li></ol></nav>
+<h2 id="how-play-picks">How Play picks a stream<a class="anchor" href="#how-play-picks" aria-label="Link to this section">#</a></h2>
+<p>When you press Play on a catalog title, Bluebox looks in this order:</p>
+<ol>
+  <li>A <strong>download</strong> of it on this device, so it works offline.</li>
+  <li>Your <strong>own sources</strong> that have it: Jellyfin, Emby, Plex, WebDAV, folders, your debrid library.</li>
+  <li>Your <strong>add-ons</strong>. It asks each one for releases, then picks cached debrid links first (they start at once), then the healthiest release at your preferred resolution that this device can play. A torrent nobody is sharing falls through to the next release by itself.</li>
+</ol>
+<p>To choose by hand, open <strong>Releases</strong> on a title page (on the Mac, the list in the title page; on iPhone, the list icon, or touch and hold an episode). It shows every release with its quality, size, seeders and file type. For a show, Bluebox remembers the release group and resolution you last played and prefers them for the next episode (<span class="path">Settings › Torrents &amp; Debrid › Same Group Next Episode</span>).</p>
+
+<h2 id="addons">Stremio add-ons<a class="anchor" href="#addons" aria-label="Link to this section">#</a></h2>
+<p>Add-ons find releases for a title. Bluebox speaks the Stremio add-on protocol, so most Stremio stream add-ons work. Manage them in <span class="path">Settings › Torrents &amp; Debrid › Add-ons</span>.</p>
+<ul>
+  <li><strong>Torrentio</strong> and <strong>StremThru</strong> are on by default. <strong>Comet</strong> is one tap away; it returns debrid links only.</li>
+  <li><strong>Any other add-on:</strong> tap Add and paste its link (the manifest URL, ending in <code>manifest.json</code>). An add-on added by link often has your debrid key in it, so its link is kept in the Keychain.</li>
+  <li><strong>Order</strong> matters: when two releases are equally good, the add-on higher in the list wins. Drag to reorder.</li>
+  <li><strong>Test Add-ons</strong> checks that each add-on answers and says which ones failed.</li>
+  <li><strong>Add-on Catalogs on Home:</strong> add-ons that publish catalogs can show them as rows on Home, each with a See All page and its own switch.</li>
+</ul>
+<h3 id="release-settings">Release settings<a class="anchor" href="#release-settings" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>Preferred Resolution</strong> (1080p by default), <strong>Sort By</strong> (seeders by default) and <strong>Hidden Qualities</strong> (CAM rips and screeners are hidden by default and never picked).</li>
+  <li><strong>Find Releases Early</strong> starts looking as soon as a movie's page opens, so Play starts sooner.</li>
+  <li><strong>Add-on Timeout</strong> (in Advanced) is how long Bluebox waits for a slow add-on before going on without it.</li>
+</ul>
+
+<h2 id="debrid">Debrid services<a class="anchor" href="#debrid" aria-label="Link to this section">#</a></h2>
+<p>A debrid service downloads torrents on its own servers and streams them to you over HTTPS. Playback starts at once, and torrent peers never see your IP address. Bluebox supports <strong>Real-Debrid</strong>, <strong>Premiumize</strong>, <strong>AllDebrid</strong>, <strong>TorBox</strong> and <strong>Debrid-Link</strong>.</p>
+<ol>
+  <li>Get your API key from your service's account page (Bluebox shows where under the key field).</li>
+  <li>Open <span class="path">Settings › Torrents &amp; Debrid</span>, pick your service under <strong>Debrid Service</strong> and paste the key into <strong>Debrid API Key</strong>.</li>
+  <li>Play something. Releases your service already has show as cached and are picked first.</li>
+</ol>
+<ul>
+  <li>The key stays in this device's Keychain. It goes to Torrentio, and to StremThru and Comet only with <strong>Share Key with Community Add-ons</strong> on. It syncs to your other devices only if you turn on Sync API Keys (<a href="sync.html#what-syncs">What syncs</a>).</li>
+  <li><strong>Check What's Cached</strong> asks your service which releases it already has before ranking, for services that support it.</li>
+  <li><strong>Debrid Plan</strong> shows how many days your plan has left, and <strong>Remind Before the Plan Ends</strong> warns you three days before.</li>
+  <li><strong>Debrid Library</strong> (<span class="path">Settings › Sources</span>) lists what's already in your service's cloud, ready to play or download.</li>
+</ul>
+<p>If a stream fails, Bluebox names the problem (key not accepted, plan expired, not ready yet, limit reached) and offers to open your account page or pick another release. See <a href="faq.html#debrid-errors">Debrid errors</a> in the FAQ.</p>
+
+<h2 id="torrents">Torrents<a class="anchor" href="#torrents" aria-label="Link to this section">#</a></h2>
+<p>Without debrid, add-on torrents stream peer to peer with libtorrent. Bluebox tries the best few torrents at once, buffers about a minute of the video, then plays while it downloads the rest in order.</p>
+<div class="note warn"><p><strong>Torrents share your IP address.</strong> While a torrent streams, Bluebox also uploads to other peers, and everyone in the swarm can see your IP address. Use a debrid service or a VPN for privacy. To stop uploading: <span class="path">Settings › Torrents &amp; Debrid › Upload Limit › Don't Upload</span>.</p></div>
+<ul>
+  <li><strong>Keep Streams</strong> keeps watched streams on disk (5 GB by default) so resuming and rewatching don't download again. <strong>Clear Stream Cache</strong> empties it; downloads aren't affected.</li>
+  <li><strong>Start Playing After</strong> and <strong>Buffer at Most</strong> trade a quicker start against fewer pauses. <strong>Torrents Tried at Once</strong> and <strong>Maximum Peers</strong> are in the same section.</li>
+  <li><strong>Extra Trackers</strong> (Advanced) adds trackers to every torrent, which can help a quiet one find peers.</li>
+  <li>Bluebox finds peers through HTTP and UDP trackers and web seeds. It has no DHT, so a magnet link with no trackers can't start.</li>
+</ul>
+<h3 id="your-torrents">Your own torrents<a class="anchor" href="#your-torrents" aria-label="Link to this section">#</a></h3>
+<p><span class="path">Settings › Sources › Add Torrent</span> takes a magnet link or a <code>.torrent</code> file for something you have the right to watch. Video files in it are matched to the catalog by name and download in order, so you can start watching at once. Bluebox never searches for torrents itself.</p>
+
+<h2 id="media-servers">Jellyfin, Emby and Plex<a class="anchor" href="#media-servers" aria-label="Link to this section">#</a></h2>
+<h3 id="jellyfin">Jellyfin and Emby<a class="anchor" href="#jellyfin" aria-label="Link to this section">#</a></h3>
+<ol>
+  <li><span class="path">Settings › Sources › Add Jellyfin Server</span> (or <strong>Add Emby Server</strong>).</li>
+  <li>Enter the server's address, such as <code>https://media.example.com</code> or <code>http://192.168.1.20:8096</code>, with your username and password.</li>
+  <li>Bluebox signs in once and keeps only the server's access token, in the Keychain.</li>
+</ol>
+<p>Films and episodes are matched to the catalog by the IDs your server stores, then by name and year. Watched, unwatched and where you stopped stay in step both ways with the server's own apps. Formats Apple's player can't open are converted by your server. Text subtitles from the server show in the player and in Search Online.</p>
+<h3 id="plex">Plex<a class="anchor" href="#plex" aria-label="Link to this section">#</a></h3>
+<ol>
+  <li><span class="path">Settings › Sources › Add Plex Server</span>.</li>
+  <li>Tap the sign-in button: plex.tv opens in your browser. Allow Bluebox there, and Bluebox finds your server and keeps only its access token.</li>
+  <li>Or choose <strong>Or Enter the Server</strong> and type its address with the port (such as <code>http://192.168.1.20:32400</code>) and your X-Plex-Token.</li>
+</ol>
+<p>Use <code>https://</code> for any server outside your home network. Plain <code>http://</code> is meant for addresses on your own network.</p>
+
+<h2 id="webdav">WebDAV folders<a class="anchor" href="#webdav" aria-label="Link to this section">#</a></h2>
+<p>A folder of videos on a NAS, Nextcloud or any WebDAV server: <span class="path">Settings › Sources › Add WebDAV Folder</span>, then its address (such as <code>https://nas.example.com/dav/Movies</code>), username and password. Subfolders are scanned and files matched to the catalog by name. The password is kept in the Keychain.</p>
+
+<h2 id="smb">SMB (Windows) shares<a class="anchor" href="#smb" aria-label="Link to this section">#</a></h2>
+<p>Bluebox can't open SMB shares by itself. Instead:</p>
+<ul>
+  <li><strong>On the Mac:</strong> connect to the share in Finder with <span class="path">Go › Connect to Server</span> (<kbd>⌘K</kbd>), then add the mounted folder with <span class="path">Settings › Sources › Add Folder</span>.</li>
+  <li><strong>On any device:</strong> turn on WebDAV on the NAS or computer that shares the files (most NAS systems have it), and <a href="#webdav">add it as a WebDAV folder</a>.</li>
+</ul>
+
+<h2 id="local-files">Files and folders<a class="anchor" href="#local-files" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Add a folder:</strong> <span class="path">Settings › Sources › Add Folder</span>. Bluebox keeps access to it across launches, and files in it are matched to the catalog by name.</li>
+  <li><strong>Open single files</strong> on the Mac with <span class="path">File › Open…</span> (<kbd>⌘O</kbd>), or drop files and folders onto the window.</li>
+  <li><strong>Formats:</strong> MP4, M4V, MOV, MKV, AVI, WebM, TS, M2TS and MTS are found. See <a href="player.html#formats">which player opens which</a>.</li>
+  <li><strong>Subtitles:</strong> put a subtitle file next to the video with the same name and its language, like <code>Movie.en.srt</code> beside <code>Movie.mp4</code>.</li>
+  <li><strong>Wrong title?</strong> Right-click (or touch and hold) the file and choose <strong>Fix Match…</strong> to pick the right film or episode. Unmatch and Reset Match are in the same menu.</li>
+  <li>A folder that moves or disappears is kept with an error, so you can point it at the new place instead of losing it.</li>
+</ul>
+
+<h2 id="direct-links">Direct links<a class="anchor" href="#direct-links" aria-label="Link to this section">#</a></h2>
+<p><span class="path">Settings › Sources › Direct Links › Add Link</span> plays a video file or HLS stream by its address: MP4, MOV, M4V and HLS (<code>.m3u8</code>). <code>https://</code> works anywhere; <code>http://</code> only for addresses on your local network.</p>
+
+<h2 id="open-movies">Open Movies<a class="anchor" href="#open-movies" aria-label="Link to this section">#</a></h2>
+<p>A few Creative Commons films (from the Blender Foundation and others) are on by default, so there's something to try straight away. Turn them off in <span class="path">Settings › Sources › Open Movies</span>.</p>
+<p><strong>Test All Sources</strong> at the top of Settings › Sources checks every source you've added and says which can't be reached.</p>
+
+<h2 id="downloads">Downloads<a class="anchor" href="#downloads" aria-label="Link to this section">#</a></h2>
+<p>Download films and episodes to watch offline. A downloaded copy is always used first when you press Play.</p>
+<ul>
+  <li><strong>A film:</strong> the Download button on its page. To pick the release, touch and hold (or right-click) one in Releases.</li>
+  <li><strong>A season:</strong> the ↓ button beside the season picker has Download Season, Unwatched Only, As One Season Pack and Download Rules…. A progress line under the picker has Pause and Cancel.</li>
+  <li><strong>The queue:</strong> the Downloads tab, where you can pause, resume and delete. On the Mac there's also a downloads item in the menu bar; on iPhone, a Live Activity on the Lock Screen.</li>
+  <li><strong>What can be downloaded:</strong> debrid links, torrents, direct links, Open Movies, WebDAV and media-server files that are already MP4 or MOV. HLS streams can't be downloaded.</li>
+  <li><strong>Simultaneous Downloads</strong> is 2 by default (<span class="path">Settings › Downloads</span>).</li>
+</ul>
+<h3 id="smart-downloads">Smart Downloads<a class="anchor" href="#smart-downloads" aria-label="Link to this section">#</a></h3>
+<p>On by default. For shows you're watching, Bluebox keeps the next episodes downloaded (<strong>Keep Next Episodes</strong>, 1 by default) and deletes episodes after you watch them (<strong>Delete After Watching</strong>). Watched films are deleted after 7 days (<strong>Delete Watched Films</strong>). Also in <span class="path">Settings › Downloads</span>:</p>
+<ul>
+  <li><strong>Storage Limit</strong>, <strong>Download Quality</strong>, <strong>Largest Episode</strong> and <strong>Download Audio</strong>.</li>
+  <li><strong>Download Window</strong>: only download at certain hours.</li>
+  <li><strong>Follow Watching on Other Devices</strong>: an episode you watch on another device counts here too (needs sync).</li>
+  <li><strong>Subtitles With Downloads</strong> saves subtitles in your languages alongside.</li>
+</ul>
+<p>Each show can have its own rules: <strong>Download Rules…</strong> in the season's ↓ menu. Changing anything there gives the show its own rules; <strong>Reset to Settings</strong> goes back.</p>
+<h3 id="downloads-ios">On iPhone and iPad<a class="anchor" href="#downloads-ios" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>Wi-Fi only:</strong> downloads wait for Wi-Fi by default. Change it in <span class="path">Settings › Mobile Data</span>, which also covers streaming, video quality and torrents on mobile data, and shows the data used this month.</li>
+  <li><strong>In the background:</strong> debrid and other HTTPS downloads are handed to iOS and keep going after you leave Bluebox. Torrents need Bluebox itself to keep running: with <strong>Keep Downloading in the Background</strong> on (the default) it stays awake while a torrent downloads, which uses more battery. If iOS closes Bluebox anyway, torrents stop, keep what they have, and carry on next time you open it. See <a href="faq.html#background-downloads">the FAQ</a>.</li>
+</ul>
+
+<h2 id="catalog">Catalog, ratings and Trakt<a class="anchor" href="#catalog" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Catalog:</strong> without a TMDB token Bluebox uses Cinemeta. A free TMDB token (<span class="path">Settings › Catalog &amp; Ratings</span>) adds collections, cast pages and better recommendations. Your lists and progress carry over if you switch.</li>
+  <li><strong>Ratings:</strong> an OMDb key adds IMDb, Rotten Tomatoes and Metacritic scores.</li>
+  <li><strong>Trakt:</strong> keeps My List in step with your Trakt watchlist and exchanges watched history both ways; custom lists can sync too (off by default), and it follows the first profile. Trakt needs a Trakt app's Client ID built into Bluebox, which the released builds don't include. To use it, <a href="install.html#build">build Bluebox yourself</a> with <code>TRAKT_CLIENT_ID</code> and <code>TRAKT_CLIENT_SECRET</code> in <code>Config/Secrets.xcconfig</code> (from a new app at trakt.tv › Settings › Your API Apps), and <span class="path">Settings › Account &amp; Sync</span> then shows Connect Trakt.</li>
+
+</ul>
+<nav class="next" aria-label="Pages"><a href="install.html"><small>Previous</small>Install</a><a class="r" href="player.html"><small>Next</small>The player</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

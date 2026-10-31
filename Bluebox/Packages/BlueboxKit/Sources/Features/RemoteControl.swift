@@ -137,12 +137,15 @@ public final class RemoteControl {
     @ObservationIgnored private var lastRemoteSeen: Date?
     @ObservationIgnored private var lastPublished: (state: RemoteNowPlaying, at: Date)?
     @ObservationIgnored private var lastScreen: RemoteScreen?
+    @ObservationIgnored private var lastScreenAt: Date?
     /// From the clock, so a relaunched Mac carries on above what remotes last saw from it.
     @ObservationIgnored private var seq: Int
     /// Command IDs already applied: a retry is acknowledged again but not applied twice.
     @ObservationIgnored private var applied: [UUID] = []
     /// The command being applied; the next one waits for it.
     @ObservationIgnored private var applying: Task<Void, Never>?
+    /// A screen waiting to go out (`screenChanged`).
+    @ObservationIgnored private var screenPending: Task<Void, Never>?
     #if DEBUG
     /// Showing `seedForReview`'s state: the channel is left alone.
     @ObservationIgnored private var seededForReview = false
@@ -224,6 +227,7 @@ public final class RemoteControl {
         } else if playerChanged, channelState == .joined {
             announce()  // what it's playing changed
             publish(force: true)
+            publishScreen(force: true)
         }
         #if os(macOS)
         if controllable, activity == nil {
@@ -311,7 +315,11 @@ public final class RemoteControl {
             announce()
         }
         pruneDevices(at: date)
-        if player != nil { publish(force: false) }
+        if player != nil {
+            publish(force: false)
+            // Now and then the screen as well, which carries the player too.
+            if lastScreenAt.map({ date.timeIntervalSince($0) >= 10 }) ?? true { publishScreen(force: true) }
+        }
         if controllable { return }
         if channelState == .joined, let lastHello {
             let since = date.timeIntervalSince(lastHello)
@@ -347,7 +355,16 @@ public final class RemoteControl {
             pruneDevices(at: now())
         case .screen(let s):
             guard !controllable, s.deviceID == (target ?? controlled?.id) else { return }
+            let wasPlaying = screen?.playing != nil
             if s != screen { screen = s }
+            if let playing = s.playing, playing.deviceID == s.deviceID {
+                reconciler.receive(playing, at: now())
+                refreshDisplayed()
+            } else if wasPlaying {
+                // Its player closed (a Mac that never carries the player here never gets this far).
+                reconciler.stopped(deviceID: s.deviceID)
+                refreshDisplayed()
+            }
         case .hello(let from):
             guard controllable || player != nil else { return }
             lastRemoteSeen = now()
@@ -362,17 +379,26 @@ public final class RemoteControl {
             guard !applied.contains(command.id) else { return }  // a retry of one already applied
             applied.append(command.id)
             if applied.count > 64 { applied.removeFirst(applied.count - 64) }
-            let previous = applying
             let settle = timing.settle
             let driver = command.from.flatMap { heard[$0]?.device.name } ?? String(localized: "Remote")
-            applying = Task {
-                await previous?.value
+            let run = { [weak self] in
+                guard let self else { return }
                 await self.apply(command.action, driver: driver)
                 // Give the engine a moment to report the change, then tell the remote.
                 Task { [weak self] in
                     try? await Task.sleep(for: settle)
                     self?.publish(force: true)
                     self?.publishScreen(force: false)
+                }
+            }
+            if Self.runsAlone(command.action) {
+                // Opening a stream can take a minute: the swipes and Back that follow mustn't queue behind it.
+                Task { await run() }
+            } else {
+                let previous = applying
+                applying = Task {
+                    await previous?.value
+                    await run()
                 }
             }
         }
@@ -537,14 +563,43 @@ public final class RemoteControl {
     }
 
     /// The Mac's screen or highlight changed (`AppModel` calls this): tell the remote.
-    public func screenChanged() { publishScreen(force: false) }
+    /// Commands that wait for a stream to open or close (Play, Next Episode,
+    /// Close): applied beside the queue, not in it, so the commands after them
+    /// (moves, Back to cancel) still land meanwhile.
+    nonisolated static func runsAlone(_ action: RemoteCommand.Action) -> Bool {
+        switch action {
+        case .play, .nextEpisode, .closePlayer: true
+        default: false
+        }
+    }
+
+    /// The highlight or page changed. A move changes it a few times in a row
+    /// (the highlight, then a scroll, then the page under it): one screen goes
+    /// out for them all, a moment later.
+    public func screenChanged() {
+        guard screenPending == nil else { return }
+        screenPending = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(30))
+            guard let self else { return }
+            self.screenPending = nil
+            self.publishScreen(force: false)
+        }
+    }
 
     private func publishScreen(force: Bool) {
         guard controllable, channel != nil, channelState == .joined, let handler else { return }
         var screen = handler.remoteScreen()
         screen.deviceID = deviceID
-        guard force || screen != lastScreen else { return }
-        lastScreen = screen
+        if let player, var state = makeState(player) {
+            state.seq = seq
+            screen.playing = state
+        }
+        // The clock moving isn't a new screen.
+        var compared = screen
+        compared.playing?.position = 0
+        guard force || compared != lastScreen else { return }
+        lastScreen = compared
+        lastScreenAt = now()
         enqueue(.screen(screen))
     }
 
@@ -577,14 +632,19 @@ public final class RemoteControl {
         case .off: nil
         case .embedded(let id), .external(let id): id
         }
+        // A number JSON can't hold (a stream's unknown length read as NaN or infinity) would
+        // stop the whole state from being encoded, and the phone would never see the player.
+        let duration = s.snapshot.duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let chapters = s.snapshot.chapters.map(\.start).filter(\.isFinite)
         return RemoteNowPlaying(deviceID: deviceID, deviceName: Self.deviceName, title: item.title, subtitle: item.subtitle,
-                                position: s.displayPosition, duration: s.snapshot.duration, paused: !s.appearsPlaying,
+                                position: s.displayPosition.isFinite ? max(s.displayPosition, 0) : 0, duration: duration,
+                                paused: !s.appearsPlaying,
                                 audioTracks: s.snapshot.audioTracks.map { RemoteTrack(id: $0.id, label: $0.label) },
                                 subtitleTracks: s.allSubtitleTracks.map { RemoteTrack(id: $0.id, label: $0.label) },
                                 audioID: s.snapshot.selectedAudioID, subtitleID: subtitleID,
-                                volume: s.isMuted ? 0 : s.volume, hasNext: item.key.episodeNumbers != nil,
+                                volume: s.isMuted || !s.volume.isFinite ? 0 : s.volume, hasNext: item.key.episodeNumbers != nil,
                                 skipOffer: handler?.remoteSkipOffer(),
-                                chapters: s.snapshot.chapters.isEmpty ? nil : s.snapshot.chapters.map(\.start))
+                                chapters: chapters.isEmpty ? nil : chapters)
     }
 
     /// The bridge to the player: only `PlayerSession`'s public controls.

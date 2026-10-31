@@ -66,6 +66,8 @@ struct PlayerView: View {
     @State private var showsWaiting = false
     /// Downloaded parts of a torrent stream, as fractions of the file.
     @State private var available: [ClosedRange<Double>] = []
+    /// The same in bytes, for Stats' pieces ahead.
+    @State private var fileRanges: TorrentFileRanges?
     /// iPhone: the window didn't turn as asked (a prompt offers to try again).
     @State private var showsRotatePrompt = false
     @State private var zoomBase: Double?
@@ -359,9 +361,14 @@ struct PlayerView: View {
                 panelCard(panel).zIndex(2)
             }
             if statsShown, !locked {
-                PlayerStatsOverlay(session: session, onClose: { statsShown = false })
+                let statsTop = controlsShown ? (stageSize.height < 500 ? 56 : 64) : Spacing.l
+                let statsBottom = controlsShown && barTop > 0 ? max(stageSize.height - barTop, 0) + Spacing.s : Spacing.l
+                PlayerStatsCard(session: session, swarm: swarm, fileRanges: fileRanges,
+                                maxHeight: stageSize.height - statsTop - statsBottom,
+                                onCopied: { flash("Diagnostics copied · no links, keys or names", symbol: "doc.on.doc") },
+                                onClose: { statsShown = false })
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, controlsShown ? (stageSize.height < 500 ? 56 : 64) : Spacing.l)
+                    .padding(.top, statsTop)
                     .padding(.leading, Spacing.l)
                     .transition(.opacity)
                     .zIndex(1)
@@ -563,13 +570,14 @@ struct PlayerView: View {
         // of the file are in for the timeline. Every second while it waits,
         // every two while it plays.
         .task(id: session.currentResource?.url) {
-            swarm = nil; available = []
+            swarm = nil; available = []; fileRanges = nil
             guard let resource = session.currentResource,
                   resource.url.host == "127.0.0.1" || resource.url.host == "localhost",
                   resource.variant.sourceID == app.addons.id else { return }
             while !Task.isCancelled {
                 swarm = await app.addons.streamStats()
-                available = TorrentStreamer.downloadedRanges(for: resource.url)?.fractions ?? []
+                fileRanges = TorrentStreamer.downloadedRanges(for: resource.url)
+                available = fileRanges?.fractions ?? []
                 let waiting = session.snapshot.status == .loading || session.snapshot.status == .buffering
                 try? await Task.sleep(for: .seconds(waiting ? 1 : 2))
             }

@@ -44,6 +44,10 @@ struct RemoteControlHost: ViewModifier {
                     app.remoteFocus.platform = RemoteWindow(main: window)
                 }
             })
+            // The player and the loading screen cover the window: no ring or pointer over them.
+            .onChange(of: app.activePlayer != nil || app.preparingItem != nil, initial: true) { _, covered in
+                app.remoteFocus.setCovered(covered)
+            }
             #endif
             .task(id: want) {
                 #if os(macOS)
@@ -980,6 +984,8 @@ final class RemotePadTouchView: UIView {
     private var trail: [(point: CGPoint, time: TimeInterval)] = []
     private var stepsTaken = CGSize.zero
     private var lastDirection: RemoteDirection?
+    /// The way this swipe steps (true: across), set by its first step.
+    private var axis: Bool?
     private var moved = false
     private var held = false
     private var holdTimer: Timer?
@@ -1011,7 +1017,7 @@ final class RemotePadTouchView: UIView {
         guard let t = touches.first else { return }
         let p = t.location(in: self), now = t.timestamp
         start = (p, now); last = (p, now); trail = [(p, now)]
-        stepsTaken = .zero; lastDirection = nil; moved = false; held = false; scrubbing = false
+        stepsTaken = .zero; lastDirection = nil; axis = nil; moved = false; held = false; scrubbing = false
         ringAngle = nil; ringTurned = 0
         onFinger(p)
         if mode == .playing, nearEdge(p) { ringAngle = angle(of: p) }
@@ -1053,7 +1059,13 @@ final class RemotePadTouchView: UIView {
         case .highlight:
             // A swipe in from the left edge is Back, not steps.
             if start.point.x < Self.edgeBand, travel.width > 0, abs(travel.width) > abs(travel.height) { return }
-            let horizontal = abs(travel.width) >= abs(travel.height)
+            // The first step picks the way; only a clear turn changes it, so a
+            // swipe along a row that drifts a little doesn't drop to the next row.
+            var horizontal = abs(travel.width) >= abs(travel.height)
+            if let axis {
+                let with = axis ? abs(travel.width) : abs(travel.height), across = axis ? abs(travel.height) : abs(travel.width)
+                horizontal = across > with * 1.5 + Self.stepLength ? !axis : axis
+            }
             let along = horizontal ? travel.width : travel.height
             let done = horizontal ? stepsTaken.width : stepsTaken.height
             let due = (along / Self.stepLength).rounded(.towardZero)
@@ -1062,6 +1074,7 @@ final class RemotePadTouchView: UIView {
                 actions.step(d)
                 feedback(.step)
                 lastDirection = d
+                axis = horizontal
                 if horizontal { stepsTaken.width += due > done ? 1 : -1 } else { stepsTaken.height += due > done ? 1 : -1 }
             }
             updateEdgeRepeat(at: p)
@@ -1113,7 +1126,9 @@ final class RemotePadTouchView: UIView {
             let speed = horizontal ? abs(v.dx) : abs(v.dy)
             guard speed > 800 else { return }
             let d: RemoteDirection = horizontal ? (v.dx > 0 ? .right : .left) : (v.dy > 0 ? .down : .up)
-            let extra = min(6, Int(speed / 700))
+            // A long swipe has already stepped most of the way: the flick adds what's left, not six more.
+            let taken = Int(abs(horizontal ? stepsTaken.width : stepsTaken.height))
+            let extra = min(6, Int(speed / 700)) - max(taken - 1, 0)
             if extra > 0 { actions.jump(d, extra); feedback(.step) }
         }
     }

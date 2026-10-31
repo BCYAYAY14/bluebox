@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The player · Bluebox docs</title>
+<meta name="description" content="Bluebox&#x27;s player: which formats play, subtitles and Sync to the Audio, audio tracks and the equaliser, AirPlay, external players, keyboard shortcuts.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="The player · Bluebox docs">
+<meta property="og:description" content="Bluebox&#x27;s player: which formats play, subtitles and Sync to the Audio, audio tracks and the equaliser, AirPlay, external players, keyboard shortcuts.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html" aria-current="page">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>The player</h1>
+<p class="lede">Formats, subtitles, audio, picture tools, skipping, AirPlay, opening videos in another app, and every keyboard shortcut.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#formats">Formats and the two engines</a></li><li><a href="#controls">Controls</a></li><li><a href="#skipping">Skip intro, recap and credits</a></li><li><a href="#subtitles">Subtitles</a></li><li><a href="#audio">Audio</a></li><li><a href="#picture">Picture and tools</a></li><li><a href="#airplay">AirPlay and picture in picture</a></li><li><a href="#external-players">Open in another player</a></li><li><a href="#shortcuts">Keyboard shortcuts (Mac)</a></li></ol></nav>
+<h2 id="formats">Formats and the two engines<a class="anchor" href="#formats" aria-label="Link to this section">#</a></h2>
+<p>Bluebox has two video engines and picks one for each video:</p>
+<div class="tablewrap"><table>
+  <tr><th>Engine</th><th>Plays</th><th>Gives you</th></tr>
+  <tr><td><strong>System player</strong> (AVPlayer)</td><td>MP4, M4V, MOV and HLS streams</td><td>Picture in picture, AirPlay, the system's power-efficient decoding</td></tr>
+  <tr><td><strong>VLC</strong> (libVLC)</td><td>MKV, AVI, WebM, TS and most other files, including most torrents</td><td>Nearly any codec, embedded subtitle tracks, styled ASS subtitles</td></tr>
+</table></div>
+<p><span class="path">Settings › Playback › Player</span> chooses how: <strong>Automatic</strong> (the default: the system player when it can open the file, VLC for the rest), <strong>Prefer VLC</strong>, or <strong>AVPlayer Only</strong> (MKV, AVI and WebM won't play).</p>
+<p>The release picker only picks releases this device can play, and shows the file type of each release.</p>
+
+<h2 id="controls">Controls<a class="anchor" href="#controls" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Mac:</strong> click the video to play or pause, double-click for full screen. The arrow keys skip back and forward (10 seconds by default; <span class="path">Settings › Playback › Skip Back / Skip Forward</span>).</li>
+  <li><strong>iPhone and iPad:</strong> swipe across the picture to seek, up and down on the left for brightness and on the right for volume (<strong>Swipe Gestures</strong>). Touch and hold for 2× speed. Pinch to zoom.</li>
+  <li><strong>Timeline:</strong> chapter marks from the file, and for torrents, how much of the file is downloaded. Hovering or scrubbing shows preview thumbnails.</li>
+  <li><strong>Speed</strong> from 0.25× to 4×, with voices kept at their pitch. Speed carries over between episodes. <strong>Jump to Time</strong> goes to a time you type.</li>
+  <li><strong>Up Next:</strong> at the credits, Next Episode counts down and plays on if the profile's <strong>Autoplay Next Episode</strong> is on. The next episode is found in the background, so it starts quickly.</li>
+  <li><strong>Handoff</strong> offers what's playing to your other Apple devices.</li>
+</ul>
+
+<h2 id="skipping">Skip intro, recap and credits<a class="anchor" href="#skipping" aria-label="Link to this section">#</a></h2>
+<p>Skip Intro and Skip Recap appear on their own for 8 seconds, then whenever the controls are up. <kbd>Return</kbd> skips. Set each to <strong>Show Button</strong> or <strong>Automatic</strong> in <span class="path">Settings › Playback › Skipping</span>, or choose to always skip for one show (<strong>Always Skipping</strong>).</p>
+<p>Times come from the file's chapters, or from <strong>Community Intro Timestamps</strong> (TheIntroDB and IntroDB) when a file has none. A wrong time can be marked from the player.</p>
+
+<h2 id="subtitles">Subtitles<a class="anchor" href="#subtitles" aria-label="Link to this section">#</a></h2>
+<p>Open <strong>Audio &amp; Subtitles</strong> in the player (<kbd>V</kbd> cycles tracks, <kbd>C</kbd> turns them off and on). Subtitles are listed by language; a language with several tracks (SDH, Forced, SRT or ASS, files) opens its own list. Your preferred language is picked automatically when a video has it (<span class="path">Settings › Language › Preferred Language</span>).</p>
+<ul>
+  <li><strong>Second language:</strong> show two tracks at once, one under the other, for learning a language.</li>
+  <li><strong>Subtitle files in torrents</strong> are listed under their language, tagged Torrent.</li>
+  <li><strong>Search Online</strong> looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match for the release first. OpenSubtitles and Subdl need a free API key in <span class="path">Settings › Subtitles</span>, where each site can also be turned off. Signing in to OpenSubtitles raises its daily limit.</li>
+  <li><strong>Lines</strong> lists every line with its time. Search it, or click a line to play from there. <kbd>⇧←</kbd> and <kbd>⇧→</kbd> go to the previous or next line.</li>
+  <li><strong>Hide Sound Cues</strong> leaves out [door slams], ♪ lyrics and “NAME:” labels.</li>
+</ul>
+<h3 id="subtitle-style">Subtitle style<a class="anchor" href="#subtitle-style" aria-label="Link to this section">#</a></h3>
+<p><strong>Subtitle Style</strong> opens as a panel beside the video, so every change shows on the real picture. Start from a preset (Standard, Cinema, Boxed, Bold Outline, Large Print), then change the font (Atkinson Hyperlegible and Inter are included), weight, size, colour, background and outline. <strong>Save Current</strong> keeps your own look as a preset, synced with your profile.</p>
+<p>Drag subtitles on the video to move them; they snap to Top, Middle or Bottom. With a letterboxed picture you can drop them into the black bar. While the controls show, subtitles move up just enough to clear them (<strong>Move Up for Player Controls</strong>).</p>
+<div class="note"><p>Bluebox draws subtitle files and plain text tracks inside MKV and WebM itself, so they follow your style everywhere, including picture in picture and AirPlay. Styled ASS subtitles (signs, karaoke) and picture subtitles from Blu-rays and DVDs are still drawn by VLC, in their own style, and can't be restyled or moved off the picture.</p></div>
+<h3 id="subtitle-timing">Subtitle timing<a class="anchor" href="#subtitle-timing" aria-label="Link to this section">#</a></h3>
+<p>Subtitles early or late? Open <strong>Timing</strong> in the subtitle card:</p>
+<ol>
+  <li><strong>Sync to the Audio</strong> (at the top) listens to the speech on your device and sets the delay and drift for you. It asks for speech recognition the first time. It keeps working if you close the card, and tells you when it's done, with Undo.</li>
+  <li>Or tap the line you just heard to sync to it, and tap another a few minutes later to also fix subtitles that drift.</li>
+  <li>Or nudge the delay with <kbd>{</kbd> and <kbd>}</kbd> (0.1 s), or convert between frame rates (23.976, 24, 25, 29.97, 30 fps).</li>
+</ol>
+<p>These tools work on subtitle files. Tracks inside the video always follow the video. <strong>Default Delay</strong> in Settings › Subtitles applies to every file.</p>
+
+<h2 id="audio">Audio<a class="anchor" href="#audio" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Audio tracks:</strong> in Audio &amp; Subtitles, or <kbd>B</kbd> for the next one. Each profile's preferred audio language is picked automatically (<span class="path">Settings › Language › Audio Language</span>).</li>
+  <li><strong>Audio delay:</strong> on the same dial as subtitle timing, for sound that's ahead of or behind the picture.</li>
+  <li><strong>Dialogue Boost</strong> lifts speech; <strong>Night Mode</strong> evens out loud and quiet scenes. Both are in the player's <span class="path">Tools › Sound</span> and in Settings › Playback.</li>
+  <li><strong>Equaliser:</strong> ten bands, presets (Voice, Bass Boost, Treble, Cinema, Music, Headphones) and Preamp, in Tools › Sound. It's your profile's and syncs. HLS streams play without it.</li>
+</ul>
+
+<h2 id="picture">Picture and tools<a class="anchor" href="#picture" aria-label="Link to this section">#</a></h2>
+<p><strong>Tools</strong> (<kbd>T</kbd>) opens beside the video:</p>
+<ul>
+  <li><strong>Frame:</strong> aspect ratio override, crop to a ratio (16:9, 1.85, 2.35, 2.39, 4:3, 21:9 and more) or by each edge, fit, fill or stretch, zoom up to 4× with panning, rotate and flip.</li>
+  <li><strong>Colour:</strong> brightness, contrast, saturation, hue, gamma and sharpness. Starting values for every video are in <span class="path">Settings › Picture</span>. They don't apply to HLS streams.</li>
+  <li><strong>Playback:</strong> frame-by-frame stepping, A–B repeat, a sleep timer (after a time or at the end of the video), and Save Frame (to Photos on iPhone and iPad, Pictures › Bluebox on the Mac).</li>
+</ul>
+
+<h2 id="airplay">AirPlay and picture in picture<a class="anchor" href="#airplay" aria-label="Link to this section">#</a></h2>
+<p>AirPlay and picture in picture work with videos the system player opens: MP4, M4V, MOV and HLS. Your subtitles go with them, in your style.</p>
+<p>A video playing in VLC (MKV, AVI, WebM) can't be sent over AirPlay, and Bluebox doesn't convert it on the fly. The AirPlay button is greyed out; tap it and Bluebox explains why and offers a release of the same title that AirPlay can play. To find one yourself, open Releases and choose an MP4 release, or one from your debrid service or media server in MP4.</p>
+
+<h2 id="external-players">Open in another player<a class="anchor" href="#external-players" aria-label="Link to this section">#</a></h2>
+<p><span class="path">Settings › Playback › Open Videos In</span> sends videos to another app instead of Bluebox's player, for this device only:</p>
+<ul>
+  <li><strong>Mac:</strong> VLC, IINA, mpv or Infuse.</li>
+  <li><strong>iPhone and iPad:</strong> Infuse, VLC, nPlayer or VidHub, or <strong>Other App…</strong> for any other player through the share sheet.</li>
+</ul>
+<p>You can also send one video: right-click (or touch and hold) a release or a finished download and choose from <strong>Open In</strong>. Only players that are installed are listed. Torrent streams (and, on iPhone, downloaded files) are served to the other app by Bluebox, which keeps running in the background while it does. The other app doesn't tell Bluebox how far you got, so progress isn't recorded.</p>
+
+<h2 id="shortcuts">Keyboard shortcuts (Mac)<a class="anchor" href="#shortcuts" aria-label="Link to this section">#</a></h2>
+<h3 id="shortcuts-player">In the player<a class="anchor" href="#shortcuts-player" aria-label="Link to this section">#</a></h3>
+<div class="tablewrap"><table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>Space</kbd></td><td>Play or pause</td></tr>
+  <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Back or forward (10 s by default)</td></tr>
+  <tr><td><kbd>⇧←</kbd> <kbd>⇧→</kbd></td><td>Previous subtitle line (replays the one just said) or next line</td></tr>
+  <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>Jump to 0–90% of the video</td></tr>
+  <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Slower or faster (0.05×)</td></tr>
+  <tr><td><kbd>{</kbd> <kbd>}</kbd></td><td>Subtitles earlier or later (0.1 s)</td></tr>
+  <tr><td><kbd>−</kbd> <kbd>=</kbd></td><td>Subtitle size</td></tr>
+  <tr><td><kbd>V</kbd></td><td>Next subtitle track</td></tr>
+  <tr><td><kbd>C</kbd></td><td>Subtitles off, or back on to the last track</td></tr>
+  <tr><td><kbd>B</kbd></td><td>Next audio track</td></tr>
+  <tr><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> or <kbd>,</kbd> <kbd>.</kbd></td><td>Step one frame back or forward</td></tr>
+  <tr><td><kbd>A</kbd> / <kbd>⇧C</kbd> / <kbd>Z</kbd> / <kbd>R</kbd></td><td>Cycle aspect ratio / crop / zoom; rotate</td></tr>
+  <tr><td><kbd>L</kbd></td><td>Set A–B repeat</td></tr>
+  <tr><td><kbd>S</kbd></td><td>Save frame</td></tr>
+  <tr><td><kbd>N</kbd> / <kbd>P</kbd></td><td>Next or previous chapter</td></tr>
+  <tr><td><kbd>T</kbd></td><td>Show or hide Tools</td></tr>
+  <tr><td><kbd>F</kbd></td><td>Full screen</td></tr>
+  <tr><td><kbd>Return</kbd></td><td>Skip intro or recap when offered</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Close an open card, then leave full screen</td></tr>
+  <tr><td><kbd>⌘W</kbd></td><td>Close the player</td></tr>
+  <tr><td><kbd>⌘/</kbd></td><td>Open or close the Watch Party chat</td></tr>
+  <tr><td><kbd>⌥1</kbd>–<kbd>⌥6</kbd></td><td>Watch Party reactions</td></tr>
+</table></div>
+<h3 id="shortcuts-app">Around the app<a class="anchor" href="#shortcuts-app" aria-label="Link to this section">#</a></h3>
+<div class="tablewrap"><table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>⌘1</kbd>–<kbd>⌘6</kbd></td><td>Home, TV Shows, Movies, New &amp; Hot, My List, Downloads</td></tr>
+  <tr><td><kbd>⌘F</kbd></td><td>Search</td></tr>
+  <tr><td><kbd>⌘[</kbd></td><td>Back</td></tr>
+  <tr><td><kbd>⌘L</kbd></td><td>Add to or remove from My List (on a title page)</td></tr>
+  <tr><td><kbd>⌘R</kbd></td><td>Refresh</td></tr>
+  <tr><td><kbd>⌘O</kbd></td><td>Open files</td></tr>
+  <tr><td><kbd>⇧⌘J</kbd></td><td>Join a Party…</td></tr>
+  <tr><td><kbd>⌘0</kbd></td><td>Bring back the main window</td></tr>
+</table></div>
+<nav class="next" aria-label="Pages"><a href="sources.html"><small>Previous</small>Sources</a><a class="r" href="remote.html"><small>Next</small>iPhone remote</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

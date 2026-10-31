@@ -396,13 +396,17 @@ public struct RemoteScreen: Codable, Hashable, Sendable {
     /// Counts the moves that hit the end of a row: the phone bumps when it goes up.
     public var bumps: Int?
     public var menu: RemoteMenu?
+    /// The open player, as `RemoteMessage.state` carries it: with the screen
+    /// too, so a remote that missed the states still shows the player's controls.
+    public var playing: RemoteNowPlaying?
 
     public init(deviceID: String, title: String, focusedID: String? = nil, focusedLabel: String? = nil,
                 focused: RemoteScreenItem? = nil, before: RemoteScreenItem? = nil, after: RemoteScreenItem? = nil,
-                horizontal: Bool? = nil, section: String? = nil, pointer: Bool? = nil, bumps: Int? = nil, menu: RemoteMenu? = nil) {
+                horizontal: Bool? = nil, section: String? = nil, pointer: Bool? = nil, bumps: Int? = nil, menu: RemoteMenu? = nil,
+                playing: RemoteNowPlaying? = nil) {
         self.deviceID = deviceID; self.title = title; self.focusedID = focusedID; self.focusedLabel = focusedLabel
         self.focused = focused; self.before = before; self.after = after; self.horizontal = horizontal
-        self.section = section; self.pointer = pointer; self.bumps = bumps; self.menu = menu
+        self.section = section; self.pointer = pointer; self.bumps = bumps; self.menu = menu; self.playing = playing
     }
 }
 

@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.2.5",
+          "buildVersion": "25",
+          "date": "2026-10-31T05:12:53Z",
+          "localizedDescription": "Remote control\n• Swipes and Back keep working while a stream opens; Back on the iPhone cancels the loading screen.\n• The highlight and pointer no longer stay drawn over the film or the loading screen, and come back on the same item when you return.\n• Moving the highlight is quicker, and the ring stays on its item after the page scrolls or a new page opens.\n• The iPhone switches to the player's controls more reliably while the Mac plays.\n• Swipes keep to the row or column they started in, a flick after a long swipe no longer overshoots, and the pointer speeds up with a quick finger.\n\nPlayer\n• Stats for nerds is far more detailed: a live graph of bitrate, buffer and download speed, and sections for video (with HDR, colour and bit depth), audio, subtitles, the stream, frames, the buffer, the torrent and sync.\n• A timeline of what happened during playback: opening, buffering and how long, stalls, seeks, track changes and errors.\n• Copy Diagnostics puts a report on the clipboard for bug reports, with links, keys, addresses and server names left out.\n• Fixed the film carrying on playing after you paused it, on streams played through VLC.\n\nWebsite\n• A documentation site with install steps, guides to sources, the player, the iPhone remote, Watch Party, profiles, sync and privacy, and a Help and FAQ page for when something goes wrong.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.5/Bluebox-1.2.5.ipa",
+          "size": 38176996,
+          "sha256": "7795cf62ddc47d2d3f0384a619fe7d699ed3b5053f4cac71f6393ec7d865ef3b",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.2.4",
           "buildVersion": "24",
           "date": "2026-10-31T03:41:27Z",
@@ -173,11 +183,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.2.4",
-      "versionDate": "2026-10-31T03:41:27Z",
-      "versionDescription": "Watch Party\n• Opening an invite shows an invitation instead of a form: who invited you, what's on, who's already there and ready, and whether the party is in the lobby or already playing.\n• Before you join, it checks your own sources for the same copy, so you know you'll be able to watch along.\n• Joining as your profile, with Change for a name and colour just for this party.\n• One Join Party button turns the invitation into the lobby, or opens the player at the party's moment if it's already playing.\n• A locked or ended party, or a host who isn't answering, is shown on the invitation with Try Again.\n• Join a Party… has eight code boxes, and pasting an invite link anywhere fills them.\n• Share Invite… sends a web link that opens a small join page, so friends without Bluebox see who invited them and where to get it.\n\nRemote control\n• On iPhone the remote opens full screen, so swiping down on the touch pad, with the highlight or the pointer, no longer closes it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.4/Bluebox-1.2.4.ipa",
-      "size": 38031995
+      "version": "1.2.5",
+      "versionDate": "2026-10-31T05:12:53Z",
+      "versionDescription": "Remote control\n• Swipes and Back keep working while a stream opens; Back on the iPhone cancels the loading screen.\n• The highlight and pointer no longer stay drawn over the film or the loading screen, and come back on the same item when you return.\n• Moving the highlight is quicker, and the ring stays on its item after the page scrolls or a new page opens.\n• The iPhone switches to the player's controls more reliably while the Mac plays.\n• Swipes keep to the row or column they started in, a flick after a long swipe no longer overshoots, and the pointer speeds up with a quick finger.\n\nPlayer\n• Stats for nerds is far more detailed: a live graph of bitrate, buffer and download speed, and sections for video (with HDR, colour and bit depth), audio, subtitles, the stream, frames, the buffer, the torrent and sync.\n• A timeline of what happened during playback: opening, buffering and how long, stalls, seeks, track changes and errors.\n• Copy Diagnostics puts a report on the clipboard for bug reports, with links, keys, addresses and server names left out.\n• Fixed the film carrying on playing after you paused it, on streams played through VLC.\n\nWebsite\n• A documentation site with install steps, guides to sources, the player, the iPhone remote, Watch Party, profiles, sync and privacy, and a Help and FAQ page for when something goes wrong.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.5/Bluebox-1.2.5.ipa",
+      "size": 38176996
     }
   ],
   "news": []

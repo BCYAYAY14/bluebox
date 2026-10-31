@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPhone remote · Bluebox docs</title>
+<meta name="description" content="Set up and use the Bluebox iPhone remote for the Mac: Play On, the touch pad, gestures, and what to do when it won&#x27;t connect.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="iPhone remote · Bluebox docs">
+<meta property="og:description" content="Set up and use the Bluebox iPhone remote for the Mac: Play On, the touch pad, gestures, and what to do when it won&#x27;t connect.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html" aria-current="page">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>iPhone remote</h1>
+<p class="lede">Use your iPhone as a touch-pad remote for Bluebox on your Mac: browse, open a title, play, skip and pick tracks, without looking up from the couch.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#setup">Set it up</a></li><li><a href="#screen">What the remote shows</a></li><li><a href="#gestures">Gestures</a></li><li><a href="#playing">While something plays</a></li><li><a href="#remote-troubleshooting">If it won&#x27;t connect</a></li></ol></nav>
+<h2 id="setup">Set it up<a class="anchor" href="#setup" aria-label="Link to this section">#</a></h2>
+<p>The remote talks to your Mac through your own Supabase project, so both devices need to be signed in to the same account. They don't need to be on the same Wi-Fi.</p>
+<ol>
+  <li>Set up sync and sign in on both the Mac and the iPhone (<a href="sync.html">Sync and accounts</a>).</li>
+  <li><strong>On the Mac:</strong> turn on <span class="path">Settings › Privacy &amp; Features › Allow Remote Control of This Device</span>. It's off by default, and only the Mac itself can turn it on.</li>
+  <li><strong>On the iPhone:</strong> check that <span class="path">Settings › Privacy &amp; Features › Use This Device as a Remote</span> is on (it is by default).</li>
+  <li>On the iPhone, tap the <strong>Play On</strong> button in the top bar and pick your Mac. The remote opens straight away. <strong>Open Remote</strong> in the same menu opens it again later.</li>
+</ol>
+<p>With your Mac chosen in Play On, pressing Play on the iPhone plays on the Mac, and a title you open on the iPhone opens on the Mac too. Choose <strong>This iPhone</strong> to play on the phone again.</p>
+<div class="note"><p>Set up your Supabase project yourself before version 1.0.15? Run setup again (or <strong>Check Setup</strong>) so it adds the private channel policies the remote needs, then turn off <span class="path">Realtime › Settings › Allow public access</span> in the Supabase dashboard. See <a href="sync.html#public-realtime">Turn off public Realtime</a>.</p></div>
+
+<h2 id="screen">What the remote shows<a class="anchor" href="#screen" aria-label="Link to this section">#</a></h2>
+<p>The remote is one screen made for a thumb. Above the touch pad it shows what's highlighted on the Mac, with the items either side of it and the row it's in, so you can drive without looking up. On the Mac, the highlighted item has a ring around it.</p>
+<p>There's always a highlight. After a while it dims to an outline instead of disappearing, and each new page starts on its first item, so every swipe moves and every tap presses something. Everything you could click on the Mac can be reached: the sidebar, TV Shows and Movies, More Info and My List, See All, the search field, Downloads, every Settings row and switch, and the buttons in sheets.</p>
+<p>On iPhone the remote opens full screen, so swiping down on the touch pad doesn't close it. The chevron at the top closes it.</p>
+
+<h2 id="gestures">Gestures<a class="anchor" href="#gestures" aria-label="Link to this section">#</a></h2>
+<div class="tablewrap"><table>
+  <tr><th>Gesture</th><th>Browsing</th><th>While something plays</th></tr>
+  <tr><td>Swipe</td><td>Move the highlight. A fast swipe jumps several items; at the end of what's showing, the page scrolls on.</td><td>Left or right skips 10 seconds</td></tr>
+  <tr><td>Tap</td><td>Press what's highlighted</td><td>Play or pause</td></tr>
+  <tr><td>Hold at the edge</td><td>Keep moving</td><td>—</td></tr>
+  <tr><td>Touch and hold</td><td>Open the item's menu, on both screens</td><td>—</td></tr>
+  <tr><td>Two-finger swipe</td><td>Scroll the page, with a coast</td><td>—</td></tr>
+  <tr><td>Two-finger tap</td><td>Turn on the pointer</td><td>—</td></tr>
+  <tr><td>Swipe in from the left edge</td><td>Back</td><td>—</td></tr>
+  <tr><td>Circle round the pad's edge</td><td>—</td><td>Scrub in fine steps</td></tr>
+</table></div>
+<ul>
+  <li><strong>The pointer</strong> (two-finger tap, or <strong>Use a Pointer</strong>) moves a pointer on the Mac for clicking anything. It comes on by itself on a screen with nothing to highlight.</li>
+  <li><strong>Sheets and overlays</strong> on the Mac, like a trailer, Download Rules or the season list, keep the touch pad off the page underneath. Back closes them.</li>
+  <li><strong>While a stream loads</strong> the touch pad waits, so a second tap can't start it twice.</li>
+</ul>
+
+<h2 id="playing">While something plays<a class="anchor" href="#playing" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>The timeline shows chapters; drag it to seek.</li>
+  <li><strong>Skip Intro</strong> and <strong>Next Episode</strong> appear on the iPhone when the Mac offers them.</li>
+  <li>The audio and subtitle buttons pick tracks on the Mac, and answer at once.</li>
+  <li><strong>Close Player</strong> stops playback on the Mac.</li>
+</ul>
+<p>The remote shows whether it's connected. Commands are confirmed by the Mac and sent again if one is lost; if the Mac stops answering, the remote says so and offers Try Again.</p>
+
+<h2 id="remote-troubleshooting">If it won't connect<a class="anchor" href="#remote-troubleshooting" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li><strong>“No Mac to Control”:</strong> the Mac isn't announcing itself. On the Mac, check Allow Remote Control of This Device is on, Bluebox is open, and you're signed in. The Mac shows up within a few seconds once it is.</li>
+  <li><strong>Same account?</strong> Compare <span class="path">Settings › Account &amp; Sync</span> on both devices: the same server and the same username.</li>
+  <li><strong>Same version?</strong> Update both to the latest release (<span class="path">Settings › About</span>). The remote's features change between versions.</li>
+  <li><strong>“Remote control and instant sync are off”</strong> in Account &amp; Sync means your project is missing the private channel policies: run Check Setup, or set up again with an access token, or run <code>migrations/20261030000000_realtime_private.sql</code> in the SQL editor.</li>
+  <li><strong>Not answering</strong> after the Mac slept: wake it and tap Try Again. The remote reconnects on its own when the iPhone opens Bluebox again.</li>
+</ol>
+<p>More in the FAQ: <a href="faq.html#remote-not-connecting">The remote won't connect</a>.</p>
+<nav class="next" aria-label="Pages"><a href="player.html"><small>Previous</small>The player</a><a class="r" href="watch-party.html"><small>Next</small>Watch Party</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

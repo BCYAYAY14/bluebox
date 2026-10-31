@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Help and FAQ · Bluebox docs</title>
+<meta name="description" content="Bluebox help: fixes for the Mac not opening it, nothing playing, subtitles, debrid errors, the iPhone remote, Watch Party, downloads and accounts, with pictures and step-by-step checks.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Help and FAQ · Bluebox docs">
+<meta property="og:description" content="Bluebox help: fixes for the Mac not opening it, nothing playing, subtitles, debrid errors, the iPhone remote, Watch Party, downloads and accounts, with pictures and step-by-step checks.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html">Docs</a><a href="faq.html" aria-current="page">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html" aria-current="page">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Help</p>
+<h1>Help and FAQ</h1>
+<p class="lede">Pick what's going wrong, then follow the steps. Most problems are fixed in a minute or two.</p>
+
+<div class="picker" role="group" aria-label="What's going wrong?">
+  <button data-topic="install" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg></span><b>Installing</b><small>Won't open, warnings, updates</small></button>
+  <button data-topic="playing" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/></svg></span><b>Playing</b><small>Won't start, buffering, AirPlay</small></button>
+  <button data-topic="subtitles" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h4M13 12h4M7 15.5h7"/></svg></span><b>Subtitles</b><small>Out of sync, missing, wrong look</small></button>
+  <button data-topic="debrid" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><b>Debrid</b><small>Key, plan and other errors</small></button>
+  <button data-topic="remote" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg></span><b>iPhone remote</b><small>Can't find or control the Mac</small></button>
+  <button data-topic="party" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.9.2 5 2.6 5 5.8"/></svg></span><b>Watch Party</b><small>Friends can't join</small></button>
+  <button data-topic="downloads" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span><b>Downloads</b><small>Stopping, waiting, missing</small></button>
+  <button data-topic="account" aria-pressed="false"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5c1.2-2 3.2-3 5.5-3s4.3 1 5.5 3"/></svg></span><b>Account &amp; more</b><small>Passwords, PINs, bugs</small></button>
+</div>
+<p class="showing">Showing <span></span> · <button type="button">Show everything</button></p>
+
+<section class="faq-group" data-topic="install">
+<h2 id="faq-install">Installing<a class="anchor" href="#faq-install" aria-label="Link to this section">#</a></h2>
+
+<details id="cant-open-mac">
+<summary>My Mac won't open Bluebox</summary>
+<div>
+<p>The first time you open a new version, macOS shows a warning because Bluebox isn't from the App Store. You only have to get past it once.</p>
+<div class="mock-pair">
+<figure class="mock">
+  <div class="m-mac"><img class="appicon" src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><b>“Bluebox” Not Opened</b><p>Apple could not verify “Bluebox” is free of malware…</p><div class="row"><span class="def hl">Done</span><span>Move to Bin</span></div></div>
+  <figcaption>1. Click <b>Done</b>.</figcaption>
+</figure>
+<figure class="mock">
+  <div class="m-set"><div class="head">Privacy &amp; Security › Security</div><div class="r"><div><b>“Bluebox” was blocked to protect your Mac.</b></div><span class="btn-hl">Open Anyway</span></div></div>
+  <figcaption>2. In System Settings, click <b>Open Anyway</b>.</figcaption>
+</figure>
+</div>
+<ol class="fix">
+  <li>Click <strong>Done</strong> on the warning.</li>
+  <li>Open <span class="path">System Settings › Privacy &amp; Security</span> and scroll down.</li>
+  <li>Click <strong>Open Anyway</strong> next to Bluebox, enter your Mac password, then click <strong>Open Anyway</strong> once more.</li>
+</ol>
+<p class="still"><b>No Open Anyway button?</b> It only shows for about an hour. Open Bluebox again, click Done, and go straight back to Privacy &amp; Security.</p>
+</div>
+</details>
+
+<details id="damaged">
+<summary>It says Bluebox “is damaged and can't be opened”</summary>
+<div>
+<p>The download didn't finish properly.</p>
+<ol class="fix">
+  <li>Drag Bluebox from Applications to the Bin.</li>
+  <li>Download it again from the <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">official Releases page</a>, and drag it into Applications.</li>
+  <li>Open it and follow the steps in <a href="#cant-open-mac">My Mac won't open Bluebox</a>.</li>
+</ol>
+<p class="still"><b>Still says damaged?</b> <a href="install.html#verify-download">Check the download is genuine</a>, then see the Install page for the last-resort fix.</p>
+</div>
+</details>
+
+<details id="keychain-prompts">
+<summary>My Mac keeps asking for my password</summary>
+<div>
+<p>That's macOS asking whether Bluebox may read its saved passwords.</p>
+<ol class="fix">
+  <li>Type your Mac password and click <strong>Always Allow</strong> (not Allow).</li>
+  <li>Make sure you have the latest Bluebox. It then asks only once, even after updates.</li>
+</ol>
+</div>
+</details>
+
+<details id="mac-update-fails">
+<summary>The update won't install on my Mac</summary>
+<div>
+<ol class="fix">
+  <li>Open <span class="path">System Settings › Privacy &amp; Security › App Management</span> and turn on Bluebox. Then try again in <span class="path">Settings › About</span>.</li>
+  <li>Still failing? Install it by hand: quit Bluebox, download the newest version from the <a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg">Releases page</a> and drag it into Applications, replacing the old one. Your library and settings stay.</li>
+</ol>
+</div>
+</details>
+
+<details id="ios-stopped-opening">
+<summary>Bluebox stopped opening on my iPhone</summary>
+<div>
+<p>If you installed it with a free Apple ID, Apple makes it expire after 7 days.</p>
+<ol class="fix">
+  <li>Open AltStore or SideStore.</li>
+  <li>Go to <strong>My Apps</strong> and tap <strong>Refresh All</strong>.</li>
+</ol>
+<p class="still">Your library and downloads are kept. Leave your sideloading app's background refresh on so this happens by itself.</p>
+</div>
+</details>
+
+<details id="add-page-nothing">
+<summary>Nothing happens when I tap Open in AltStore</summary>
+<div>
+<ol class="fix">
+  <li>Open <a href="add.html">the add page</a> on your iPhone or iPad, not on a computer.</li>
+  <li>Make sure AltStore (or SideStore, or Feather) is installed and you've opened it once.</li>
+  <li>Still nothing? Tap <strong>Copy source link</strong>, then in your sideloading app go to <strong>Sources</strong>, tap <strong>+</strong> and paste.</li>
+</ol>
+</div>
+</details>
+
+<details id="platforms">
+<summary>Can I use Bluebox on an Intel Mac, Apple TV, Android or Windows?</summary>
+<div>
+<p>Not yet. Bluebox runs on iPhone and iPad (iOS 18 or later) and on Macs with Apple chips (M1 or newer, macOS 15 or later).</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="playing">
+<h2 id="faq-playback">Playing<a class="anchor" href="#faq-playback" aria-label="Link to this section">#</a></h2>
+
+<details id="stream-wont-start">
+<summary>Nothing plays, or it keeps loading</summary>
+<div>
+<p>Go through these one at a time. Most people are watching by step 2.</p>
+<div class="checker"><div class="bar"><i></i></div>
+  <section class="step"><div class="count">Step 1 of 5</div>
+    <h4>Pick a different version</h4>
+    <p>On the title's page, open <strong>Releases</strong> and choose another one. Pick one near the top with lots of people sharing it, or one marked <strong>Cached</strong> if you use a debrid service.</p>
+    <figure class="mock"><div class="m-rel">
+      <div class="hl"><span class="q">1080p</span><span class="tag c">Cached</span><span class="tag">MP4</span><span class="s">2.1 GB · 840 sharing</span></div>
+      <div><span class="q">2160p</span><span class="tag">MKV</span><span class="s">14 GB · 96 sharing</span></div>
+      <div><span class="q">720p</span><span class="tag">MKV</span><span class="s">1.2 GB · 3 sharing</span></div>
+    </div><figcaption>A list like this, in Releases. The highlighted kind starts quickest.</figcaption></figure>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button></div></section>
+  <section class="step"><div class="count">Step 2 of 5</div>
+    <h4>Try another network</h4>
+    <p>Some Wi-Fi networks (work, school, hotels) and some phone carriers block the kind of sharing Bluebox uses. Try your home Wi-Fi, a different network, or a VPN.</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <section class="step"><div class="count">Step 3 of 5</div>
+    <h4>Check your add-ons are answering</h4>
+    <p>Go to <span class="path">Settings › Torrents &amp; Debrid</span> and tap <strong>Test Add-ons</strong>. Turn off any that fail.</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <section class="step"><div class="count">Step 4 of 5</div>
+    <h4>On mobile data?</h4>
+    <p>Open <span class="path">Settings › Mobile Data</span> and make sure streaming is allowed.</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <section class="step"><div class="count">Step 5 of 5</div>
+    <h4>Using your own server or files?</h4>
+    <p>Go to <span class="path">Settings › Sources</span> and tap <strong>Test All Sources</strong>. It tells you which one Bluebox can't reach, so you can check that computer or NAS is on.</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <div class="done fixed"><div class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></svg></div><p><strong>Enjoy the film.</strong></p><div class="ask"><button data-do="again">Start over</button></div></div>
+  <div class="done stuck"><p><strong>Still not playing?</strong> Some titles only have versions nobody is sharing right now. A <a href="sources.html#debrid">debrid service</a> fixes most of these. Otherwise <a href="#report-bug">tell us about it</a>.</p><div class="ask"><button data-do="again">Start over</button></div></div>
+</div></div>
+</details>
+
+<details id="buffering">
+<summary>It keeps stopping to buffer</summary>
+<div>
+<ol class="fix">
+  <li>Open <strong>Releases</strong> and pick a smaller version: 1080p or 720p instead of 4K, with lots of people sharing it.</li>
+  <li>Let it buffer longer before starting: in <span class="path">Settings › Torrents &amp; Debrid</span>, raise <strong>Start Playing After</strong>.</li>
+</ol>
+<p class="still">A <a href="sources.html#debrid">debrid service</a> streams from fast servers and almost never buffers.</p>
+</div>
+</details>
+
+<details id="formats">
+<summary>Will my file play?</summary>
+<div>
+<p>Almost certainly. Bluebox plays MP4, MOV, MKV, AVI, WebM, TS and most other video files.</p>
+<p class="still">The one catch: <strong>AirPlay and picture in picture only work with MP4 and MOV</strong>. See <a href="#airplay-greyed">I can't AirPlay to my TV</a>.</p>
+</div>
+</details>
+
+<details id="airplay-greyed">
+<summary>I can't AirPlay to my TV</summary>
+<div>
+<p>AirPlay works with MP4 and MOV videos. The button is greyed out for other kinds, like MKV.</p>
+<ol class="fix">
+  <li>Tap the greyed-out AirPlay button. Bluebox offers a version of the same film that does work with AirPlay.</li>
+  <li>Or open <strong>Releases</strong> and pick one marked <strong>MP4</strong>.</li>
+</ol>
+</div>
+</details>
+
+<details id="frozen-picture">
+<summary>The picture freezes but the sound keeps going</summary>
+<div>
+<ol class="fix">
+  <li>Update Bluebox (<span class="path">Settings › About</span>). Newer versions fix this by themselves within a few seconds.</li>
+  <li>Still happens with one film? Pick a different version in <strong>Releases</strong>.</li>
+</ol>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="subtitles">
+<h2 id="faq-subtitles">Subtitles<a class="anchor" href="#faq-subtitles" aria-label="Link to this section">#</a></h2>
+
+<details id="subtitles-sync">
+<summary>Subtitles don't match what people say</summary>
+<div>
+<ol class="fix">
+  <li>While watching, open the subtitles button, then <strong>Timing</strong>.</li>
+  <li>Tap <strong>Sync to the Audio</strong> at the top. Bluebox listens for a moment and fixes the timing for you. (The first time, it asks to use speech recognition.)</li>
+  <li>Not quite right? Tap the line you just heard in the list, and Bluebox lines it up.</li>
+</ol>
+<p class="still"><b>Way off and nothing helps?</b> The subtitles were made for a different version. Use <strong>Search Online</strong> to get ones that match.</p>
+</div>
+</details>
+
+<details id="no-subtitles">
+<summary>I can't find subtitles in my language</summary>
+<div>
+<ol class="fix">
+  <li>While watching, open the subtitles button and tap <strong>Search Online</strong>.</li>
+  <li>For many more results, add a free OpenSubtitles key in <span class="path">Settings › Subtitles</span>. (Make one at opensubtitles.com, under Profile › API consumers.)</li>
+  <li>To have your language turned on by itself, set it in <span class="path">Settings › Language</span>.</li>
+</ol>
+</div>
+</details>
+
+<details id="subtitles-style">
+<summary>Some subtitles won't change size or move</summary>
+<div>
+<p>Fancy subtitles (coloured signs, karaoke) and the picture-style ones from Blu-rays keep their own look.</p>
+<ol class="fix">
+  <li>Open the subtitles button and pick a plain track in the same language (often labelled SRT), or one from <strong>Search Online</strong>.</li>
+</ol>
+<p class="still">Those follow your size, colour and position.</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="debrid">
+<h2 id="faq-debrid">Debrid<a class="anchor" href="#faq-debrid" aria-label="Link to this section">#</a></h2>
+
+<details id="debrid-errors">
+<summary>My debrid service shows an error</summary>
+<div>
+<p>Bluebox tells you what's wrong in a message like this, with a button to fix it:</p>
+<figure class="mock"><div class="m-alert"><b>Debrid key not accepted</b><p>Real-Debrid didn't accept your key.</p><div class="row"><span class="def hl">Open Real-Debrid</span><span>Releases…</span></div></div><figcaption>Illustration. The wording depends on the problem and your service.</figcaption></figure>
+<div class="tablewrap"><table>
+  <tr><th>The message says</th><th>Do this</th></tr>
+  <tr><td><strong>Key not accepted</strong></td><td>Copy your key again from your service's website and paste it in <span class="path">Settings › Torrents &amp; Debrid</span>. Check the right service is picked.</td></tr>
+  <tr><td><strong>Plan expired</strong></td><td>Renew on the service's website. Turn on <strong>Remind Before the Plan Ends</strong> so it doesn't surprise you again.</td></tr>
+  <tr><td><strong>Not ready yet</strong></td><td>Your service is still fetching it. Tap <strong>Releases…</strong> and pick one marked Cached, or try again later.</td></tr>
+  <tr><td><strong>Limit reached</strong></td><td>You've used today's allowance. Wait a while, or clear old items on the service's website.</td></tr>
+</table></div>
+</div>
+</details>
+
+<details id="debrid-not-cached">
+<summary>Nothing shows as Cached</summary>
+<div>
+<ol class="fix">
+  <li>In <span class="path">Settings › Torrents &amp; Debrid</span>, turn on <strong>Check What's Cached</strong>.</li>
+  <li>If you use StremThru or Comet, also turn on <strong>Share Key with Community Add-ons</strong>.</li>
+</ol>
+<p class="still">Less popular films may just not be cached yet. Playing one asks your service to fetch it.</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="remote">
+<h2 id="faq-remote">iPhone remote<a class="anchor" href="#faq-remote" aria-label="Link to this section">#</a></h2>
+
+<details id="remote-not-connecting">
+<summary>My iPhone can't find my Mac</summary>
+<div>
+<div class="checker"><div class="bar"><i></i></div>
+  <section class="step"><div class="count">Step 1 of 4</div>
+    <h4>Sign in on both</h4>
+    <p>The remote needs both devices signed in to the same Bluebox account. Open <span class="path">Settings › Account &amp; Sync</span> on each and check the username matches. No account yet? <a href="sync.html">Set one up</a> first.</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button></div></section>
+  <section class="step"><div class="count">Step 2 of 4</div>
+    <h4>Let the Mac be controlled</h4>
+    <p>On the <strong>Mac</strong>, turn this on. It's off until you do.</p>
+    <figure class="mock"><div class="m-set"><div class="head">Settings › Privacy &amp; Features › This Device</div>
+      <div class="r"><div><b>Allow Remote Control of This Device</b><small>Your other devices signed in to your account can play, pause and seek what's playing here.</small></div><span class="tg on hl"></span></div>
+    </div></figure>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <section class="step"><div class="count">Step 3 of 4</div>
+    <h4>Pick the Mac on your iPhone</h4>
+    <p>Keep Bluebox open on the Mac. On the iPhone, tap <strong>Play On</strong> at the top and choose your Mac.</p>
+    <figure class="mock"><div class="m-menu"><div class="t">Play On</div><div><span class="ck"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>This iPhone</div><div class="hl"><span class="ck"></span><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>Studio</div><div class="sep"></div><div><span class="ck"></span>Open Remote</div></div><figcaption>Your Mac shows under its own name.</figcaption></figure>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <section class="step"><div class="count">Step 4 of 4</div>
+    <h4>Update both</h4>
+    <p>Install the latest Bluebox on the Mac and the iPhone (<span class="path">Settings › About</span>).</p>
+  <div class="ask"><button class="yes" data-do="fixed">That fixed it</button><button data-do="next">Still not working</button><button data-do="back">Back</button></div></section>
+  <div class="done fixed"><div class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></svg></div><p><strong>You're in control.</strong> Swipe to move, tap to choose.</p><div class="ask"><button data-do="again">Start over</button></div></div>
+  <div class="done stuck"><p><strong>Still can't connect?</strong> If <span class="path">Settings › Account &amp; Sync</span> says “Remote control and instant sync are off”, tap <strong>Check Setup</strong> there. Otherwise see <a href="remote.html#remote-troubleshooting">more fixes</a> or <a href="#report-bug">tell us</a>.</p><div class="ask"><button data-do="again">Start over</button></div></div></div>
+<p class="still">The devices don't need to be on the same Wi-Fi.</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="party">
+<h2 id="faq-party">Watch Party<a class="anchor" href="#faq-party" aria-label="Link to this section">#</a></h2>
+
+<details id="party-guests">
+<summary>My friends can't join my party</summary>
+<div>
+<ol class="fix">
+  <li>Send them the link from <strong>Share Invite…</strong>, not just the code. The code only works for people on your own account.</li>
+  <li>Let guests in: in your Supabase dashboard, go to <span class="path">Authentication › Sign In / Providers</span>, turn on <strong>Allow anonymous sign-ins</strong>, and save. You only do this once.</li>
+  <li>Keep Bluebox open while the party's on.</li>
+</ol>
+<p class="still"><b>Friend joined but can't watch?</b> Everyone plays their own copy, so they need the same film in their Bluebox: the same add-ons or debrid service as you. The invitation tells them if they're ready.</p>
+</div>
+</details>
+
+<details id="party-incomplete">
+<summary>The invite link says it's incomplete</summary>
+<div>
+<p>Part of the link got cut off when it was copied. Ask your friend to send it again with <strong>Share Invite…</strong>, and open the whole link.</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="downloads">
+<h2 id="faq-downloads">Downloads<a class="anchor" href="#faq-downloads" aria-label="Link to this section">#</a></h2>
+
+<details id="background-downloads">
+<summary>Downloads stop when I leave Bluebox on my iPhone</summary>
+<div>
+<p>Downloads from a debrid service carry on by themselves. Torrent downloads need Bluebox to stay running.</p>
+<ol class="fix">
+  <li>Check this is on:
+    <figure class="mock"><div class="m-set"><div class="head">Settings › Downloads › Downloading</div>
+      <div class="r"><div><b>Keep Downloading in the Background</b><small>Torrents keep downloading after you leave Bluebox, which uses more battery.</small></div><span class="tg on hl"></span></div>
+    </div></figure></li>
+  <li>Don't swipe Bluebox away in the app switcher. That stops it.</li>
+  <li>For a big download, plug the phone in and leave Bluebox open on the Downloads page.</li>
+</ol>
+<p class="still">If iOS closes Bluebox anyway, nothing is lost: downloads carry on from where they stopped next time you open it.</p>
+</div>
+</details>
+
+<details id="downloads-waiting">
+<summary>My downloads say Waiting</summary>
+<div>
+<p>The Downloads page says what each one is waiting for. Usually it's one of these:</p>
+<ol class="fix">
+  <li><strong>Waiting for Wi-Fi:</strong> downloads don't use mobile data unless you allow it in <span class="path">Settings › Mobile Data</span>.</li>
+  <li><strong>Waiting for overnight:</strong> you've set a <strong>Download Window</strong> in <span class="path">Settings › Downloads</span>.</li>
+  <li><strong>Queued:</strong> two download at a time. The rest start when one finishes.</li>
+</ol>
+</div>
+</details>
+
+<details id="cant-download">
+<summary>There's no way to download this one</summary>
+<div>
+<p>Some live-style streams can't be saved. Open <strong>Releases</strong>, touch and hold (or right-click) a different version, and choose Download.</p>
+</div>
+</details>
+</section>
+
+<section class="faq-group" data-topic="account">
+<h2 id="faq-accounts">Account and everything else<a class="anchor" href="#faq-accounts" aria-label="Link to this section">#</a></h2>
+
+<details id="need-supabase">
+<summary>Do I need an account?</summary>
+<div>
+<p>No. You only need one to sync between devices, use the iPhone remote, or host a Watch Party. Bluebox can <a href="sync.html#automatic-setup">set one up for you</a> in about two minutes, for free.</p>
+</div>
+</details>
+
+<details id="forgot-password">
+<summary>I forgot my password</summary>
+<div>
+<ol class="fix">
+  <li>Sign in to <a href="https://supabase.com/dashboard">supabase.com</a> and open your Bluebox project.</li>
+  <li>Go to <strong>Authentication › Users</strong> and find your username.</li>
+  <li>Set a new password there, then sign in to Bluebox with it.</li>
+</ol>
+</div>
+</details>
+
+<details id="project-paused">
+<summary>Sync stopped working</summary>
+<div>
+<p>Free Supabase projects go to sleep after a week of not being used.</p>
+<ol class="fix">
+  <li>Sign in to <a href="https://supabase.com/dashboard">supabase.com</a> and tap <strong>Restore</strong> on your Bluebox project.</li>
+  <li>In Bluebox, tap <strong>Sync Now</strong> in <span class="path">Settings › Account &amp; Sync</span>.</li>
+</ol>
+</div>
+</details>
+
+<details id="forgot-pin-faq">
+<summary>I forgot a profile's PIN</summary>
+<div>
+<ol class="fix">
+  <li>Tap <strong>Forgot PIN?</strong> on the PIN screen.</li>
+  <li>Confirm with Touch ID, Face ID or the device's password.</li>
+  <li>In <span class="path">Settings › Profiles</span>, change or remove the lock.</li>
+</ol>
+</div>
+</details>
+
+<details id="report-bug">
+<summary>How do I report a bug?</summary>
+<div>
+<ol class="fix">
+  <li>Update to the latest version and check it still happens.</li>
+  <li>Make it happen once more, then go to <span class="path">Settings › Advanced</span> and tap <strong>Export Logs</strong>. (Passwords and keys are never included.)</li>
+  <li><a href="https://github.com/BCYAYAY14/bluebox/issues">Open an issue on GitHub</a>: say what you did, what you expected, and what happened. Attach the log and a screenshot if you can.</li>
+</ol>
+<p class="still">Found a security problem? Please <a href="privacy.html#report-vulnerability">report it privately</a> instead.</p>
+</div>
+</details>
+
+<details id="reset">
+<summary>How do I start fresh?</summary>
+<div>
+<p>Go to <span class="path">Settings › Storage</span>:</p>
+<ol class="fix">
+  <li><strong>Reset All Settings</strong> puts settings back but keeps your lists and downloads.</li>
+  <li><strong>Erase All Data</strong> removes everything from this device. Bluebox closes; open it again to finish.</li>
+</ol>
+</div>
+</details>
+
+<details id="legal">
+<summary>Does Bluebox come with films and shows?</summary>
+<div>
+<p>No. Bluebox is a player, like a web browser for video. What you watch comes from the add-ons, servers and files you choose, and it's up to you to have the right to watch it.</p>
+</div>
+</details>
+
+<details id="language">
+<summary>Can I use Bluebox in my language?</summary>
+<div>
+<p>Yes: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, Korean and Simplified Chinese. Choose in <span class="path">Settings › Language</span>.</p>
+</div>
+</details>
+</section>
+<nav class="next" aria-label="Pages"><a href="privacy.html"><small>Previous</small>Privacy & security</a><a class="r" href="topics.html"><small>Next</small>All topics</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

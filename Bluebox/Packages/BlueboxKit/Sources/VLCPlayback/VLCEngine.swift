@@ -114,6 +114,8 @@ public final class VLCEngine: PlaybackEngine {
     // Stall detection: VLC can report `.playing` while the clock is frozen waiting for data.
     private var lastClock: TimeInterval = -1
     private var frozenSince: ContinuousClock.Instant?
+    /// The clock while a pause is asked for (`enforcePause`).
+    private var pausedClock: (time: TimeInterval, at: ContinuousClock.Instant)?
     /// Frozen picture: the clock and the sound run on but VLC shows no new
     /// frames (seen resuming mid-episode, after the start seek). Sampled once
     /// a second from VLC's displayed-picture count; a seek to the current
@@ -379,9 +381,76 @@ public final class VLCEngine: PlaybackEngine {
             let raw = Double(stats.demuxBitrate > 0 ? stats.demuxBitrate : stats.inputBitrate)
             // libVLC's bitrates are in kB per ms (VLC's own GUI multiplies by 8000 for kb/s).
             if raw > 0 { d.bitrate = raw * 8_000_000 }
+            if stats.inputBitrate > 0 { d.readRate = Double(stats.inputBitrate) * 1_000_000 }
             d.droppedFrames = Int(stats.lostPictures)
+            d.lateFrames = Int(stats.latePictures)
+            d.displayedFrames = Int(stats.displayedPictures)
+            d.decodedFrames = Int(stats.decodedVideo)
+            if stats.readBytes > 0 { d.readBytes = Int64(clamping: stats.readBytes) }
+        }
+        if let video = player.videoTracks.first(where: \.isSelected) ?? player.videoTracks.first {
+            d.videoCodec = video.codecString.map(PlaybackDiagnostics.codecName)
+            if let w = video.width, let h = video.height, w > 0, h > 0 { d.videoSize = CGSize(width: w, height: h) }
+            if let fps = video.frameRate, fps.isFinite, fps > 0 { d.frameRate = fps }
+            if let native = nativePlayer, let w = video.width, let h = video.height {
+                var format = bluebox_vlc_video_format()
+                if bluebox_vlc_video_format_of(native, UInt32(truncatingIfNeeded: video.codec), UInt32(w), UInt32(h), &format) {
+                    let colour = Self.colour(of: format)
+                    d.dynamicRange = colour.range
+                    d.colour = colour.description
+                    d.bitDepth = Self.bitDepth(chroma: format.chroma)
+                }
+            }
+        }
+        if let audio = player.selectedAudioTrack ?? player.audioTracks.first(where: \.isSelected) {
+            d.audioCodec = audio.codecString.map(PlaybackDiagnostics.codecName)
+            d.audioChannels = audio.channels.flatMap { $0 > 0 ? $0 : nil }
+            d.audioSampleRate = audio.sampleRate.flatMap { $0 > 0 ? $0 : nil }
         }
         return d
+    }
+
+    /// libVLC's colour enums (`video_transfer_func_t`, `video_color_primaries_t`)
+    /// as words, and the dynamic range they mean. Undefined parts are left out.
+    static func colour(of format: bluebox_vlc_video_format) -> (range: PlaybackDiagnostics.DynamicRange?, description: String?) {
+        let transfer: String? = switch format.transfer {
+        case 1: "Linear"
+        case 2: "sRGB"
+        case 3, 4: "BT.470"
+        case 5: "BT.709"
+        case 6: "PQ"
+        case 7: "SMPTE 240"
+        case 8: "HLG"
+        default: nil
+        }
+        let primaries: String? = switch format.primaries {
+        case 1: "BT.601 (525)"
+        case 2: "BT.601 (625)"
+        case 3: "BT.709"
+        case 4: "BT.2020"
+        case 5: "DCI-P3"
+        case 6: "P3"
+        default: nil
+        }
+        let range: PlaybackDiagnostics.DynamicRange? = switch transfer {
+        case "PQ": .hdr10
+        case "HLG": .hlg
+        case nil: nil
+        default: .sdr
+        }
+        return (range, PlaybackDiagnostics.describeColour(transfer: transfer, primaries: primaries))
+    }
+
+    /// Bits per component of a libVLC chroma (its FourCC, low byte first);
+    /// nil for chromas that don't say (the demuxer often leaves it unset).
+    static func bitDepth(chroma: UInt32) -> Int? {
+        let code = String(bytes: [0, 8, 16, 24].map { UInt8((chroma >> $0) & 0xff) }, encoding: .ascii) ?? ""
+        switch code {
+        case "I420", "YV12", "NV12", "NV21", "I422", "I444", "J420", "J422", "J444", "CVPN", "CVPI", "CVPY", "UYVY", "YUY2": return 8
+        case "I0AL", "I0AB", "I2AL", "I2AB", "I4AL", "I4AB", "P010", "CVPP", "XV30": return 10
+        case "I0CL", "I0CB", "I2CL", "I2CB", "I4CL", "I4CB", "P016": return 12
+        default: return nil
+        }
     }
 
     public func setRate(_ rate: Float) {
@@ -798,6 +867,25 @@ public final class VLCEngine: PlaybackEngine {
         if state != .playing { lastClock = -1; frozenSince = nil }
         watchVideo(state)
         if state == .playing || state == .paused, snapshot.bufferFill != nil { snapshot.bufferFill = nil }
+        enforcePause(state)
+    }
+
+    /// Asked to pause, yet the clock runs on: SwiftVLC can take a pause for
+    /// done (one it held back while the stream buffered) while libVLC plays
+    /// on, and then its own pause() does nothing, so the film carried on under
+    /// a Play button. Half a second of steady running pauses libVLC itself.
+    private func enforcePause(_ state: PlayerState) {
+        guard intendedPaused, !ended, state == .playing || state == .paused else { pausedClock = nil; return }
+        let t = Self.seconds(player.currentTime), now = ContinuousClock.now
+        guard let was = pausedClock else { pausedClock = (t, now); return }
+        let gap = (now - was.at).components
+        let elapsed = Double(gap.seconds) + Double(gap.attoseconds) / 1e18
+        guard elapsed >= 0.5 else { return }
+        pausedClock = (t, now)
+        // A seek moves the clock too, by a jump rather than at the pace of time.
+        let ran = t - was.time
+        guard ran > 0.3, ran < elapsed + 0.5, let native = nativePlayer else { return }
+        if bluebox_vlc_pause(native) { Log.playback.notice("VLC played on while paused; paused it underneath") }
     }
 
     /// Issues `pendingSeek` once VLC can seek. A resume point is checked

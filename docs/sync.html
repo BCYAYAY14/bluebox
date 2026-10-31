@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sync and accounts · Bluebox docs</title>
+<meta name="description" content="Set up Bluebox sync with your own Supabase project: automatic setup from an access token, adding devices, manual setup, what syncs, and Connect errors.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Sync and accounts · Bluebox docs">
+<meta property="og:description" content="Set up Bluebox sync with your own Supabase project: automatic setup from an access token, adding devices, manual setup, what syncs, and Connect errors.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html" aria-current="page">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>Sync and accounts</h1>
+<p class="lede">Sync is optional. It runs on your own free Supabase project, not a Bluebox server: Bluebox can set one up for you in about two minutes.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#why">What sync gives you</a></li><li><a href="#automatic-setup">Automatic setup (recommended)</a></li><li><a href="#add-device">Add another device</a></li><li><a href="#manual-setup">Manual setup</a></li><li><a href="#what-syncs">What syncs</a></li><li><a href="#switching-accounts">Signing out and switching accounts</a></li></ol></nav>
+<h2 id="why">What sync gives you<a class="anchor" href="#why" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>My List, your own lists, watch progress and profiles on all your devices, live.</li>
+  <li>Settings and add-ons per profile: playback, subtitle style, skip rules, your add-on list and order.</li>
+  <li>The <a href="remote.html">iPhone remote</a> and <a href="watch-party.html">Watch Party</a>, which both run on the same project.</li>
+</ul>
+<p>Without it Bluebox works fully offline on each device. The project belongs to you, on Supabase's free plan; Bluebox has no server of its own and never sends email.</p>
+
+<h2 id="automatic-setup">Automatic setup (recommended)<a class="anchor" href="#automatic-setup" aria-label="Link to this section">#</a></h2>
+<p>Everything happens in <span class="path">Settings › Account &amp; Sync</span>:</p>
+<ol>
+  <li><strong>Open Supabase</strong> and sign up (free; GitHub sign-in is quickest).</li>
+  <li><strong>Open Access Tokens</strong> (<code>supabase.com/dashboard/account/tokens</code>), choose <strong>Generate new token</strong>, name it <code>Bluebox</code> and copy it.</li>
+  <li>Paste it into Bluebox. Setup starts by itself: “Creating your server… about 2 minutes”.</li>
+  <li><strong>Create Your Account</strong>: a username and password (at least 8 characters).</li>
+  <li><a href="#public-realtime">Turn off public Realtime</a> in the dashboard (one switch).</li>
+</ol>
+<p>Setup creates a project named Bluebox in a region near you (or reuses one with that name), adds Bluebox's tables with row level security, turns off confirmation emails, and turns off sign-ups once your account exists. Every step is safe to repeat, so if anything stops it, <strong>Try Again</strong> carries on where it was.</p>
+<p>The token is only kept in memory while setup runs, and only ever sent to <code>api.supabase.com</code>. You can delete it on the Access Tokens page afterwards.</p>
+<div class="note"><p><strong>Free plan already has two projects?</strong> Bluebox lists them so you can use one instead (it adds its tables there, turns off that project's confirmation emails and changes nothing else), or you can pause one in the dashboard and try again.</p></div>
+
+<h3 id="public-realtime">Turn off public Realtime<a class="anchor" href="#public-realtime" aria-label="Link to this section">#</a></h3>
+<p>In the Supabase dashboard, open <span class="path">Realtime › Settings</span>, turn off <strong>Allow public access</strong>, and save. Bluebox only uses private channels that just your account can join; with public access on, another client could join a public channel of the same name. Setup can't change this setting for you.</p>
+
+<h3 id="usernames">Usernames and passwords<a class="anchor" href="#usernames" aria-label="Link to this section">#</a></h3>
+<p>Usernames are 3 to 32 letters, numbers, dots, dashes or underscores, and aren't case-sensitive. Supabase needs an email address, so Bluebox stores a username as <code>username@bluebox.invalid</code>, an address that can never receive mail.</p>
+<p>Bluebox can't reset a forgotten password. In the Supabase dashboard, <span class="path">Authentication › Users</span> lets you set a new one.</p>
+
+<h2 id="add-device">Add another device<a class="anchor" href="#add-device" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li>On a signed-in device: <span class="path">Settings › Account &amp; Sync › Add Another Device</span>. It shows a QR code and a <code>bluebox://connect?…</code> link.</li>
+  <li>On an iPhone or iPad, scan the code with the Camera. On a Mac, copy the link and open it, or paste it under <strong>Already set up on another device?</strong> in Account &amp; Sync.</li>
+  <li>A link opened from outside asks <strong>Connect to &lt;server&gt;?</strong> first. Confirm, then sign in with your username and password.</li>
+</ol>
+<p>The link holds only the project's address and its public key, never a token or password. A device signed in to a different server isn't switched: sign out and choose <strong>Change Server…</strong> first.</p>
+
+<h2 id="manual-setup">Manual setup<a class="anchor" href="#manual-setup" aria-label="Link to this section">#</a></h2>
+<p>For a self-hosted Supabase, or without an access token: <span class="path">Settings › Account &amp; Sync › Enter URL and key instead</span>.</p>
+<ol>
+  <li>Create a project (the free plan is enough) in a region near you.</li>
+  <li>In the dashboard's <strong>SQL Editor</strong>, paste the contents of <a href="https://github.com/BCYAYAY14/bluebox/blob/main/Bluebox/Backend/supabase/setup.sql"><code>Backend/supabase/setup.sql</code></a> and run it once. For Watch Party, also run <code>migrations/20261031000000_watch_together.sql</code>.</li>
+  <li><span class="path">Authentication › Sign In / Providers › Email</span>: turn off <strong>Confirm email</strong>. Then <a href="#public-realtime">turn off public Realtime</a>.</li>
+  <li><span class="path">Project Settings › API Keys</span>: copy the <strong>Project URL</strong> and the <strong>publishable key</strong> (<code>sb_publishable_…</code>; a legacy anon key also works) into Bluebox and tap <strong>Connect</strong>.</li>
+  <li>Create an account on the first device; sign in on the others.</li>
+</ol>
+<div class="note warn"><p><strong>Never paste a secret or service-role key.</strong> Bluebox refuses one outright without storing or sending it. If you've pasted one somewhere it shouldn't be, rotate it in Project Settings › API Keys.</p></div>
+
+<h3 id="connect-errors">Connect errors<a class="anchor" href="#connect-errors" aria-label="Link to this section">#</a></h3>
+<div class="tablewrap"><table>
+  <tr><th>Message</th><th>Fix</th></tr>
+  <tr><td>Couldn't reach that project: no server has that name</td><td>A typo in the Project URL, or the project is paused. Free projects pause after a week without use: restore it in the dashboard.</td></tr>
+  <tr><td>The project rejected that key</td><td>Copy the publishable or anon key again.</td></tr>
+  <tr><td>Bluebox's tables are missing</td><td>Run <code>setup.sql</code>, then Connect again.</td></tr>
+  <tr><td>An older version of Bluebox's tables</td><td>Run <code>migrations/20261028000000_profiles.sql</code>, then Connect again.</td></tr>
+  <tr><td>Username sign-in needs Supabase's Email provider</td><td>Authentication › Sign In / Providers › Email › on.</td></tr>
+  <tr><td>New accounts on this server must confirm an email</td><td>Turn off Confirm email.</td></tr>
+  <tr><td>Remote control and instant sync are off</td><td>Run <code>migrations/20261030000000_realtime_private.sql</code> (safe to run again), or set up again with an access token. Then turn off Allow public access.</td></tr>
+</table></div>
+<p><strong>Check Setup</strong> runs these checks again at any time. If a sign-in is ever refused later (for example after you delete the user in the dashboard), Bluebox signs out and says so.</p>
+
+<h2 id="what-syncs">What syncs<a class="anchor" href="#what-syncs" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>My List and lists:</strong> additions and removals.</li>
+  <li><strong>Watch progress:</strong> position, finished, and Remove from Continue Watching.</li>
+  <li><strong>Profiles</strong>, and each profile's settings and add-ons (newest change wins). An add-on added by link syncs by name only: its link, which can hold a debrid key, stays in the Keychain, and another device shows <strong>Paste Link</strong> next to it.</li>
+  <li><strong>API keys only if you choose:</strong> <strong>Sync API Keys</strong> in Account &amp; Sync is off by default. On, it syncs the TMDB token, OMDb, OpenSubtitles and debrid keys and add-on links. It asks first, because Supabase stores them as plain text, readable by anyone with your project's dashboard. <strong>Remove Keys from Server</strong> deletes them from the project without touching any device.</li>
+  <li><strong>Not synced:</strong> media files, folders, direct links, sources, downloads, PINs and maturity limits.</li>
+</ul>
+<p>Sync runs at launch, when the app comes to the front, a couple of seconds after you change My List, when you close the player, and from <strong>Sync Now</strong>.</p>
+
+<h2 id="switching-accounts">Signing out and switching accounts<a class="anchor" href="#switching-accounts" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Signing out</strong> first sends anything still waiting, and keeps the library on the device. If changes haven't been uploaded yet, Bluebox warns you.</li>
+  <li><strong>Signing in to a different account</strong> asks before anything moves: <strong>Use &lt;account&gt;'s Library</strong> (this device's copy of the old one is removed; it stays in the old account), <strong>Add This Device's Library</strong> to the new account, or <strong>Sign Out</strong>.</li>
+  <li>Bluebox never signs in from a link. A sign-in link can only have come from someone else, so it's refused.</li>
+</ul>
+<nav class="next" aria-label="Pages"><a href="profiles.html"><small>Previous</small>Profiles & Kids</a><a class="r" href="privacy.html"><small>Next</small>Privacy & security</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

@@ -2,6 +2,24 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.5 (31 October 2026)
+
+### Remote control
+- Swipes and Back keep working while a stream opens; Back on the iPhone cancels the loading screen.
+- The highlight and pointer no longer stay drawn over the film or the loading screen, and come back on the same item when you return.
+- Moving the highlight is quicker, and the ring stays on its item after the page scrolls or a new page opens.
+- The iPhone switches to the player's controls more reliably while the Mac plays.
+- Swipes keep to the row or column they started in, a flick after a long swipe no longer overshoots, and the pointer speeds up with a quick finger.
+
+### Player
+- Stats for nerds is far more detailed: a live graph of bitrate, buffer and download speed, and sections for video (with HDR, colour and bit depth), audio, subtitles, the stream, frames, the buffer, the torrent and sync.
+- A timeline of what happened during playback: opening, buffering and how long, stalls, seeks, track changes and errors.
+- Copy Diagnostics puts a report on the clipboard for bug reports, with links, keys, addresses and server names left out.
+- Fixed the film carrying on playing after you paused it, on streams played through VLC.
+
+### Website
+- A documentation site with install steps, guides to sources, the player, the iPhone remote, Watch Party, profiles, sync and privacy, and a Help and FAQ page for when something goes wrong.
+
 ## 1.2.4 (31 October 2026)
 
 ### Watch Party

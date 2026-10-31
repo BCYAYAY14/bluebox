@@ -31,6 +31,8 @@ import AppKit
 /// only the top layer's items are reachable, even when it has none of its own
 /// (a trailer), so the page under it can't be pressed. Back closes the top one.
 /// An open Bluebox menu comes first of all: the pad moves through its items.
+/// The player and the loading screen cover everything (`setCovered`): the
+/// ring and pointer aren't drawn over them, and come back when they go.
 @MainActor @Observable
 public final class RemoteFocus {
     struct Target {
@@ -95,6 +97,8 @@ public final class RemoteFocus {
     public private(set) var pointer: CGPoint?
     /// Who's driving: "Brian's iPhone".
     public private(set) var driver = ""
+    /// The player or the loading screen covers the window (`setCovered`): no ring or pointer is drawn over it.
+    public private(set) var covered = false
     /// Moves that hit the end of a row: the phone bumps when it goes up.
     private(set) var bumps = 0
     /// The page the Mac is on, for `RemoteScreen` (RootView keeps it up to date).
@@ -113,7 +117,12 @@ public final class RemoteFocus {
     @ObservationIgnored private var refocus: Task<Void, Never>?
     @ObservationIgnored private var coast: Task<Void, Never>?
     @ObservationIgnored private var follow: Task<Void, Never>?
+    @ObservationIgnored private var relocate: Task<Void, Never>?
     @ObservationIgnored private var lastScrollRefresh = Date.distantPast
+    /// The window's elements as last walked (`elements()`).
+    @ObservationIgnored private var cachedElements: (at: Date, kind: RemoteWindowKind?, list: [Element])?
+    /// Where the fingers' scroll lands, kept for the rest of the gesture.
+    @ObservationIgnored private var scrollAnchor: (point: CGPoint, at: Date)?
     /// The highlight or page changed: `RemoteControl.screenChanged`.
     @ObservationIgnored var onChange: (() -> Void)?
     #if os(macOS)
@@ -124,8 +133,13 @@ public final class RemoteFocus {
     @ObservationIgnored var fadeAfter: Duration = .seconds(8)
     /// How long a new page has to put its items in before its first one is highlighted.
     @ObservationIgnored var settleDelay: Duration = .milliseconds(350)
-    /// A pointer move from the pad is this much bigger on the Mac.
-    static let pointerScale: CGFloat = 1.6
+    /// How long a walk of the window's elements is reused: one move asks several
+    /// times (the move, the phone's neighbours, a fast swipe's steps), and the
+    /// walk is the slow part of a move.
+    @ObservationIgnored var elementsLifetime: TimeInterval = 0.25
+    /// A slow pointer move from the pad is this much bigger on the Mac; a fast one up to `pointerBoost` times more.
+    nonisolated static let pointerScale: CGFloat = 1.6
+    nonisolated static let pointerBoost: CGFloat = 2.5
 
     public init() {
         BlueboxMenuRemote.onChange = { [weak self] in self?.menuChanged() }
@@ -153,7 +167,26 @@ public final class RemoteFocus {
         if focused == instance { focused = nil; pageChanged(); onChange?() }
     }
 
-    func isFocused(_ instance: UUID) -> Bool { visible && focused == instance && targets[instance]?.layer == topLayer }
+    func isFocused(_ instance: UUID) -> Bool { visible && !covered && focused == instance && targets[instance]?.layer == topLayer }
+
+    /// The player or the loading screen came over the window, or went: the
+    /// ring and pointer stand aside meanwhile, rather than being left drawn
+    /// over the film where they were. Uncovered, the highlight comes back where
+    /// it was, or on the page's first item if that went.
+    func setCovered(_ on: Bool) {
+        guard on != covered else { return }
+        covered = on
+        refocus?.cancel(); follow?.cancel(); coast?.cancel(); relocate?.cancel()
+        invalidate()
+        if on {
+            if pointerMode { pointerMode = false; pointer = nil }
+        } else {
+            pageChanged()
+            relocateSoon()
+        }
+        redraw()
+        onChange?()
+    }
 
     func addModal(_ instance: UUID, _ modal: Modal) {
         var modal = modal
@@ -193,6 +226,7 @@ public final class RemoteFocus {
         if top != topLayer {
             topLayer = top
             element = nil
+            invalidate()
             pageChanged()
             onChange?()
         }
@@ -227,9 +261,9 @@ public final class RemoteFocus {
         // An overlay in the main window (the season list) covers the page: only its own controls are in reach.
         let overlay: CGRect? = active == .main && topLayer > 0
             ? modals.values.filter { $0.layer == topLayer }.compactMap(\.frame).first ?? .zero : nil
-        if let platform {
+        if platform != nil {
             let covered = out.map { $0.frame.insetBy(dx: -2, dy: -2) }
-            for e in platform.elements() where !covered.contains(where: { $0.contains(CGPoint(x: e.frame.midX, y: e.frame.midY)) }) {
+            for e in elements() where !covered.contains(where: { $0.contains(CGPoint(x: e.frame.midX, y: e.frame.midY)) }) {
                 if let overlay, !overlay.contains(CGPoint(x: e.frame.midX, y: e.frame.midY)) { continue }
                 out.append(Candidate(ref: .element(e), id: "element:\(e.label)", frame: e.frame,
                                      item: RemoteScreenItem(label: e.label, kind: e.kind, isOn: e.isOn), section: nil))
@@ -237,6 +271,20 @@ public final class RemoteFocus {
         }
         return out
     }
+
+    /// The window's elements, walked again only once `elementsLifetime` has
+    /// passed or something changed the page (a press, a scroll, a sheet).
+    private func elements() -> [Element] {
+        guard let platform else { return [] }
+        let kind = platform.activeKind
+        if let c = cachedElements, c.kind == kind, Date().timeIntervalSince(c.at) < elementsLifetime { return c.list }
+        let list = platform.elements()
+        cachedElements = (Date(), kind, list)
+        return list
+    }
+
+    /// The page changed: the next look walks the window again.
+    func invalidate() { cachedElements = nil }
 
     /// The highlighted candidate, found again (an element may have moved, a scroll or a relayout).
     private func currentCandidate(in all: [Candidate]) -> Candidate? {
@@ -292,11 +340,13 @@ public final class RemoteFocus {
             setFocus(next.ref, driver: driver)
         } else if let platform, platform.scrollPage(at: CGPoint(x: here.frame.midX, y: here.frame.midY), toward: direction) {
             // More of the page that way: once it has moved, carry on to what came into view.
+            invalidate()
             show(driver: driver)
             follow?.cancel()
             follow = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(220))
                 guard let self, !Task.isCancelled else { return }
+                self.invalidate()
                 let all = self.candidates()
                 if let here = self.currentCandidate(in: all), let next = Self.step(from: here, toward: direction, in: all) {
                     self.setFocus(next.ref, driver: driver)
@@ -322,6 +372,9 @@ public final class RemoteFocus {
         guard visible, let here = currentCandidate(in: all) else { reveal(driver: driver, in: all); return }
         show(driver: driver)
         press(here)
+        // A press usually changes the page (a title opens, a switch flips): look again.
+        invalidate()
+        relocateSoon()
     }
 
     /// Hold: the highlighted item's menu, as a right-click opens it (a poster's quick actions).
@@ -335,6 +388,7 @@ public final class RemoteFocus {
         }
         show(driver: driver)
         if let point { platform?.click(at: point, right: true) }
+        invalidate()
     }
 
     /// An item of the open menu, picked on the phone.
@@ -368,9 +422,18 @@ public final class RemoteFocus {
         if !pointerMode { setPointer(true, driver: driver) }
         let bounds = platform?.bounds ?? window()?.bounds ?? CGRect(x: 0, y: 0, width: 1000, height: 700)
         let p = pointer ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        pointer = CGPoint(x: min(max(p.x + dx * Self.pointerScale, bounds.minX + 2), bounds.maxX - 2),
-                          y: min(max(p.y + dy * Self.pointerScale, bounds.minY + 2), bounds.maxY - 2))
+        let scale = Self.pointerScale(for: hypot(dx, dy))
+        pointer = CGPoint(x: min(max(p.x + dx * scale, bounds.minX + 2), bounds.maxX - 2),
+                          y: min(max(p.y + dy * scale, bounds.minY + 2), bounds.maxY - 2))
         show(driver: driver)
+    }
+
+    /// Pointer acceleration, as a trackpad's: a slow finger moves it finely,
+    /// a quick one crosses the window. `distance` is one message's worth (a
+    /// twentieth of a second of finger travel on the phone).
+    nonisolated static func pointerScale(for distance: CGFloat) -> CGFloat {
+        let quick = min(max((distance - 10) / 40, 0), 1)
+        return pointerScale * (1 + (pointerBoost - 1) * quick)
     }
 
     /// Click under the pointer, or press the highlight.
@@ -378,6 +441,7 @@ public final class RemoteFocus {
         guard pointerMode, let pointer else { select(driver: driver); return }
         show(driver: driver)
         platform?.click(at: pointer, right: false)
+        invalidate()
     }
 
     /// Two fingers: scroll what's under the highlight (or the pointer). The
@@ -385,16 +449,23 @@ public final class RemoteFocus {
     /// on a trackpad; then the highlight moves onto what's showing.
     func scroll(_ s: RemoteScroll, driver: String) {
         guard let platform else { return }
-        let all = candidates()
-        let bounds = platform.bounds
-        let at = pointerMode ? pointer : currentCandidate(in: all).map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) }
-        let point = at ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        // Where the gesture began scrolls for all of it: no walk of the window per message.
+        let point: CGPoint
+        if let anchor = scrollAnchor, Date().timeIntervalSince(anchor.at) < 0.4 {
+            point = anchor.point
+        } else {
+            let bounds = platform.bounds
+            let at = pointerMode ? pointer : currentCandidate(in: candidates()).map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) }
+            point = at ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+        scrollAnchor = s.ends ? nil : (point, Date())
         coast?.cancel()
         _ = platform.scroll(at: point, dx: s.dx, dy: s.dy)
+        invalidate()
         if !visible || dimmed { show(driver: driver) }
         guard s.ends else {
             // Now and then while the fingers move, so the ring keeps up with what it's on.
-            if Date().timeIntervalSince(lastScrollRefresh) > 0.25 { lastScrollRefresh = Date(); _ = currentCandidate(in: candidates()) }
+            if Date().timeIntervalSince(lastScrollRefresh) > 0.35 { lastScrollRefresh = Date(); _ = currentCandidate(in: candidates()) }
             return
         }
         var v = CGVector(dx: s.velocityX ?? 0, dy: s.velocityY ?? 0)
@@ -407,6 +478,7 @@ public final class RemoteFocus {
                 v.dx *= 0.93; v.dy *= 0.93
             }
             guard let self, !Task.isCancelled else { return }
+            self.invalidate()
             self.settleAfterScroll(driver: driver)
         }
     }
@@ -487,6 +559,24 @@ public final class RemoteFocus {
         focusedRef(ref)
         show(driver: driver)
         onChange?()
+        relocateSoon()
+    }
+
+    /// The page may still be moving under the ring (a row scrolling the item
+    /// into view, a sheet sliding in, a page opening after a press): look
+    /// again once it has settled, so a ring drawn over the window stays on its
+    /// element, and a page whose element went starts on its first item.
+    private func relocateSoon() {
+        guard !pointerMode, platform != nil else { return }
+        relocate?.cancel()
+        relocate = Task { [weak self] in
+            for wait in [300, 600] {
+                try? await Task.sleep(for: .milliseconds(wait))
+                guard let self, !Task.isCancelled, self.visible, !self.covered, !self.pointerMode else { return }
+                self.invalidate()
+                if self.currentCandidate(in: self.candidates()) == nil { self.pageChanged(); return }
+            }
+        }
     }
 
     private func focusedRef(_ ref: Candidate.Ref) {
@@ -515,11 +605,12 @@ public final class RemoteFocus {
     /// The page changed under the highlight (its item went away, or a sheet
     /// came or went): once the new page's items are in, highlight its first one.
     private func pageChanged() {
-        guard visible, !pointerMode else { return }
+        guard visible, !pointerMode, !covered else { return }
         refocus?.cancel()
         refocus = Task { [weak self] in
             try? await Task.sleep(for: self?.settleDelay ?? .milliseconds(350))
-            guard let self, !Task.isCancelled, self.visible, !self.pointerMode else { return }
+            guard let self, !Task.isCancelled, self.visible, !self.pointerMode, !self.covered else { return }
+            self.invalidate()
             let all = self.candidates()
             guard self.currentCandidate(in: all) == nil else { return }
             let wasDimmed = self.dimmed
@@ -535,8 +626,9 @@ public final class RemoteFocus {
 
     /// The ring for an element, and the pointer, drawn over the window.
     private func redraw() {
-        let ring = visible && !pointerMode && BlueboxMenuRemote.current == nil ? element?.frame : nil
-        platform?.draw(ring: ring, driver: driver, dimmed: dimmed, pointer: visible && pointerMode ? pointer : nil)
+        let shown = visible && !covered
+        let ring = shown && !pointerMode && BlueboxMenuRemote.current == nil ? element?.frame : nil
+        platform?.draw(ring: ring, driver: driver, dimmed: dimmed, pointer: shown && pointerMode ? pointer : nil)
     }
 
     // MARK: What the phone shows

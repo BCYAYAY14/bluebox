@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bluebox</title>
+<meta name="description" content="Bluebox is a free, open-source movie and TV app for iPhone, iPad and Mac. It plays what you bring: Stremio add-ons, torrents, debrid, Jellyfin, Emby, Plex, WebDAV and your own files.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Bluebox">
+<meta property="og:description" content="Bluebox is a free, open-source movie and TV app for iPhone, iPad and Mac. It plays what you bring: Stremio add-ons, torrents, debrid, Jellyfin, Emby, Plex, WebDAV and your own files.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<aside class="side mobile-only" id="side">
+<h4>Start</h4><ul>
+<li><a href="./" aria-current="page">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main>
+<section class="hero">
+  <img class="icon" src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt="">
+  <h1>Bluebox</h1>
+  <p>A free, open-source movie and TV app for iPhone, iPad and Mac. It doesn't host anything: it plays what you bring.</p>
+  <div class="btns">
+    <a class="btn blue" href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg">Download for Mac</a>
+    <a class="btn" href="add.html">Get it on iPhone and iPad</a>
+  </div>
+  <div class="meta">iOS 18 and later · macOS 15 and later on Apple silicon · MIT licence · <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></div>
+</section>
+<div class="banner"><img src="banner.png" alt="Bluebox on iPhone, iPad and Mac: a home screen of movie and TV posters"></div>
+
+<section class="section">
+  <h2>What it does</h2>
+  <p class="sub">A home page like a streaming service, over sources you choose.</p>
+  <div class="grid">
+    <a class="card" href="sources.html"><h3>Plays what you bring</h3><p>Stremio add-ons, torrents streamed while they download, debrid services, Jellyfin, Emby, Plex, WebDAV, direct links and your own files.</p><span class="go">Sources →</span></a>
+    <a class="card" href="player.html"><h3>A proper player</h3><p>Subtitles in your style, audio and subtitle tracks, chapters, skip intro and credits, picture in picture, an equaliser and speed control.</p><span class="go">The player →</span></a>
+    <a class="card" href="sources.html#downloads"><h3>Downloads</h3><p>Save films and whole seasons for offline. Smart Downloads keep the next episodes ready and clear the ones you've watched.</p><span class="go">Downloads →</span></a>
+    <a class="card" href="remote.html"><h3>Your iPhone as a remote</h3><p>A touch pad that drives the whole Mac app: browse, open a title, play, skip and pick tracks.</p><span class="go">iPhone remote →</span></a>
+    <a class="card" href="watch-party.html"><h3>Watch Party</h3><p>Watch in step with friends, with a lobby, chat and reactions. Each person plays their own copy.</p><span class="go">Watch Party →</span></a>
+    <a class="card" href="profiles.html"><h3>Profiles and Kids</h3><p>Each profile has its own lists, progress, languages and subtitle style. Maturity limits and PIN locks for children.</p><span class="go">Profiles →</span></a>
+    <a class="card" href="sync.html"><h3>Optional sync</h3><p>Lists, progress and settings between your devices, through your own free Supabase project. Trakt too.</p><span class="go">Sync →</span></a>
+    <a class="card" href="privacy.html"><h3>Private by default</h3><p>No account needed, no analytics. Every feature that could feel invasive has its own switch.</p><span class="go">Privacy →</span></a>
+    <a class="card" href="faq.html"><h3>Stuck?</h3><p>Install warnings, streams that won't start, debrid errors and the remote, answered step by step.</p><span class="go">FAQ →</span></a>
+  </div>
+</section>
+
+<section class="section" id="install">
+  <h2>Install</h2>
+  <p class="sub">Bluebox isn't on the App Store. It's one free build for every device, from GitHub.</p>
+  <div class="install">
+    <div class="card">
+      <h3>Mac</h3>
+      <ol>
+        <li>Download the DMG and drag <b>Bluebox</b> to <b>Applications</b>.</li>
+        <li>Open it. macOS can't check it, so click <b>Done</b>.</li>
+        <li>In <b>System Settings › Privacy &amp; Security</b>, click <b>Open Anyway</b>. Once per version.</li>
+      </ol>
+      <div class="btns"><a class="btn blue" href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg">Download for Mac</a><a class="btn" href="install.html#mac">Full steps</a></div>
+    </div>
+    <div class="card">
+      <h3>iPhone and iPad</h3>
+      <ol>
+        <li>On your iPhone, open the add page and pick AltStore, SideStore or Feather.</li>
+        <li>Using FlareStore or ESign? Copy the source link there and add it under Sources.</li>
+        <li>Open Bluebox in the source and tap <b>Get</b>. Updates arrive the same way.</li>
+      </ol>
+      <div class="btns"><a class="btn blue" href="add.html">Open the add page</a><a class="btn" href="install.html#iphone">Full steps</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Documentation</h2>
+  <p class="sub">Everything Bluebox does, and where to find it in Settings.</p>
+  <div class="grid">
+    <a class="card" href="install.html"><h3>Install and first run</h3><p>Install, the Mac's first-launch step, what to set up first, updates.</p></a>
+    <a class="card" href="sources.html"><h3>Sources</h3><p>Add-ons, debrid, media servers, WebDAV, local files and downloads.</p></a>
+    <a class="card" href="player.html"><h3>The player</h3><p>Subtitles, audio, AirPlay, external players and keyboard shortcuts.</p></a>
+    <a class="card" href="sync.html"><h3>Sync and accounts</h3><p>Set up your own Supabase project in about two minutes.</p></a>
+    <a class="card" href="privacy.html"><h3>Privacy and security</h3><p>What leaves your device, where keys are kept, how updates are checked.</p></a>
+    <a class="card" href="topics.html"><h3>All topics</h3><p>Every section and question on one page. Press <kbd>/</kbd> to search.</p></a>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Good to know</h2>
+  <p class="sub" style="max-width:760px">Bluebox is a player. What you watch comes from the add-ons, servers and peers you choose, and you're responsible for having the right to watch it. Torrents share your IP address with everyone in the swarm; a debrid service or a VPN avoids that. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+</section>
+</main>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

@@ -182,10 +182,100 @@ public struct PlaybackDiagnostics: Equatable, Sendable {
     public var droppedFrames: Int?
     /// Where the bytes come from ("Local file", "Torrent", "Network").
     public var source: String?
+
+    // Read from the video track.
+    /// The coded picture size, in pixels.
+    public var videoSize: CGSize?
+    /// Frames per second the file declares.
+    public var frameRate: Double?
+    public var dynamicRange: DynamicRange?
+    /// The colour description behind `dynamicRange` ("PQ · BT.2020").
+    public var colour: String?
+    /// Bits per colour component (8, 10, 12).
+    public var bitDepth: Int?
+
+    // Read from the audio track that's playing.
+    public var audioCodec: String?
+    public var audioChannels: Int?
+    /// Samples per second.
+    public var audioSampleRate: Int?
+
+    // Frame counts since the video opened.
+    public var displayedFrames: Int?
+    /// Pictures shown after their time (VLC).
+    public var lateFrames: Int?
+    public var decodedFrames: Int?
+
+    /// Bytes read from the source so far.
+    public var readBytes: Int64?
+    /// Bytes per second being read from the source (VLC's input rate).
+    public var readRate: Double?
+    /// Times playback stopped to wait for data, as the engine counts them (AVPlayer's access log).
+    public var stalls: Int?
+
     public init(engine: String, container: String? = nil, videoCodec: String? = nil, bitrate: Double? = nil,
                 droppedFrames: Int? = nil, source: String? = nil) {
         self.engine = engine; self.container = container; self.videoCodec = videoCodec
         self.bitrate = bitrate; self.droppedFrames = droppedFrames; self.source = source
+    }
+
+    public enum DynamicRange: String, Equatable, Sendable {
+        case sdr = "SDR", hdr10 = "HDR10", hlg = "HLG", dolbyVision = "Dolby Vision"
+    }
+
+    /// Plain names for the codecs as engines report them: FourCCs ("hevc",
+    /// "a52 ", "ec-3") and VLC's own codec names.
+    public static func codecName(_ code: String) -> String {
+        let c = code.trimmingCharacters(in: .whitespaces).lowercased()
+        switch c {
+        case "hevc", "hvc1", "hev1", "h265": return "HEVC"
+        case "dvh1", "dvhe": return "HEVC (Dolby Vision)"
+        case "h264", "avc1", "avc3", "x264": return "H.264"
+        case "av01": return "AV1"
+        case "vp90", "vp09": return "VP9"
+        case "vp80", "vp08": return "VP8"
+        case "mpgv", "mp2v": return "MPEG-2"
+        case "mp4v": return "MPEG-4"
+        case "wvc1", "vc-1": return "VC-1"
+        case "apcn", "apch", "apcs", "apco", "ap4h", "ap4x": return "ProRes"
+        case "a52", "ac-3", "ac3": return "AC-3"
+        case "eac3", "ec-3": return "E-AC-3"
+        case "mp4a", "aac": return "AAC"
+        case "dts", "dtsc", "dtsh", "dtsl": return "DTS"
+        case "mlp", "trhd", "truehd": return "TrueHD"
+        case "flac": return "FLAC"
+        case "opus": return "Opus"
+        case "vorb": return "Vorbis"
+        case "mpga", "mp3", ".mp3": return "MP3"
+        case "alac": return "ALAC"
+        case "lpcm", "araw", "s16l", "s24l", "s32l", "f32l", "sowt", "twos", "in24", "fl32": return "PCM"
+        default: return c.isEmpty ? "Unknown" : code.trimmingCharacters(in: .whitespaces).uppercased()
+        }
+    }
+
+    /// "Mono", "Stereo", "5.1", "7.1", or "6 channels".
+    public static func channelLayout(_ channels: Int) -> String {
+        switch channels {
+        case 1: "Mono"
+        case 2: "Stereo"
+        case 3: "2.1"
+        case 6: "5.1"
+        case 8: "7.1"
+        default: "\(channels) channels"
+        }
+    }
+
+    /// "PQ · BT.2020"; "BT.709" once when the transfer and primaries share the name.
+    public static func describeColour(transfer: String?, primaries: String?) -> String? {
+        let words = [transfer, primaries].compactMap { $0 }
+        if words.isEmpty { return nil }
+        return words.count == 2 && words[0] == words[1] ? words[0] : words.joined(separator: " · ")
+    }
+
+    /// "23.976 fps", "25 fps".
+    public static func formatFrameRate(_ fps: Double) -> String {
+        let whole = fps.rounded()
+        return abs(fps - whole) < 0.005 ? String(format: "%.0f fps", whole) : String(format: "%.3f fps", fps)
     }
 
     /// "Local file", "Torrent" or "Network", from a playback URL.

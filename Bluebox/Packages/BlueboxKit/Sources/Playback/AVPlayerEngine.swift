@@ -36,6 +36,9 @@ public final class AVPlayerEngine: PlaybackEngine {
     private var scrubTarget: TimeInterval?
     private var chaseInFlight = false
     private var videoCodec: String?
+    /// The video and audio tracks' formats, read once when the asset opens (for the stats).
+    private var videoDetails: VideoDetails?
+    private var audioDetails: [CMPersistentTrackID: AudioDetails] = [:]
     private var resource: PlaybackResource?
     private var videoOutput: AVPlayerItemVideoOutput?
     private var legibleOutput: AVPlayerItemLegibleOutput?
@@ -124,10 +127,16 @@ public final class AVPlayerEngine: PlaybackEngine {
         guard self.resource == resource else { throw CancellationError() }
 
         self.asset = asset
-        videoCodec = nil
+        videoCodec = nil; videoDetails = nil; audioDetails = [:]
         if let track = try? await asset.loadTracks(withMediaType: .video).first,
            let desc = try? await track.load(.formatDescriptions).first {
             videoCodec = Self.codecName(CMFormatDescriptionGetMediaSubType(desc))
+            let fps = (try? await track.load(.nominalFrameRate)).map(Double.init)
+            videoDetails = Self.videoDetails(desc, frameRate: fps)
+        }
+        // Every audio track's format, so the stats can show the one that's playing.
+        for track in (try? await asset.loadTracks(withMediaType: .audio)) ?? [] {
+            if let desc = try? await track.load(.formatDescriptions).first { audioDetails[track.trackID] = Self.audioDetails(desc) }
         }
         let isHLS = (resource.variant.container ?? resource.url.pathExtension).lowercased() == "m3u8"
         snapshot.supportsVideoAdjustments = !isHLS
@@ -355,13 +364,109 @@ public final class AVPlayerEngine: PlaybackEngine {
         let ext = (resource?.variant.container ?? resource?.url.pathExtension ?? "").lowercased()
         d.container = ext == "m3u8" ? "HLS" : (ext.isEmpty ? nil : ext.uppercased())
         d.source = PlaybackDiagnostics.sourceKind(of: resource?.url)
-        if let event = item?.accessLog()?.events.last {
+        // The log gets a new entry for every variant switch and seek, so the
+        // counts add up over all of them; the rate is the latest entry's.
+        if let events = item?.accessLog()?.events, let event = events.last {
             let observed = event.observedBitrate, indicated = event.indicatedBitrate
             if observed.isFinite, observed > 0 { d.bitrate = observed } else if indicated.isFinite, indicated > 0 { d.bitrate = indicated }
-            if event.numberOfDroppedVideoFrames >= 0 { d.droppedFrames = event.numberOfDroppedVideoFrames }
+            let dropped = events.map(\.numberOfDroppedVideoFrames).filter { $0 >= 0 }
+            if !dropped.isEmpty { d.droppedFrames = dropped.reduce(0, +) }
+            let stalls = events.map(\.numberOfStalls).filter { $0 >= 0 }
+            if !stalls.isEmpty { d.stalls = stalls.reduce(0, +) }
+            let bytes = events.map(\.numberOfBytesTransferred).filter { $0 >= 0 }
+            if !bytes.isEmpty { d.readBytes = bytes.reduce(0, +) }
         }
         d.videoCodec = videoCodec
+        if let v = videoDetails {
+            d.videoSize = v.size; d.frameRate = v.frameRate; d.dynamicRange = v.range; d.colour = v.colour; d.bitDepth = v.bitDepth
+        }
+        // The enabled audio track of the item is the one playing (media selection enables one).
+        let playing = item?.tracks.first { $0.isEnabled && $0.assetTrack?.mediaType == .audio }?.assetTrack?.trackID
+        if let a = playing.flatMap({ audioDetails[$0] }) ?? (audioDetails.count == 1 ? audioDetails.values.first : nil) {
+            d.audioCodec = a.codec; d.audioChannels = a.channels; d.audioSampleRate = a.sampleRate
+        }
         return d
+    }
+
+    struct VideoDetails: Equatable {
+        var size: CGSize?
+        var frameRate: Double?
+        var range: PlaybackDiagnostics.DynamicRange?
+        var colour: String?
+        var bitDepth: Int?
+    }
+
+    struct AudioDetails: Equatable {
+        var codec: String
+        var channels: Int?
+        var sampleRate: Int?
+    }
+
+    nonisolated static func videoDetails(_ desc: CMFormatDescription, frameRate: Double?) -> VideoDetails {
+        let dims = CMVideoFormatDescriptionGetDimensions(desc)
+        var v = VideoDetails()
+        if dims.width > 0, dims.height > 0 { v.size = CGSize(width: Int(dims.width), height: Int(dims.height)) }
+        if let frameRate, frameRate.isFinite, frameRate > 0 { v.frameRate = frameRate }
+        let ext = { (key: CFString) in CMFormatDescriptionGetExtension(desc, extensionKey: key) }
+        let transfer = ext(kCMFormatDescriptionExtension_TransferFunction) as? String
+        let primaries = ext(kCMFormatDescriptionExtension_ColorPrimaries) as? String
+        let subtype = CMFormatDescriptionGetMediaSubType(desc)
+        let dolbyVision = subtype == 0x64766831 /* dvh1 */ || subtype == 0x64766865 /* dvhe */
+        v.range = colourRange(transfer: transfer.map(transferName), dolbyVision: dolbyVision)
+        v.colour = PlaybackDiagnostics.describeColour(transfer: transfer.map(transferName), primaries: primaries.map(primariesName))
+        if let bits = ext(kCMFormatDescriptionExtension_BitsPerComponent) as? Int, bits > 0 {
+            v.bitDepth = bits
+        } else if let depth = ext(kCMFormatDescriptionExtension_Depth) as? Int, depth == 24 || depth == 30 || depth == 36 {
+            v.bitDepth = depth / 3
+        }
+        return v
+    }
+
+    nonisolated static func transferName(_ key: String) -> String {
+        switch key as CFString {
+        case kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ: "PQ"
+        case kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG: "HLG"
+        case kCMFormatDescriptionTransferFunction_ITU_R_709_2: "BT.709"
+        case kCMFormatDescriptionTransferFunction_ITU_R_2020: "BT.2020"
+        case kCMFormatDescriptionTransferFunction_sRGB: "sRGB"
+        case kCMFormatDescriptionTransferFunction_Linear: "Linear"
+        default: key
+        }
+    }
+
+    nonisolated static func primariesName(_ key: String) -> String {
+        switch key as CFString {
+        case kCMFormatDescriptionColorPrimaries_ITU_R_2020: "BT.2020"
+        case kCMFormatDescriptionColorPrimaries_ITU_R_709_2: "BT.709"
+        case kCMFormatDescriptionColorPrimaries_P3_D65: "P3"
+        case kCMFormatDescriptionColorPrimaries_DCI_P3: "DCI-P3"
+        case kCMFormatDescriptionColorPrimaries_SMPTE_C: "SMPTE C"
+        case kCMFormatDescriptionColorPrimaries_EBU_3213: "EBU 3213"
+        default: key
+        }
+    }
+
+    /// The dynamic range a transfer function means ("PQ" is HDR10, "HLG"
+    /// HLG); nil when the file doesn't say.
+    nonisolated static func colourRange(transfer: String?, dolbyVision: Bool) -> PlaybackDiagnostics.DynamicRange? {
+        if dolbyVision { return .dolbyVision }
+        switch transfer {
+        case "PQ": return .hdr10
+        case "HLG": return .hlg
+        case nil: return nil
+        default: return .sdr
+        }
+    }
+
+    nonisolated static func audioDetails(_ desc: CMFormatDescription) -> AudioDetails {
+        let subtype = CMFormatDescriptionGetMediaSubType(desc)
+        let code = String(bytes: [24, 16, 8, 0].map { UInt8((subtype >> $0) & 0xff) }, encoding: .ascii) ?? ""
+        var a = AudioDetails(codec: PlaybackDiagnostics.codecName(code))
+        if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee {
+            if asbd.mChannelsPerFrame > 0 { a.channels = Int(asbd.mChannelsPerFrame) }
+            if asbd.mSampleRate.isFinite, asbd.mSampleRate > 0 { a.sampleRate = Int(asbd.mSampleRate) }
+        }
+        return a
     }
 
     nonisolated static func codecName(_ code: FourCharCode) -> String {

@@ -29,6 +29,7 @@ extern void **vlc_player_vout_HoldAll(void *player, size_t *count);
 extern void vout_Release(void *vout);
 extern void *vlc_player_aout_Hold(void *player);
 extern void aout_Release(void *aout);
+extern void libvlc_media_player_set_pause(void *media_player, int do_pause);
 
 /// libVLC 4's `libvlc_media_player_t` starts with its `vlc_object_t`; the
 /// `vlc_player_t *` follows the object (24 bytes) and the reference count.
@@ -107,4 +108,67 @@ int bluebox_vlc_set_aout_string(void *media_player, const char *name, const char
     }
     aout_Release(aout);
     return ok;
+}
+
+bool bluebox_vlc_pause(void *media_player) {
+    if (player_of(media_player) == NULL) return false;
+    libvlc_media_player_set_pause(media_player, 1);
+    return true;
+}
+
+// MARK: - The video track's format
+
+extern void vlc_player_Lock(void *player);
+extern void vlc_player_Unlock(void *player);
+extern size_t vlc_player_GetTrackCount(void *player, int cat);
+extern const void *vlc_player_GetTrackAt(void *player, int cat, size_t index);
+
+enum { VIDEO_ES = 1 };
+
+/// `struct vlc_player_track` is `{ vlc_es_id_t *es_id; char *name; es_format_t fmt; ... }`;
+/// `es_format_t` has six 32-bit fields, two strings, a count and a pointer
+/// before its union, which starts with `video_format_t` for video:
+/// chroma, width, height, x/y offset, visible width/height, SAR, frame rate
+/// (eleven 32-bit fields), the palette pointer, then orientation, primaries,
+/// transfer, space and range.
+static const size_t track_fmt = 16;
+static const size_t fmt_video = 56;
+static const size_t video_orientation = 48 + 8;
+
+bool bluebox_vlc_video_format_of(void *media_player, uint32_t codec, uint32_t width, uint32_t height,
+                                 bluebox_vlc_video_format *out) {
+    if (out == NULL) return false;
+    out->checked = false;
+    void *player = player_of(media_player);
+    if (player == NULL) return false;
+    bool found = false;
+    vlc_player_Lock(player);
+    size_t count = vlc_player_GetTrackCount(player, VIDEO_ES);
+    for (size_t i = 0; i < count && !found; i++) {
+        const char *track = vlc_player_GetTrackAt(player, VIDEO_ES, i);
+        if (track == NULL) continue;
+        const char *fmt = track + track_fmt;
+        const char *video = fmt + fmt_video;
+        // The category, codec and size must be the ones libVLC's public API
+        // reported for this track, or the offsets are wrong.
+        if (*(const int *)fmt != VIDEO_ES || *(const uint32_t *)(fmt + 4) != codec) continue;
+        // Once decoding, the size is the coded one (1080p decodes as 1088
+        // lines) and the visible size is the track's.
+        const uint32_t *size = (const uint32_t *)(video + 4), *visible = (const uint32_t *)(video + 20);
+        bool coded = size[0] == width && size[1] == height, shown = visible[0] == width && visible[1] == height;
+        if (!coded && !shown) continue;
+        const int *colour = (const int *)(video + video_orientation);
+        int orientation = colour[0], primaries = colour[1], transfer = colour[2], space = colour[3], range = colour[4];
+        if (orientation < 0 || orientation > 7 || primaries < 0 || primaries > 10 || transfer < 0 || transfer > 12
+            || space < 0 || space > 4 || range < 0 || range > 2) continue;
+        out->checked = true;
+        out->chroma = *(const uint32_t *)video;
+        out->primaries = primaries;
+        out->transfer = transfer;
+        out->space = space;
+        out->range = range;
+        found = true;
+    }
+    vlc_player_Unlock(player);
+    return found;
 }

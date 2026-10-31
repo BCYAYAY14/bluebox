@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Watch Party · Bluebox docs</title>
+<meta name="description" content="Start and join a Bluebox Watch Party: invites, codes, the lobby, chat and reactions, host tools, and what the host&#x27;s Supabase project needs.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Watch Party · Bluebox docs">
+<meta property="og:description" content="Start and join a Bluebox Watch Party: invites, codes, the lobby, chat and reactions, host tools, and what the host&#x27;s Supabase project needs.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html" aria-current="page">Watch Party</a></li>
+<li><a href="profiles.html">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>Watch Party</h1>
+<p class="lede">Watch in step with friends, each on their own device and their own copy, with a lobby, chat and reactions.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#how-it-works">How it works</a></li><li><a href="#host-setup">What the host needs</a></li><li><a href="#start">Start a party</a></li><li><a href="#join">Join a party</a></li><li><a href="#during">During the party</a></li><li><a href="#party-troubleshooting">If joining fails</a></li></ol></nav>
+<h2 id="how-it-works">How it works<a class="anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
+<p>A party runs on the host's own Supabase project (their “Bluebox server”). Nothing is streamed between you: everyone plays their <strong>own copy</strong> of the film from their own sources, and Bluebox keeps the copies in step. Before it starts, each person's copy is found; the party pauses while someone catches up.</p>
+<p>So each guest needs a source that has the same title: the same add-ons, a debrid service, or the file itself. The invitation tells a guest whether their copy is ready before they join.</p>
+
+<h2 id="host-setup">What the host needs<a class="anchor" href="#host-setup" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li>Sync set up and signed in (<a href="sync.html">Sync and accounts</a>).</li>
+  <li>For friends who aren't on your account: in the Supabase dashboard, open <span class="path">Authentication › Sign In / Providers</span>, turn on <strong>Allow anonymous sign-ins</strong>, and save. Guests then join without making an account. Without it they see “This Bluebox server doesn't let guests join.”</li>
+  <li>If you set up your project by hand (with <code>setup.sql</code>), also run <code>Backend/supabase/migrations/20261031000000_watch_together.sql</code> in the SQL editor. Automatic setup adds it every time it runs, so running setup again with an access token works too.</li>
+</ol>
+
+<h2 id="start">Start a party<a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li>On a title, open the menu on Play's <strong>▾</strong> (or right-click Play), or right-click any poster (touch and hold on iPhone and iPad), and choose <strong>Start a Party</strong>.</li>
+  <li>The lobby opens. Choose <strong>Share Invite…</strong> to send a link, or read out the 8-character code.</li>
+  <li>When everyone's ready, start: there's a 3, 2, 1, and it plays for everyone at once.</li>
+</ol>
+
+<h2 id="join">Join a party<a class="anchor" href="#join" aria-label="Link to this section">#</a></h2>
+<h3 id="join-link">With a link<a class="anchor" href="#join-link" aria-label="Link to this section">#</a></h3>
+<p>Share Invite… sends a web link to this site's join page. Tap it:</p>
+<ul>
+  <li><strong>With Bluebox installed:</strong> tap <strong>Open in Bluebox</strong>. The invitation shows who invited you, what's on, who's there and ready, whether it's in the lobby or already playing, and whether your copy is ready.</li>
+  <li><strong>Without Bluebox:</strong> the page offers Get Bluebox for your device. Install it, come back to the link and tap Open in Bluebox.</li>
+</ul>
+<p>The server address and key are in the part of the link after the <code>#</code>, which stays in your browser and is never sent to GitHub.</p>
+<h3 id="join-code">With a code<a class="anchor" href="#join-code" aria-label="Link to this section">#</a></h3>
+<p>Choose <strong>Join a Party…</strong> from the profile menu (on the Mac also <span class="path">File › Join a Party…</span>, <kbd>⇧⌘J</kbd>) and type the code in the eight boxes. Pasting an invite link anywhere in the boxes fills them. A code alone only finds parties on the Bluebox server you're signed in to; for someone else's server, use their link.</p>
+<h3 id="join-invitation">On the invitation<a class="anchor" href="#join-invitation" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>Joining as</strong> shows your profile. <strong>Change</strong> sets a name and colour just for this party.</li>
+  <li><strong>Join Party</strong> turns the invitation into the lobby, or opens the player at the party's moment if it's already playing.</li>
+  <li>A locked or ended party, or a host who isn't answering, is shown on the invitation with <strong>Try Again</strong>.</li>
+</ul>
+
+<h2 id="during">During the party<a class="anchor" href="#during" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Chat</strong> sits beside the video on the Mac and iPad, and over or under it on iPhone, with replies, mentions and quick reactions that float up over everyone's video. On the Mac, <kbd>⌘/</kbd> opens and closes it and <kbd>⌥1</kbd>–<kbd>⌥6</kbd> react. With the chat closed, the last two messages show over the film for a few seconds (<span class="path">Settings › Playback › Show Party Messages Over the Video</span>).</li>
+  <li><strong>Up next</strong> and a <strong>party queue</strong>: add titles from any poster's menu with Add to Party.</li>
+  <li><strong>Step Away</strong> pauses just for you; <strong>Catch Up</strong> brings you back to everyone else.</li>
+  <li><strong>Leave Party</strong> is in the profile menu.</li>
+</ul>
+<h3 id="host-tools">Host tools<a class="anchor" href="#host-tools" aria-label="Link to this section">#</a></h3>
+<p>The host can <strong>Lock the Party</strong> so no one else joins, hand it to someone else (<strong>Make … the Host</strong>), or <strong>End Party for Everyone</strong>.</p>
+
+<h2 id="party-troubleshooting">If joining fails<a class="anchor" href="#party-troubleshooting" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>“This invite is incomplete”</strong> on the web page: part of the link was cut off. Ask for the invite again, and paste the whole link.</li>
+  <li><strong>Guests can't join:</strong> the host turns on anonymous sign-ins (above).</li>
+  <li><strong>Your copy isn't ready:</strong> you need a source with the same title. Add the same add-ons or debrid service the host uses, then Try Again.</li>
+  <li><strong>The host isn't answering:</strong> the host's Bluebox must be open with the party running. Try Again once it is.</li>
+  <li><strong>The invitation shows only the code:</strong> the host's Bluebox is older than 1.2.4 and doesn't answer the invitation's questions. Joining still works; everyone should update to the latest release.</li>
+</ul>
+<nav class="next" aria-label="Pages"><a href="remote.html"><small>Previous</small>iPhone remote</a><a class="r" href="profiles.html"><small>Next</small>Profiles & Kids</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

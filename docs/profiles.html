@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profiles and Kids · Bluebox docs</title>
+<meta name="description" content="Bluebox profiles, Kids profiles, maturity limits, Allow Unrated Titles, PIN locks and what to do if you forget a PIN.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Profiles and Kids · Bluebox docs">
+<meta property="og:description" content="Bluebox profiles, Kids profiles, maturity limits, Allow Unrated Titles, PIN locks and what to do if you forget a PIN.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <div class="search" role="search">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <div class="results" id="results" role="listbox"></div>
+  </div>
+  <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+</div></header>
+<div class="wrap">
+<aside class="side" id="side">
+<h4>Start</h4><ul>
+<li><a href="./">Home</a></li>
+<li><a href="install.html">Install</a></li>
+</ul>
+<h4>Using Bluebox</h4><ul>
+<li><a href="sources.html">Sources</a></li>
+<li><a href="player.html">The player</a></li>
+<li><a href="remote.html">iPhone remote</a></li>
+<li><a href="watch-party.html">Watch Party</a></li>
+<li><a href="profiles.html" aria-current="page">Profiles &amp; Kids</a></li>
+<li><a href="sync.html">Sync &amp; accounts</a></li>
+</ul>
+<h4>Help</h4><ul>
+<li><a href="privacy.html">Privacy &amp; security</a></li>
+<li><a href="faq.html">FAQ</a></li>
+<li><a href="topics.html">All topics</a></li>
+</ul>
+<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+</aside>
+<main class="doc">
+<p class="eyebrow">Using Bluebox</p>
+<h1>Profiles and Kids</h1>
+<p class="lede">Give everyone in the house their own lists and progress, set maturity limits for children, and lock profiles and Settings with a PIN.</p>
+<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#profiles">Profiles</a></li><li><a href="#maturity">Maturity limits</a></li><li><a href="#kids">Kids profiles</a></li><li><a href="#pin">PIN locks</a></li></ol></nav>
+<h2 id="profiles">Profiles<a class="anchor" href="#profiles" aria-label="Link to this section">#</a></h2>
+<p>Each profile has its own My List, watch progress and Continue Watching, languages, subtitle style, equaliser, Autoplay Next Episode, statistics and Spoiler Guard. Sources, downloads and device settings are shared by everyone on the device.</p>
+<ul>
+  <li><strong>Add:</strong> <span class="path">Settings › Profiles › Add Profile…</span>. Pick a name, picture and colour.</li>
+  <li><strong>Switch:</strong> the profile button in the top bar. On the Mac, the Profiles menu and <kbd>⌃⌘1</kbd>–<kbd>⌃⌘5</kbd> switch too.</li>
+  <li><strong>Edit or remove:</strong> Settings › Profiles, then the profile. Removing one deletes its My List and progress from all your devices.</li>
+</ul>
+<p>When you're signed in, profiles and their libraries sync to your other devices. Trakt follows the first profile.</p>
+
+<h2 id="maturity">Maturity limits<a class="anchor" href="#maturity" aria-label="Link to this section">#</a></h2>
+<p>Each profile has a <strong>Maturity</strong> setting, in Settings › Profiles › the profile:</p>
+<div class="tablewrap"><table>
+  <tr><th>Limit</th><th>Shows</th></tr>
+  <tr><td>All</td><td>Every title, whatever its rating</td></tr>
+  <tr><td>7+</td><td>Rated for 7 and under, such as G, PG and TV-Y7</td></tr>
+  <tr><td>13+</td><td>Rated up to 13, such as PG-13. TV-14 and R are hidden.</td></tr>
+  <tr><td>16+</td><td>Rated up to 16, such as TV-14 and 15. R and TV-MA are hidden.</td></tr>
+  <tr><td>18+</td><td>Everything rated 18 or under</td></tr>
+</table></div>
+<p>Ratings come from TMDB. <strong>Allow Unrated Titles</strong> decides whether titles with no rating play on a limited profile: on by default for an adult's limit, off for Kids profiles.</p>
+
+<h2 id="kids">Kids profiles<a class="anchor" href="#kids" aria-label="Link to this section">#</a></h2>
+<p>Turn on <strong>Kids Profile</strong> for a child. A Kids profile shows titles rated 7+ or under, and family titles where there's no rating, whatever its Maturity setting says. Unrated titles that aren't family titles are blocked unless you turn on Allow Unrated Titles.</p>
+
+<h2 id="pin">PIN locks<a class="anchor" href="#pin" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li>Open Settings › Profiles, pick the profile, and choose <strong>Profile Lock</strong>.</li>
+  <li>Set a 4-digit PIN. Opening that profile on this device now asks for it.</li>
+</ol>
+<ul>
+  <li><strong>Settings is locked too</strong> while a restricted profile is watching: Settings asks for a PIN if the profile has its own lock, or, for a Kids profile, if any grown-up profile has one. So lock your own profile to keep a child out of Settings and out of other profiles.</li>
+  <li>Editing your own restricted profile also asks for the PIN, so a limit can't be lifted from inside it.</li>
+  <li>PINs and maturity limits stay on each device; they don't sync. Set them on every device a child uses.</li>
+  <li>Only a salted hash of the PIN is kept, in the Keychain. If the Keychain can't be read, the profile counts as locked.</li>
+</ul>
+<h3 id="forgot-pin">Forgot a PIN<a class="anchor" href="#forgot-pin" aria-label="Link to this section">#</a></h3>
+<p>Tap <strong>Forgot PIN?</strong> on the PIN screen and confirm with Touch ID, Face ID or the device's password. The device owner can then open Settings and remove or change the lock in Settings › Profiles. If the device has no password set, open a profile you can get into and remove the lock from there.</p>
+<nav class="next" aria-label="Pages"><a href="watch-party.html"><small>Previous</small>Watch Party</a><a class="r" href="sync.html"><small>Next</small>Sync & accounts</a></nav>
+</main>
+</div>
+<footer><div class="f">
+  <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/BCYAYAY14/bluebox/blob/main/LICENSE">MIT licence</a>
+  <span>Bluebox plays what you bring. It doesn't host or index anything.</span>
+</div></footer>
+<script src="topics.js"></script>
+<script src="site.js"></script>
+</body></html>

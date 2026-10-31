@@ -320,6 +320,29 @@ import Testing
         #expect(!focus.pointerMode && focus.pointer == nil)
     }
 
+    /// The player or the loading screen over the window: the ring isn't left
+    /// drawn over the film, and comes back on the same item afterwards.
+    @Test func theRingStandsAsideUnderThePlayer() {
+        let window = FakeWindow()
+        window.items = [.init(label: "Card", kind: .button, frame: CGRect(x: 100, y: 100, width: 100, height: 150))]
+        let focus = RemoteFocus()
+        focus.window = { nil }
+        focus.platform = window
+        focus.move(.down, driver: "iPhone")
+        #expect(window.ring != nil)
+        focus.setCovered(true)
+        #expect(window.ring == nil)
+        focus.setCovered(false)
+        #expect(window.ring != nil && focus.focusedLabel == "Card")
+    }
+
+    /// A slow finger moves the pointer finely; a quick one crosses the window.
+    @Test func thePointerSpeedsUpWithTheFinger() {
+        #expect(RemoteFocus.pointerScale(for: 5) == RemoteFocus.pointerScale)
+        #expect(RemoteFocus.pointerScale(for: 80) == RemoteFocus.pointerScale * RemoteFocus.pointerBoost)
+        #expect(RemoteFocus.pointerScale(for: 30) > RemoteFocus.pointerScale(for: 15))
+    }
+
     /// Hold: the right-click a poster's quick actions open on.
     @Test func aHoldRightClicksTheHighlight() {
         let window = FakeWindow()
