@@ -143,8 +143,10 @@ public final class AppModel {
     public let remote = RemoteControl()
     /// The Watch Party you're in (AppModel+WatchParty.swift).
     public internal(set) var party: WatchParty?
-    /// Join a Party…: the sheet asking for a code or link, or confirming an invite that was opened.
+    /// Join the Party: the invitation for a link that was opened, or Join a Party… asking for a code or link.
     public var partyJoin: PartyJoinRequest?
+    /// Why joining failed while the invitation was up (it shows there instead of in an alert).
+    public var partyJoinProblem: String?
     /// The party is opening its next title: closing the old player doesn't leave it.
     @ObservationIgnored var partyIsSwitching = false
     /// The Mac's highlight for the remote's touch pad and taps (RemoteFocus.swift).

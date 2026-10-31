@@ -12,6 +12,17 @@ public struct PartyJoinRequest: Identifiable, Equatable {
     public init(invite: TogetherInvite? = nil) { self.invite = invite }
 }
 
+/// A sign-in to the party's server: this account's, or a guest's for the party's length.
+public struct PartyAccess: Sendable {
+    public let config: SupabaseConfig
+    public let token: @Sendable () async throws -> String
+}
+
+enum PartyInviteError: LocalizedError {
+    case noServer
+    var errorDescription: String? { String(localized: "The link is missing its server. Ask for a new invite.") }
+}
+
 // MARK: - Watch Party
 
 /// Starting, joining and leaving a Watch Party, and finding each device's copy
@@ -46,21 +57,31 @@ extension AppModel {
         }
     }
 
-    /// Joins the party an invite leads to, as you (or the name you chose for it).
-    public func joinParty(_ invite: TogetherInvite, as name: String? = nil) async {
+    /// Signs in to the server an invite leads to: this account when it's the
+    /// same server, otherwise a guest. The invitation looks at the party with
+    /// it, and joining reuses it rather than signing in as a second guest.
+    func partyAccess(for invite: TogetherInvite) async throws -> PartyAccess {
         guard let project = SupabaseConfig(url: invite.projectURL.absoluteString, publishableKey: invite.publishableKey) else {
-            alert = AppAlert(title: "That invite doesn't work", message: "The link is missing its server. Ask for a new invite.")
-            return
+            throw PartyInviteError.noServer
         }
+        let (config, token) = try await account.partyAccess(project: project)
+        return PartyAccess(config: config, token: token)
+    }
+
+    /// Joins the party an invite leads to, as you (or the name and colour you chose for it).
+    /// While the invitation is up, a problem shows on it instead of in an alert.
+    public func joinParty(_ invite: TogetherInvite, as name: String? = nil, color: Int? = nil, access: PartyAccess? = nil) async {
         if party != nil { await leaveParty() }
+        partyJoinProblem = nil
         do {
-            let (config, token) = try await account.partyAccess(project: project)
-            let room = TogetherRoom(me: partyMe(name: name),
-                                    transport: TogetherRealtimeRoom(config: config, code: invite.code, token: token))
+            let access = if let access { access } else { try await partyAccess(for: invite) }
+            let room = TogetherRoom(me: partyMe(name: name, color: color),
+                                    transport: TogetherRealtimeRoom(config: access.config, code: invite.code, token: access.token))
             _ = makeParty(room: room, invite: invite)
             await room.join()
         } catch {
-            alert = AppAlert(title: "Couldn't join the party", message: UserFacingError.message(for: error))
+            let message = UserFacingError.message(for: error)
+            if partyJoin != nil { partyJoinProblem = message } else { alert = AppAlert(title: "Couldn't join the party", message: message) }
         }
     }
 
@@ -98,16 +119,17 @@ extension AppModel {
         p.stop()
         activePlayer?.autoplayNext = settings.autoplayNextEpisode
         await p.room.leave()
-        alert = AppAlert(title: "The party's over", message: reason)
+        // Turned away while the invitation is still up (locked, removed): it says so there.
+        if partyJoin != nil { partyJoinProblem = reason } else { alert = AppAlert(title: "The party's over", message: reason) }
     }
 
     // MARK: Inside
 
-    private func partyMe(name: String? = nil) -> TogetherParticipant {
+    private func partyMe(name: String? = nil, color: Int? = nil) -> TogetherParticipant {
         let profile = currentProfile
         let chosen = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return TogetherParticipant(id: prefs.deviceID, name: chosen?.isEmpty == false ? chosen! : profile.name,
-                                   symbol: profile.symbol, color: profile.color, joinedAt: Date())
+        return TogetherParticipant(id: prefs.deviceID, name: chosen?.isEmpty == false ? String(chosen!.prefix(40)) : profile.name,
+                                   symbol: profile.symbol, color: color ?? profile.color, joinedAt: Date())
     }
 
     private func makeParty(room: TogetherRoom, invite: TogetherInvite) -> WatchParty {
@@ -158,23 +180,37 @@ extension AppModel {
     /// The best copy this device has of the party's release: the same torrent,
     /// the same file, then anything (checked for the same length once it opens).
     func findCopy(of title: TogetherTitle, item: NowPlayingItem) async
-        -> (open: @MainActor () async -> Void, match: TogetherRelease.Match?) {
+        -> (open: @MainActor () async -> Void, match: TogetherRelease.Match?, label: String?) {
         let key = item.key
-        var best: (match: TogetherRelease.Match, open: @MainActor () async -> Void)?
+        var best: (match: TogetherRelease.Match, label: String, open: @MainActor () async -> Void)?
         if addonSettings.isEnabled, let releases = try? await releases(for: key),
            let hit = title.release.bestMatch(in: releases) {
-            best = (hit.match, { await self.play(item, release: hit.release, resume: false, autoplay: false) })
+            best = (hit.match, TogetherRelease(hit.release).label,
+                    { await self.play(item, release: hit.release, resume: false, autoplay: false) })
         }
         // This library's own copies: downloads, folders, media servers.
         let own = await registry.availability(for: key).variants.filter { $0.sourceID != addons.id }
         for v in own {
-            let m = title.release.match(TogetherRelease(v, duration: v.duration))
+            let release = TogetherRelease(v, duration: v.duration)
+            let m = title.release.match(release)
             if m != .none, m > (best?.match ?? .none) {
-                best = (m, { await self.play(item, variant: v, resume: false, autoplay: false) })
+                best = (m, release.label, { await self.play(item, variant: v, resume: false, autoplay: false) })
             }
         }
-        if let best { return (best.open, best.match) }
-        return ({ await self.play(item, resume: false, autoplay: false) }, nil)
+        if let best { return (best.open, best.match, best.label) }
+        return ({ await self.play(item, resume: false, autoplay: false) }, nil, nil)
+    }
+
+    /// The invitation's "Your copy": how this device's best copy of the
+    /// party's release matches, before joining.
+    func partyCopy(of title: TogetherTitle) async -> PartyInvitation.Copy {
+        let key = MediaKey(rawValue: title.key)
+        let found = await findCopy(of: title, item: NowPlayingItem(key: key, title: title.name, subtitle: title.subtitle))
+        switch found.match {
+        case .exact?, .sameFile?: return .ready(found.label ?? title.release.label)
+        case .sameLength?: return .sameLength(found.label ?? "")
+        case .none?, nil: return await hasCopy(key) ? .other : .missing
+        }
     }
 
     /// Whether this device can play `key` at all (up next waits for everyone's copy).

@@ -2,6 +2,20 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.4 (31 October 2026)
+
+### Watch Party
+- Opening an invite shows an invitation instead of a form: who invited you, what's on, who's already there and ready, and whether the party is in the lobby or already playing. On the Mac it fills the window over the film's backdrop; on iPhone it's a full screen.
+- Before you join, it checks your own sources for the same copy, so you know you'll be able to watch along.
+- Joining as your profile, with Change for a name and colour just for this party.
+- One Join Party button turns the invitation into the lobby, or opens the player at the party's moment if it's already playing.
+- A locked or ended party, or a host who isn't answering, is shown on the invitation with Try Again.
+- Join a Party… has eight code boxes, and pasting an invite link anywhere fills them.
+- Share Invite… sends a web link that opens a small join page, so friends without Bluebox see who invited them and where to get it.
+
+### Remote control
+- On iPhone the remote opens full screen, so swiping down on the touch pad, with the highlight or the pointer, no longer closes it. The arrow at the top closes it.
+
 ## 1.2.3 (31 October 2026)
 
 ### Remote control

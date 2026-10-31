@@ -67,8 +67,10 @@ struct RemoteControlHost: ViewModifier {
                 }
             }
             .animation(Motion.standard(reduceMotion), value: app.remote.nowPlaying == nil)
-            .sheet(isPresented: $showsRemote) {
-                // Its own sheet: menus (the device pill's) draw here, not under it.
+            .fullScreenCover(isPresented: $showsRemote) {
+                // Its own layer: menus (the device pill's) draw here, not under it. A full
+                // screen, not a sheet: a sheet's swipe down would close it mid-swipe on the
+                // pad (highlight or pointer); the chevron at the top closes it instead.
                 RemoteControlScreen().environment(app).blueboxMenuHost()
             }
             .onChange(of: showsRemote) { _, open in app.remote.screenOpen = open }

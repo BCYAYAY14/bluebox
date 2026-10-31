@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.2.4",
+          "buildVersion": "24",
+          "date": "2026-10-31T03:41:27Z",
+          "localizedDescription": "Watch Party\n• Opening an invite shows an invitation instead of a form: who invited you, what's on, who's already there and ready, and whether the party is in the lobby or already playing.\n• Before you join, it checks your own sources for the same copy, so you know you'll be able to watch along.\n• Joining as your profile, with Change for a name and colour just for this party.\n• One Join Party button turns the invitation into the lobby, or opens the player at the party's moment if it's already playing.\n• A locked or ended party, or a host who isn't answering, is shown on the invitation with Try Again.\n• Join a Party… has eight code boxes, and pasting an invite link anywhere fills them.\n• Share Invite… sends a web link that opens a small join page, so friends without Bluebox see who invited them and where to get it.\n\nRemote control\n• On iPhone the remote opens full screen, so swiping down on the touch pad, with the highlight or the pointer, no longer closes it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.4/Bluebox-1.2.4.ipa",
+          "size": 38031995,
+          "sha256": "276756a99718cd2e5cd5dc7af746f54af8f0244f36035873f747af4594331b3f",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.2.3",
           "buildVersion": "23",
           "date": "2026-10-31T02:28:34Z",
@@ -163,11 +173,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.2.3",
-      "versionDate": "2026-10-31T02:28:34Z",
-      "versionDescription": "Remote control\n• One remote instead of two tabs.\n• There's always a highlight: after a while it dims to an outline instead of disappearing, and a new page starts on its first item, so every swipe moves and every tap presses something.\n• Everything you could click on the Mac can be reached: the sidebar, TV Shows and Movies, More Info and My List, See All, the search field, Downloads, every Settings row and switch, and the buttons in sheets.\n• New gestures: a fast swipe jumps several items, holding at the edge keeps moving, holding opens an item's menu on both screens, two fingers scroll (and coast), and a swipe in from the left edge goes back.\n• A pointer, with a two-finger tap or Use a Pointer, for clicking anything.\n• At the end of what's showing, a swipe scrolls the page on and carries on.\n• While something plays: Skip Intro and Next Episode appear on the iPhone when the Mac offers them, the timeline shows chapters, and circling round the pad's edge scrubs in fine steps.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.3/Bluebox-1.2.3.ipa",
-      "size": 37798872
+      "version": "1.2.4",
+      "versionDate": "2026-10-31T03:41:27Z",
+      "versionDescription": "Watch Party\n• Opening an invite shows an invitation instead of a form: who invited you, what's on, who's already there and ready, and whether the party is in the lobby or already playing.\n• Before you join, it checks your own sources for the same copy, so you know you'll be able to watch along.\n• Joining as your profile, with Change for a name and colour just for this party.\n• One Join Party button turns the invitation into the lobby, or opens the player at the party's moment if it's already playing.\n• A locked or ended party, or a host who isn't answering, is shown on the invitation with Try Again.\n• Join a Party… has eight code boxes, and pasting an invite link anywhere fills them.\n• Share Invite… sends a web link that opens a small join page, so friends without Bluebox see who invited them and where to get it.\n\nRemote control\n• On iPhone the remote opens full screen, so swiping down on the touch pad, with the highlight or the pointer, no longer closes it.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.4/Bluebox-1.2.4.ipa",
+      "size": 38031995
     }
   ],
   "news": []

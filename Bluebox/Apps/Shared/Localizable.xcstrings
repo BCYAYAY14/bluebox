@@ -372,6 +372,59 @@
         }
       }
     },
+    "A different copy. Bluebox checks it lines up when it opens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine andere Kopie. Bluebox prüft beim Öffnen, ob sie synchron läuft."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una copia distinta. Bluebox comprueba que coincida al abrirla."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une autre copie. Bluebox vérifie qu’elle est synchronisée à l’ouverture."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una copia diversa. Bluebox controlla che sia sincronizzata all’apertura."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のコピーです。開いたときに Bluebox が同期を確認します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 사본입니다. 열 때 Bluebox가 동기화를 확인합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma cópia diferente. O Bluebox confere se ela fica sincronizada ao abrir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一个副本。打开时 Bluebox 会检查它是否同步。"
+          }
+        }
+      }
+    },
     "A free Supabase project holds your list and progress. Only you can see it.": {
       "extractionState": "manual",
       "localizations": {
@@ -686,6 +739,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "预设包含字体、大小、颜色、描边和背景框。“存储当前样式”会保留你自己的外观；右键点按或长按可重命名或删除。"
+          }
+        }
+      }
+    },
+    "A same-length copy, not the host's exact one. It should stay in step.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Kopie gleicher Länge, nicht genau die des Gastgebers. Sie sollte synchron bleiben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una copia de la misma duración, no la exacta del anfitrión. Debería ir sincronizada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une copie de même durée, pas exactement celle de l’hôte. Elle devrait rester synchronisée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una copia della stessa durata, non esattamente quella dell’host. Dovrebbe restare sincronizzata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じ長さのコピーで、ホストのものとは異なります。同期は保たれるはずです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "같은 길이의 사본이지만 호스트의 것과 정확히 같지는 않습니다. 동기화는 유지될 것입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma cópia da mesma duração, não a exata do anfitrião. Ela deve ficar sincronizada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "时长相同的副本，但不是主持人的那一份。应该能保持同步。"
           }
         }
       }
@@ -6626,6 +6732,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "请问问大人"
+          }
+        }
+      }
+    },
+    "Ask for a new invite if they start another.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitte um eine neue Einladung, falls eine weitere Party startet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pide una nueva invitación si organizan otra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demandez une nouvelle invitation s’ils en lancent une autre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi un nuovo invito se ne avviano un altro."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のパーティが始まったら、新しい招待を頼んでください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 파티를 시작하면 새 초대를 요청하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peça um novo convite se começarem outra."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果他们再开一场，请向他们索取新的邀请。"
           }
         }
       }
@@ -13043,6 +13202,59 @@
         }
       }
     },
+    "Change": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ändern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "변경"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alterar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改"
+          }
+        }
+      }
+    },
     "Change PIN": {
       "extractionState": "manual",
       "localizations": {
@@ -16594,59 +16806,6 @@
         }
       }
     },
-    "Code or Invite Link": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Code oder Einladungslink"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Código o enlace de invitación"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Code ou lien d’invitation"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codice o link d’invito"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "コードまたは招待リンク"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "코드 또는 초대 링크"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Código ou link de convite"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "代码或邀请链接"
-          }
-        }
-      }
-    },
     "Collections need the internet.": {
       "extractionState": "manual",
       "localizations": {
@@ -20141,6 +20300,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法打开你的资料库"
+          }
+        }
+      }
+    },
+    "Couldn't reach the party's server": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server der Party ist nicht erreichbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido conectar con el servidor de la fiesta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de joindre le serveur de la soirée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile raggiungere il server del party"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パーティのサーバに接続できません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파티 서버에 연결할 수 없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível acessar o servidor da festa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接派对的服务器"
           }
         }
       }
@@ -33990,59 +34202,6 @@
         }
       }
     },
-    "Friends with Bluebox open the link, or type the code in File › Join a Party… if they use your server.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Freunde mit Bluebox öffnen den Link oder geben den Code unter „Ablage › Einer Party beitreten …“ ein, wenn sie deinen Server nutzen."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los amigos con Bluebox abren el enlace, o escriben el código en Archivo › Unirse a una fiesta… si usan tu servidor."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vos amis qui ont Bluebox ouvrent le lien, ou saisissent le code dans Fichier › Rejoindre une soirée… s’ils utilisent votre serveur."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gli amici con Bluebox aprono il link, oppure digitano il codice in File › Unisciti a un party… se usano il tuo server."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blueboxを持つ友達はリンクを開くか、同じサーバを使っているなら「ファイル」›「パーティに参加…」でコードを入力します。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bluebox가 있는 친구는 링크를 열거나, 같은 서버를 쓴다면 파일 › 파티 참여…에서 코드를 입력합니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Amigos com o Bluebox abrem o link, ou digitam o código em Arquivo › Entrar em uma festa… se usarem seu servidor."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "有 Bluebox 的朋友打开链接即可；如果使用你的服务器，也可以在“文件 › 加入派对…”中输入代码。"
-          }
-        }
-      }
-    },
     "From the Beginning": {
       "extractionState": "manual",
       "localizations": {
@@ -34675,6 +34834,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在获取文件列表…"
+          }
+        }
+      }
+    },
+    "Getting ready…": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird vorbereitet …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparando…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Préparation…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparazione…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "準備中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparando…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备…"
           }
         }
       }
@@ -38601,55 +38813,55 @@
         }
       }
     },
-    "Join As": {
+    "Join Party": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beitreten als"
+            "value": "Party beitreten"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unirse como"
+            "value": "Unirse a la fiesta"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rejoindre en tant que"
+            "value": "Rejoindre la soirée"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unisciti come"
+            "value": "Unisciti al party"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "参加する名前"
+            "value": "パーティに参加"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "참여 이름"
+            "value": "파티 참여"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Entrar como"
+            "value": "Entrar na festa"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "加入身份"
+            "value": "加入派对"
           }
         }
       }
@@ -38809,59 +39021,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入我的 Watch Party"
-          }
-        }
-      }
-    },
-    "Join the Watch Party": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Watch Party beitreten"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unirse a la Watch Party"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rejoindre la Watch Party"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unisciti al Watch Party"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Watch Partyに参加"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Watch Party 참여"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entrar na Watch Party"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "加入 Watch Party"
           }
         }
       }
@@ -42629,6 +42788,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在查找你的 Bluebox 项目…"
+          }
+        }
+      }
+    },
+    "Looking for your copy…": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Kopie wird gesucht …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando tu copia…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche de votre copie…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricerca della tua copia…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたのコピーを探しています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사본을 찾는 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Procurando sua cópia…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找你的副本…"
           }
         }
       }
@@ -49417,6 +49629,59 @@
         }
       }
     },
+    "Nobody in the party has answered yet. It may have ended, or everyone there has an older Bluebox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus der Party hat noch niemand geantwortet. Vielleicht ist sie vorbei, oder alle nutzen eine ältere Bluebox-Version."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadie de la fiesta ha respondido todavía. Puede que haya terminado o que todos tengan una versión anterior de Bluebox."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Personne dans la soirée n’a encore répondu. Elle est peut-être terminée, ou tout le monde utilise une ancienne version de Bluebox."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuno nel party ha ancora risposto. Forse è finito, oppure tutti usano una versione precedente di Bluebox."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パーティからまだ誰も応答していません。終了したか、全員が古いバージョンの Bluebox を使っている可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파티에서 아직 아무도 응답하지 않았습니다. 파티가 끝났거나 모두 이전 버전의 Bluebox를 사용 중일 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguém na festa respondeu ainda. Talvez ela tenha acabado, ou todos usam uma versão anterior do Bluebox."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "派对里还没有人回应。派对可能已结束，或者大家都在用旧版 Bluebox。"
+          }
+        }
+      }
+    },
     "Nobody new can join": {
       "extractionState": "manual",
       "localizations": {
@@ -50791,6 +51056,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "不在你的片源中"
+          }
+        }
+      }
+    },
+    "Not in your sources. Add an add-on, debrid service or server that has it in Settings › Sources.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht in deinen Quellen. Füge unter Einstellungen › Quellen ein Add-on, einen Debrid-Dienst oder einen Server hinzu, der es hat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No está en tus fuentes. Añade en Ajustes › Fuentes un complemento, servicio de debrid o servidor que lo tenga."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Absent de vos sources. Ajoutez dans Réglages › Sources un module, un service debrid ou un serveur qui le propose."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è nelle tue fonti. Aggiungi in Impostazioni › Fonti un add-on, un servizio debrid o un server che lo abbia."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたのソースにありません。「設定 › ソース」で、これがあるアドオン、デブリッドサービス、またはサーバを追加してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소스에 없습니다. 설정 › 소스에서 이 콘텐츠가 있는 애드온, 디브리드 서비스 또는 서버를 추가하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não está nas suas fontes. Adicione em Ajustes › Fontes um complemento, serviço de debrid ou servidor que tenha."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的片源中没有。请在“设置”›“片源”中添加拥有它的附加组件、debrid 服务或服务器。"
           }
         }
       }
@@ -57685,6 +58003,59 @@
         }
       }
     },
+    "Party code": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Party-Code"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código de la fiesta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code de la soirée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice del party"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パーティコード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파티 코드"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código da festa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "派对代码"
+          }
+        }
+      }
+    },
     "Password": {
       "extractionState": "manual",
       "localizations": {
@@ -57893,59 +58264,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "在此粘贴"
-          }
-        }
-      }
-    },
-    "Paste the invite link, or type the code if the party is on your Bluebox server.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Füge den Einladungslink ein oder gib den Code ein, wenn die Party auf deinem Bluebox-Server ist."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pega el enlace de invitación, o escribe el código si la fiesta está en tu servidor de Bluebox."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collez le lien d’invitation, ou saisissez le code si la soirée est sur votre serveur Bluebox."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Incolla il link d’invito, oppure digita il codice se il party è sul tuo server Bluebox."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "招待リンクを貼り付けるか、パーティが自分のBlueboxサーバ上にあればコードを入力してください。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "초대 링크를 붙여 넣거나, 파티가 내 Bluebox 서버에 있다면 코드를 입력하세요."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cole o link do convite, ou digite o código se a festa estiver no seu servidor Bluebox."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "粘贴邀请链接；如果派对在你的 Bluebox 服务器上，也可以输入代码。"
           }
         }
       }
@@ -84886,112 +85204,6 @@
         }
       }
     },
-    "That invite doesn't work": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diese Einladung funktioniert nicht"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Esa invitación no funciona"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cette invitation ne fonctionne pas"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quell’invito non funziona"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "その招待は使えません"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "그 초대는 작동하지 않음"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Esse convite não funciona"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "该邀请无效"
-          }
-        }
-      }
-    },
-    "That isn't a party code or invite link.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Das ist kein Party-Code und kein Einladungslink."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eso no es un código de fiesta ni un enlace de invitación."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ce n’est ni un code de soirée ni un lien d’invitation."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non è un codice di party né un link d’invito."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "パーティのコードでも招待リンクでもありません。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "파티 코드나 초대 링크가 아닙니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Isso não é um código de festa nem um link de convite."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这不是派对代码或邀请链接。"
-          }
-        }
-      }
-    },
     "That isn't a valid URL.": {
       "extractionState": "manual",
       "localizations": {
@@ -85734,6 +85946,59 @@
         }
       }
     },
+    "The host": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Gastgeber"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El anfitrión"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’hôte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’host"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホスト"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O anfitrião"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主持人"
+          }
+        }
+      }
+    },
     "The link didn't work": {
       "extractionState": "manual",
       "localizations": {
@@ -85893,6 +86158,59 @@
         }
       }
     },
+    "The link opens a page that lets friends join in Bluebox, or get it first. Friends on your server can type the code in File › Join a Party….": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Link öffnet eine Seite, über die Freunde in Bluebox beitreten oder es zuerst laden können. Freunde auf deinem Server können den Code unter Ablage › Einer Party beitreten … eingeben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El enlace abre una página desde la que tus amigos pueden unirse en Bluebox o descargarlo antes. Quien use tu servidor puede escribir el código en Archivo › Unirse a una fiesta…."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le lien ouvre une page qui permet de rejoindre la soirée dans Bluebox, ou de l’installer d’abord. Les amis sur votre serveur peuvent saisir le code dans Fichier › Rejoindre une soirée…."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il link apre una pagina da cui gli amici possono unirsi in Bluebox o scaricarlo prima. Chi usa il tuo server può digitare il codice in File › Unisciti a un party…."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リンクを開くと、Bluebox で参加したり、先に入手したりできるページが表示されます。同じサーバの友達は「ファイル › パーティに参加…」でコードを入力できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "링크를 열면 Bluebox에서 참여하거나 먼저 설치할 수 있는 페이지가 나타납니다. 같은 서버의 친구는 파일 › 파티 참여…에서 코드를 입력할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O link abre uma página onde os amigos podem entrar pelo Bluebox ou baixá-lo antes. Quem usa o seu servidor pode digitar o código em Arquivo › Entrar em uma festa…."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "链接会打开一个页面，朋友可以在 Bluebox 中加入，或先下载 Bluebox。使用你服务器的朋友可以在“文件”›“加入派对…”中输入代码。"
+          }
+        }
+      }
+    },
     "The metrics file keeps up to about 10 MB, then starts over.": {
       "extractionState": "manual",
       "localizations": {
@@ -86048,6 +86366,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "派对已结束"
+          }
+        }
+      }
+    },
+    "The party's server isn't answering": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server der Party antwortet nicht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El servidor de la fiesta no responde"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le serveur de la soirée ne répond pas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il server del party non risponde"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パーティのサーバが応答しません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파티 서버가 응답하지 않음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O servidor da festa não está respondendo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "派对的服务器没有响应"
           }
         }
       }
@@ -88380,6 +88751,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "此页面需要联网。"
+          }
+        }
+      }
+    },
+    "This party has ended": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Party ist vorbei"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta fiesta ha terminado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette soirée est terminée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo party è finito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このパーティは終了しました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 파티는 끝났습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta festa acabou"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此派对已结束"
           }
         }
       }
@@ -93101,6 +93525,59 @@
         }
       }
     },
+    "Type the code, or paste the invite link.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib den Code ein oder füge den Einladungslink ein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe el código o pega el enlace de invitación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez le code ou collez le lien d’invitation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digita il codice o incolla il link d’invito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードを入力するか、招待リンクをペーストしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "코드를 입력하거나 초대 링크를 붙여넣으세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite o código ou cole o link do convite."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入代码，或粘贴邀请链接。"
+          }
+        }
+      }
+    },
     "UP NEXT IN THE PARTY": {
       "extractionState": "manual",
       "localizations": {
@@ -93475,6 +93952,59 @@
     "Under Blue Ice": {
       "extractionState": "manual",
       "localizations": {}
+    },
+    "Under way": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En curso"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En cours"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In corso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "進行中"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진행 중"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em andamento"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
+          }
+        }
+      }
     },
     "Undo": {
       "extractionState": "manual",
@@ -94748,55 +95278,55 @@
         }
       }
     },
-    "Use My Profile Name": {
+    "Use My Profile": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Meinen Profilnamen verwenden"
+            "value": "Mein Profil verwenden"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usar el nombre de mi perfil"
+            "value": "Usar mi perfil"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Utiliser le nom de mon profil"
+            "value": "Utiliser mon profil"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usa il nome del mio profilo"
+            "value": "Usa il mio profilo"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "プロファイル名を使う"
+            "value": "自分のプロフィールを使用"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "내 프로필 이름 사용"
+            "value": "내 프로필 사용"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usar o nome do meu perfil"
+            "value": "Usar meu perfil"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用我的个人资料名称"
+            "value": "使用我的个人资料"
           }
         }
       }
@@ -96334,6 +96864,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "提高音量"
+          }
+        }
+      }
+    },
+    "WATCH PARTY": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WATCH PARTY"
           }
         }
       }
@@ -99465,6 +100048,59 @@
         }
       }
     },
+    "You'll join at the same moment as everyone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du steigst im selben Moment ein wie alle anderen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te unirás en el mismo momento que todos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous rejoindrez au même moment que tout le monde."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrerai nello stesso momento di tutti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "みんなと同じ場面から参加します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모두와 같은 장면에서 참여합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você vai entrar no mesmo momento que todos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你会和大家在同一时刻加入。"
+          }
+        }
+      }
+    },
     "You'll sign in with this on your other devices. No email needed.": {
       "extractionState": "manual",
       "localizations": {
@@ -99514,6 +100150,165 @@
           "stringUnit": {
             "state": "translated",
             "value": "你将在其他设备上使用此信息登录。无需电子邮件。"
+          }
+        }
+      }
+    },
+    "You're in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du bist dabei."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya estás dentro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous y êtes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sei dentro."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参加しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여했습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você está dentro."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你已加入。"
+          }
+        }
+      }
+    },
+    "You're in. Opening…": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du bist dabei. Wird geöffnet …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya estás dentro. Abriendo…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous y êtes. Ouverture…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sei dentro. Apertura…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参加しました。開いています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여했습니다. 여는 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você está dentro. Abrindo…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你已加入。正在打开…"
+          }
+        }
+      }
+    },
+    "You're invited": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du bist eingeladen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te han invitado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous êtes invité"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sei invitato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "招待されています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "초대받았습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você foi convidado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你受到了邀请"
           }
         }
       }

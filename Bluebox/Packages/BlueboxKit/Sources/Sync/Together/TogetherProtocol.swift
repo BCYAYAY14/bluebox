@@ -246,6 +246,10 @@ public enum TogetherMessage: Hashable, Sendable {
     case countdown(TogetherCountdown)
     /// What plays next, for everyone; a cancelled or started one is resent with its state.
     case upNext(TogetherUpNext)
+    /// Someone looking at an invite before joining (`TogetherPeek`): everyone
+    /// answers as they would a hello, but the asker isn't counted as here.
+    /// Older versions can't read it and stay quiet, so the invite falls back to the link's details.
+    case peek(from: String)
 }
 
 extension TogetherMessage: Codable {
@@ -275,6 +279,7 @@ extension TogetherMessage: Codable {
         case "settings": self = .settings(try c.decode(TogetherPartySettings.self, forKey: .settings))
         case "countdown": self = .countdown(try c.decode(TogetherCountdown.self, forKey: .countdown))
         case "upNext": self = .upNext(try c.decode(TogetherUpNext.self, forKey: .upNext))
+        case "peek": self = .peek(from: try c.decode(String.self, forKey: .from))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown together message \(other)")
         }
@@ -300,6 +305,7 @@ extension TogetherMessage: Codable {
         case .settings(let s): try c.encode("settings", forKey: .type); try c.encode(s, forKey: .settings)
         case .countdown(let d): try c.encode("countdown", forKey: .type); try c.encode(d, forKey: .countdown)
         case .upNext(let u): try c.encode("upNext", forKey: .type); try c.encode(u, forKey: .upNext)
+        case .peek(let from): try c.encode("peek", forKey: .type); try c.encode(from, forKey: .from)
         }
     }
 
@@ -326,7 +332,8 @@ extension TogetherMessage: Codable {
     public var sender: String {
         switch self {
         case .hello(let p), .presence(let p): p.id
-        case .title(_, let from, _), .state(let from, _), .leave(let from), .typing(let from), .history(_, let from, _, _): from
+        case .title(_, let from, _), .state(let from, _), .leave(let from), .typing(let from), .history(_, let from, _, _),
+             .peek(let from): from
         case .command(let c): c.from
         case .chat(let m): m.from
         case .reaction(let r): r.from
@@ -390,14 +397,66 @@ public struct TogetherInvite: Hashable, Sendable {
         return c.url!
     }
 
+    /// The join page on Bluebox's GitHub Pages, which every chat app makes
+    /// tappable: https://bcyayay14.github.io/bluebox/party.html#K7QM2XDP&p=<host>&k=<key>.
+    /// The page shows the invitation with Open in Bluebox (`url`) and Get Bluebox.
+    /// Everything after the # stays in the browser, so GitHub never sees the server or key.
+    public var webURL: URL { webURL() }
+
+    /// The join page's link, with who's inviting and what's on for the page to
+    /// say ("Sam invited you to watch Dune"); the app ignores them.
+    public func webURL(from inviter: String? = nil, watching title: String? = nil) -> URL {
+        var c = URLComponents()
+        c.scheme = "https"; c.host = Self.webHost; c.path = Self.webPath
+        let fields: [(String, String?)] = [("p", projectURL.host() ?? projectURL.absoluteString), ("k", publishableKey),
+                                           ("n", inviter.map { String($0.prefix(40)) }), ("t", title.map { String($0.prefix(120)) })]
+        // & = + # are encoded inside a value (URLComponents would leave them), so "Tom & Jerry" can't add a field.
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&=+#")
+        let query = fields.compactMap { name, value -> String? in
+            guard let value, !value.isEmpty, let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+            return name + "=" + encoded
+        }
+        c.percentEncodedFragment = ([code.value] + query).joined(separator: "&")
+        return c.url!
+    }
+
+    static let webHost = "bcyayay14.github.io"
+    static let webPath = "/bluebox/party.html"
+
+    /// Reads a bluebox://party link or the join page's web link.
     public init?(url: URL) {
-        // "together" was the first round's name; its links still open.
-        guard url.scheme == "bluebox", url.host() == "party" || url.host() == "together",
-              let code = TogetherJoinCode(url.lastPathComponent),
-              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+        let code: TogetherJoinCode?, query: String?
+        switch url.scheme?.lowercased() {
+        case "bluebox":
+            // "together" was the first round's name; its links still open.
+            guard url.host() == "party" || url.host() == "together" else { return nil }
+            code = TogetherJoinCode(url.lastPathComponent)
+            query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+        case "https":
+            // The join page, with or without .html (GitHub Pages serves both).
+            guard url.host()?.lowercased() == Self.webHost, url.path == Self.webPath || url.path + ".html" == Self.webPath,
+                  let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedFragment else { return nil }
+            let parts = fragment.split(separator: "&", maxSplits: 1).map(String.init)
+            code = parts.first.flatMap { TogetherJoinCode($0) }
+            query = parts.count > 1 ? parts[1] : nil
+        default:
+            return nil
+        }
+        var q = URLComponents()
+        q.percentEncodedQuery = query
+        let items = q.queryItems ?? []
+        guard let code,
               let host = items.first(where: { $0.name == "p" })?.value, !host.isEmpty, !host.contains("/"),
               let key = items.first(where: { $0.name == "k" })?.value, !key.isEmpty,
               let project = URL(string: "https://\(host)") else { return nil }
         self.init(code: code, projectURL: project, publishableKey: key)
+    }
+
+    /// An invite link anywhere in some pasted text ("Join my Watch Party… https://…").
+    public init?(text: String) {
+        let words = text.split(whereSeparator: { $0.isWhitespace || $0 == "<" || $0 == ">" || $0 == "\"" })
+        guard let invite = words.lazy.compactMap({ URL(string: String($0)).flatMap(TogetherInvite.init(url:)) }).first else { return nil }
+        self = invite
     }
 }

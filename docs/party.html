@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join the Watch Party · Bluebox</title>
+<meta property="og:title" content="You're invited to a Watch Party">
+<meta property="og:description" content="Watch together in Bluebox, in step, with chat and reactions.">
+<meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
+<!-- Watch Party invites from Bluebox's Share Invite… come here, because chat apps
+     make https links tappable and won't do that for bluebox:// ones.
+     party.html#K7QM2XDP&p=<server>&k=<key>[&n=<host>&t=<title>]
+     Everything is after the #, so it stays in the browser: GitHub never sees the server or key.
+     Open in Bluebox hands the same details to the app as bluebox://party/…; without the app,
+     Get Bluebox leads to the download (Mac) or the add page (iPhone and iPad). -->
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#000; color:#fff;
+         font:16px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing:antialiased; }
+  main { max-width:420px; padding:32px 24px; text-align:center; }
+  img { width:96px; height:96px; border-radius:22px; }
+  .eyebrow { margin:18px 0 0; font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#6E9CFF; }
+  h1 { font-size:26px; margin:4px 0 6px; } p { color:#A3A3A3; margin:0 0 22px; }
+  a.b { display:block; width:100%; box-sizing:border-box; margin:10px 0; padding:14px; border-radius:12px; border:0;
+        font:600 16px -apple-system, sans-serif; text-decoration:none; cursor:pointer; }
+  .w { background:#3D7AFF; color:#fff; } .g { background:#1c1c1e; color:#fff; }
+  .small { font-size:13px; color:#A3A3A3; margin-top:18px; } .small a { color:#cfcfcf; }
+  code { display:inline-block; margin-top:6px; padding:6px 12px; border-radius:8px; background:#111; color:#cfcfcf;
+         font:600 15px ui-monospace, Menlo, monospace; letter-spacing:.08em; }
+  .hidden { display:none; }
+</style></head>
+<body><main>
+  <img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt="">
+  <div id="invite">
+    <div class="eyebrow">Watch Party</div>
+    <h1 id="who">You're invited</h1>
+    <p id="what">Open it in Bluebox to see what's on and join.</p>
+    <a class="b w" id="open">Open in Bluebox</a>
+    <a class="b g" id="get">Get Bluebox</a>
+    <div class="small">Bluebox is free and open source. After installing it, come back and tap Open in Bluebox.</div>
+    <div class="small">On the host's Bluebox server? Type the code in Join a Party:<br><code id="code"></code></div>
+    <div class="small"><a id="other"></a></div>
+  </div>
+  <div id="broken" class="hidden">
+    <h1>This invite is incomplete</h1>
+    <p>Part of the link is missing. Ask whoever sent it to share the invite again.</p>
+    <a class="b g" href="https://github.com/BCYAYAY14/bluebox">About Bluebox</a>
+  </div>
+</main>
+<script>
+  const MAC = 'https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg';
+  const IOS = 'add.html';
+  const ALPHABET = /^[ABCDEFGHJKMNPQRSTWXYZ23456789]{8}$/;
+  const raw = location.hash.slice(1);
+  const code = raw.split('&')[0];
+  const params = new URLSearchParams(raw.slice(code.length + 1));
+  const server = params.get('p'), key = params.get('k');
+  const host = (params.get('n') || '').slice(0, 40), title = (params.get('t') || '').slice(0, 120);
+  if (!ALPHABET.test((code || '').toUpperCase()) || !server || server.includes('/') || !key) {
+    document.getElementById('invite').classList.add('hidden');
+    document.getElementById('broken').classList.remove('hidden');
+  } else {
+    const c = code.toUpperCase();
+    document.getElementById('open').href = 'bluebox://party/' + c + '?p=' + encodeURIComponent(server) + '&k=' + encodeURIComponent(key);
+    document.getElementById('code').textContent = c.slice(0, 4) + '-' + c.slice(4);
+    // Names go in as text, never as markup.
+    if (host) document.getElementById('who').textContent = host + ' invited you';
+    if (title) document.getElementById('what').textContent = 'To watch ' + title + ' together. Open it in Bluebox to see who’s there and join.';
+    const touch = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const get = document.getElementById('get'), other = document.getElementById('other');
+    get.textContent = touch ? 'Get Bluebox for iPhone and iPad' : 'Get Bluebox for Mac';
+    get.href = touch ? IOS : MAC;
+    other.textContent = touch ? 'Bluebox for Mac' : 'Bluebox for iPhone and iPad';
+    other.href = touch ? MAC : IOS;
+  }
+</script>
+</body></html>

@@ -174,7 +174,8 @@ public final class TogetherRoom {
         // Removed by the host: nothing they send counts.
         if settings?.removed.contains(from) == true { return }
         let t = now()
-        if case .leave = message {} else { heard[from] = t }
+        // Someone peeking isn't here, so they're never counted as gone either.
+        switch message { case .leave, .peek: break; default: heard[from] = t }
         switch message {
         case .hello(let p):
             guard admits(p.id) else {
@@ -262,6 +263,16 @@ public final class TogetherRoom {
             onCountdown?(d)
         case .upNext(let u):
             receiveUpNext(u)
+        case .peek:
+            // Locked: only the host answers, with who they are and the settings that say so.
+            guard admits(from) else {
+                if let settings, isHost { send(.presence(me)); send(.settings(settings)) }
+                return
+            }
+            send(.presence(me))
+            if let title, let titleOrder { send(.title(title, from: titleOrder.from, seq: titleOrder.seq)) }
+            if let mine = playheads[me.id] { send(.state(from: me.id, mine)) }
+            if let settings, isHost { send(.settings(settings)) }
         }
     }
 
