@@ -264,10 +264,11 @@ struct ProfileEditorPage: View {
             }
             hairline
             row {
-                Toggle("Kids profile", isOn: $isKids)
+                Toggle("Kids Profile", isOn: $isKids)
                     .onChange(of: isKids) { saveIfExisting() }
                     .accessibilityIdentifier("kidsToggle")
             }
+            .settingsRow("Kids Profile")
             if isKids || maturity != .all {
                 hairline
                 row {
@@ -293,10 +294,11 @@ struct ProfileEditorPage: View {
                 }
                 .buttonStyle(SettingsRowPressStyle())
                 .accessibilityIdentifier("profileLockRow")
+                .settingsRow("Profile Lock")
                 hairline
                 NavigationLink { ProfileLanguagesPage(profileID: profile.id) } label: {
                     row {
-                        Text("Languages and Playback")
+                        Text(ui: ProfileLanguagesPage.editorTitle)
                         Spacer(minLength: Spacing.m)
                         Text(app.profileSettingsSummary(profile.id)).foregroundStyle(Palette.textSecondary).lineLimit(1)
                         SettingsChevron()
@@ -445,7 +447,11 @@ struct ProfileLockPage: View {
                         }
                         .accessibilityIdentifier("removePIN")
                     } footer: {
-                        Text(error ?? "\(profile.name)\u{2019}s profile asks for this PIN when it's opened on this device. It's kept in the Keychain.")
+                        if let error {
+                            Text(error)
+                        } else {
+                            Text("Opening \(profile.name) on this device asks for this PIN. It's kept in the Keychain.")
+                        }
                     }
                 }
             }

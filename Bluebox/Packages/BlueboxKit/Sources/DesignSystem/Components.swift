@@ -640,18 +640,14 @@ public struct ProfileBadge: View {
     }
 }
 
-/// A round profile badge: colored disc with a symbol.
+/// A profile's avatar at small sizes (chat, faces, Settings' profile card):
+/// the same rounded square as `ProfileBadge`, so a profile looks one way everywhere.
 public struct ProfileAvatar: View {
     let symbol: String
     let color: Int
     let size: CGFloat
     public init(symbol: String, color: Int, size: CGFloat = 28) { self.symbol = symbol; self.color = color; self.size = size }
-    public var body: some View {
-        Circle().fill(Palette.profileColor(color))
-            .frame(width: size, height: size)
-            .overlay(Image(systemName: symbol).font(.system(size: size * 0.46, weight: .semibold)).foregroundStyle(.white))
-            .accessibilityHidden(true)
-    }
+    public var body: some View { ProfileBadge(symbol: symbol, color: color, size: size) }
 }
 
 

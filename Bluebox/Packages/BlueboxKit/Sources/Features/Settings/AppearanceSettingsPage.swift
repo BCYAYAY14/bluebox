@@ -41,7 +41,7 @@ struct AppearanceSettingsPage: View {
                 #endif
             }
             Section {
-                SettingsLink("Language", value: AppLanguage.current.title) { ProfileLanguagesPage() }
+                SettingsPageLink("Language", page: .languages, value: AppLanguage.current.title)
             } footer: {
                 Text("The app's language, and the audio and subtitle languages you prefer.")
             }
@@ -300,7 +300,7 @@ struct AppLanguageSection: View {
                 #endif
             }
         } header: {
-            Text("Bluebox")
+            SettingsScopeHeader("Bluebox", scope: .everyone)
         } footer: {
             if pending {
                 #if os(macOS)

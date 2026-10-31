@@ -156,7 +156,6 @@ struct CollectionView: View {
     @State private var error: String?
     @State private var failedOffline = false
     @State private var overviewExpanded = false
-    @State private var confirmDownload = false
 
     private var name: String { collection?.name ?? ref.name }
     private var released: [Title] { CollectionPlan.released(collection?.parts ?? []) }
@@ -190,21 +189,21 @@ struct CollectionView: View {
         #endif
         .task(id: ref.id) { await load() }
         .reloadsWhenBackOnline(error != nil && collection == nil) { await load() }
-        .confirmationDialog(downloadQuestion, isPresented: $confirmDownload, titleVisibility: .visible) {
-            Button(downloadCount == 1 ? "Download 1 Film" : "Download \(downloadCount) Films") {
-                if let collection { app.downloadCollection(collection) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Downloads continue in the background and you can cancel them from Downloads.")
-        }
     }
 
     private var downloadCount: Int {
         CollectionPlan.toDownload(collection?.parts ?? []) { app.hasLiveDownload($0) }.count
     }
 
-    private var downloadQuestion: String { "Download \(name)?" }
+    /// Download All asks first, in Bluebox's own dialog.
+    private func askDownload() {
+        app.alert = AppAlert(title: "Download \(name)?",
+                             message: String(localized: "Downloads continue in the background and you can cancel them from Downloads."),
+                             actions: [.init(downloadCount == 1 ? String(localized: "Download 1 Film") : "Download \(downloadCount) Films", role: .primary) {
+                                           [app, collection] in if let collection { app.downloadCollection(collection) }
+                                       },
+                                       .init(String(localized: "Cancel"), role: .cancel)])
+    }
 
     private func load() async {
         do {
@@ -255,7 +254,7 @@ struct CollectionView: View {
                 .buttonStyle(PlayButtonStyle(fullWidth: true))
                 .disabled(released.isEmpty)
                 .accessibilityIdentifier("collection.playAll")
-                Button { confirmDownload = true } label: {
+                Button { askDownload() } label: {
                     Label("Download All", systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryButtonStyle(fullWidth: true))

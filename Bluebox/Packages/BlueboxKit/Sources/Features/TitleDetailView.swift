@@ -194,9 +194,7 @@ struct TitleDetailView: View {
     /// The show's Download Rules sheet, from the season's ↓ menu.
     @State private var editingRules = false
     /// Delete Season Downloads asks first (it's many files at once).
-    @State private var confirmSeasonDelete: Season?
     /// Download Season waiting on "Download on mobile data?" or a big size.
-    @State private var seasonRequest: SeasonDownloadRequest?
     @State private var playingTrailer: TitleVideo?
     @Environment(\.openSettingsPage) private var openSettingsPage
     @Environment(\.notePlayOrigin) private var notePlayOrigin
@@ -305,33 +303,6 @@ struct TitleDetailView: View {
         }
         #endif
         .successHaptic(model.onList)
-        .confirmationDialog(seasonDeleteTitle, isPresented: Binding(get: { confirmSeasonDelete != nil },
-                                                                    set: { if !$0 { confirmSeasonDelete = nil } }),
-                            titleVisibility: .visible, presenting: confirmSeasonDelete) { season in
-            let downloads = seasonPlan(season).downloads
-            Button("Delete \(downloads.count) Episode\(downloads.count == 1 ? "" : "s")", role: .destructive) {
-                app.deleteDownloads(downloads)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { season in
-            let plan = seasonPlan(season)
-            Text("Frees \(Formatters.bytes(plan.downloadedBytes)) on this device.")
-        }
-        .confirmationDialog(seasonRequest?.title ?? "", isPresented: Binding(get: { seasonRequest != nil },
-                                                                             set: { if !$0 { seasonRequest = nil } }),
-                            titleVisibility: .visible, presenting: seasonRequest) { request in
-            let n = request.episodes.count
-            switch request.check {
-            case .mobileData(_, _, let wifiOnly):
-                Button("Download on Wi‑Fi") { startSeason(request, mobileData: false) }
-                Button(wifiOnly ? "Download Now on Mobile Data" : "Download Now") { startSeason(request, mobileData: true) }
-            default:
-                Button(n == 1 ? "Download 1 Episode" : "Download \(n) Episodes") { startSeason(request, mobileData: nil) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { request in
-            Text(request.message)
-        }
         // On its own view, apart from the release sheet above.
         .background { Color.clear.sheet(item: $playingTrailer) { TrailerSheet(video: $0) } }
     }
@@ -1256,7 +1227,7 @@ struct TitleDetailView: View {
                                               wifiOnly: app.downloadSettings.wifiOnly, freeBytes: app.downloads.freeBytes())
         let request = SeasonDownloadRequest(seriesKey: model.title.key, season: season.number, seasonName: seasonName(season),
                                             seriesName: model.display.name, episodes: episodes, bytes: bytes, check: check)
-        if check == .none { startSeason(request, mobileData: nil) } else { seasonRequest = request }
+        if check == .none { startSeason(request, mobileData: nil) } else { askSeasonDownload(request) }
     }
 
     private func startSeason(_ request: SeasonDownloadRequest, mobileData: Bool?) {
@@ -1266,11 +1237,34 @@ struct TitleDetailView: View {
         }
     }
 
+    /// Mobile data, a big season or not enough room: asks in Bluebox's own dialog first.
+    private func askSeasonDownload(_ request: SeasonDownloadRequest) {
+        let n = request.episodes.count
+        var actions: [AppAlert.Action]
+        switch request.check {
+        case .mobileData(_, _, let wifiOnly):
+            actions = [.init(String(localized: "Download on Wi‑Fi"), role: .primary) { startSeason(request, mobileData: false) },
+                       .init(wifiOnly ? String(localized: "Download Now on Mobile Data") : String(localized: "Download Now"), role: .secondary) {
+                           startSeason(request, mobileData: true)
+                       }]
+        default:
+            actions = [.init(n == 1 ? String(localized: "Download 1 Episode") : "Download \(n) Episodes", role: .primary) {
+                startSeason(request, mobileData: nil)
+            }]
+        }
+        actions.append(.init(String(localized: "Cancel"), role: .cancel))
+        app.alert = AppAlert(title: request.title, message: request.message, actions: actions)
+    }
+
     /// "Delete every download of Season 2?", with what it frees.
-    private var seasonDeleteTitle: String {
-        guard let season = confirmSeasonDelete else { return "" }
+    private func askSeasonDelete(_ season: Season) {
+        let plan = seasonPlan(season)
         let name = season.name.isEmpty ? "Season \(season.number)" : season.name
-        return "Delete every download of \(name)?"
+        let n = plan.downloads.count
+        app.alert = AppAlert(title: "Delete every download of \(name)?",
+                             message: "Frees \(Formatters.bytes(plan.downloadedBytes)) on this device.",
+                             actions: [.init("Delete \(n) Episode\(n == 1 ? "" : "s")", role: .primary) { [app] in app.deleteDownloads(plan.downloads) },
+                                       .init(String(localized: "Cancel"), role: .cancel)])
     }
 
     /// The season ⋯ menu: mark the season watched or unwatched, and delete its downloads.
@@ -1317,7 +1311,7 @@ struct TitleDetailView: View {
                 BlueboxMenuSection {
                     // Many files at once: asks first, like deleting a show on Downloads.
                     BlueboxMenuButton("Delete Season Downloads…", systemImage: "trash", subtitle: deleteSubtitle, role: .destructive) {
-                        confirmSeasonDelete = season
+                        askSeasonDelete(season)
                     }
                 }
             }

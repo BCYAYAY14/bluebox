@@ -22,6 +22,8 @@ struct PlayerView: View {
     let session: PlayerSession
     @StateObject private var pip = PictureInPictureModel()
     @State private var controlsVisible = true
+    /// A hold on Next or Previous Episode opens its menu instead of stepping.
+    @State private var stepGate = QuickActionGate()
     @State private var lastInteraction = Date()
     @State private var scrubFraction: Double?
     @State private var jumping = false
@@ -146,7 +148,7 @@ struct PlayerView: View {
         #if os(iOS)
         .blueboxMenuHost()  // a full-screen cover: menus draw over the video, not under it
         #endif
-        .sheet(isPresented: $jumping) { JumpToTimeSheet(duration: session.snapshot.duration ?? 0) { t in Task { await session.seek(to: t) } } }
+        .sheet(isPresented: $jumping) { JumpToTimeSheet(duration: session.snapshot.duration ?? 0, position: session.displayPosition) { t in Task { await session.seek(to: t) } } }
         // On its own view: one sheet per view (see the tools sheet above).
         .background {
             Color.clear.sheet(item: $releaseRequest) { request in
@@ -628,6 +630,10 @@ struct PlayerView: View {
                     if (ProcessInfo.processInfo.arguments + AppModel.environmentDebugArguments).contains("-player-stats") { statsShown = true }
                     if which == .tracks, page == "style" { openStyle() } else { panel = which }
                 }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-player-jump") {
+                // Screenshots: Jump to Time, once the video plays.
+                Task { try? await Task.sleep(for: .seconds(3)); jumping = true }
             }
             if ProcessInfo.processInfo.arguments.contains("-player-mobile-banner") {
                 // Screenshots: the "Now using mobile data" banner.
@@ -1470,21 +1476,15 @@ struct PlayerView: View {
             }
             PlayerBarButton(symbol: forward ? "forward.end.fill" : "backward.end.fill", label: label,
                             shortcut: target == .chapter ? (forward ? "N" : "P") : target == .episode ? (forward ? "⇧N" : "⇧P") : nil) {
+                guard !stepGate.consumeHold() else { return }
                 stepEpisode(forward: forward)
             }
             .disabled(!enabled)
             .accessibilityIdentifier(forward ? "nextEpisode" : "previousEpisode")
-            .contextMenu {
-                if target == .episode {
-                    if let next = episodes.next {
-                        Button { Task { await session.playNext() } } label: { Label("Play \(next.label)", systemImage: "forward.end.fill") }
-                    }
-                    if let previous = episodes.previous {
-                        Button { play(episode: previous.key) } label: { Label("Play \(previous.label)", systemImage: "backward.end.fill") }
-                    }
-                    Button { toggle(.episodes) } label: { Label("All Episodes", systemImage: "rectangle.stack") }
-                }
-            }
+            .modifier(EpisodeStepMenu(enabled: target == .episode, gate: stepGate, next: episodes.next?.label, previous: episodes.previous?.label,
+                                      playNext: { Task { await session.playNext() } },
+                                      playPrevious: { if let p = episodes.previous { play(episode: p.key) } },
+                                      allEpisodes: { toggle(.episodes) }))
         case .episodes:
             PlayerBarButton(symbol: "rectangle.stack", label: "Episodes", shortcut: "E", isOn: panel == .episodes) { toggle(.episodes) }
                 .disabled(!enabled)
@@ -2182,36 +2182,85 @@ struct SubtitleSearchSheet: View {
     }
 }
 
-/// Seek to a typed time (h:mm:ss, mm:ss or seconds).
+/// Seek to a typed time (h:mm:ss, mm:ss or seconds). The placeholder is where
+/// you are now, so its shape always fits the video, and the footer says why Go
+/// is greyed out rather than leaving it to be guessed.
 struct JumpToTimeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let duration: TimeInterval
+    var position: TimeInterval = 0
     let onJump: (TimeInterval) -> Void
     @State private var text = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
+        let check = Self.check(text, duration: duration)
         NavigationStack {
             Form {
-                TextField("1:23:45", text: $text)
-                    .font(.title2.monospacedDigit())
-                    .onSubmit(jump)
-                    .accessibilityIdentifier("jumpTimeField")
-                if duration > 0 { Text("Length \(Formatters.duration(duration))").foregroundStyle(Palette.textSecondary) }
+                Section {
+                    TextField(Formatters.duration(position), text: $text)
+                        .font(.title2.monospacedDigit())
+                        .focused($focused)
+                        .autocorrectionDisabled()
+                        .onSubmit(jump)
+                        #if os(iOS)
+                        .keyboardType(.numbersAndPunctuation)
+                        #endif
+                        .accessibilityIdentifier("jumpTimeField")
+                } footer: {
+                    footer(check)
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Jump to Time")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Go", action: jump).disabled(Self.parse(text) == nil) }
+                ToolbarItem(placement: .confirmationAction) { Button("Go", action: jump).disabled(check.time == nil) }
             }
         }
-        .frame(minWidth: 320, minHeight: 200)
+        .onAppear { focused = true }
+        .frame(minWidth: 360, minHeight: 220)
         .preferredColorScheme(.dark)
+        #if os(iOS)
+        // One field and a line: a short sheet, not a screen of empty space.
+        .presentationDetents([.height(230)])
+        .presentationDragIndicator(.visible)
+        #endif
+    }
+
+    @ViewBuilder private func footer(_ check: Check) -> some View {
+        switch check {
+        case .empty, .ok:
+            if duration > 0 {
+                Text("Minutes and seconds, or hours, minutes and seconds. It's \(Formatters.duration(duration)) long.")
+            } else {
+                Text("Minutes and seconds, or hours, minutes and seconds.")
+            }
+        case .unreadable:
+            Text("Type a time like \(Formatters.duration(position)).").foregroundStyle(Palette.warning)
+        case .pastEnd:
+            Text("That's after the end, at \(Formatters.duration(duration)).").foregroundStyle(Palette.warning)
+        }
+    }
+
+    enum Check: Equatable {
+        case empty, unreadable, pastEnd, ok(TimeInterval)
+        var time: TimeInterval? { if case .ok(let t) = self { t } else { nil } }
+    }
+
+    static func check(_ text: String, duration: TimeInterval) -> Check {
+        if text.trimmingCharacters(in: .whitespaces).isEmpty { return .empty }
+        guard let t = parse(text) else { return .unreadable }
+        if duration > 0, t > duration { return .pastEnd }
+        return .ok(t)
     }
 
     private func jump() {
-        guard let t = Self.parse(text) else { return }
-        onJump(duration > 0 ? min(t, duration) : t)
+        guard let t = Self.check(text, duration: duration).time else { return }
+        onJump(t)
         dismiss()
     }
 
@@ -2222,3 +2271,26 @@ struct JumpToTimeSheet: View {
     }
 }
 
+/// Next and Previous Episode's menu on a hold or right-click: the episode
+/// either side and All Episodes, in Bluebox's menu over the video.
+private struct EpisodeStepMenu: ViewModifier {
+    let enabled: Bool
+    let gate: QuickActionGate
+    let next: String?
+    let previous: String?
+    let playNext: @MainActor () -> Void
+    let playPrevious: @MainActor () -> Void
+    let allEpisodes: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.blueboxContextMenu(String(localized: "Episodes"), gate: gate) {
+                if let next { BlueboxMenuButton(String(localized: "Play \(next)"), systemImage: "forward.end.fill", action: playNext) }
+                if let previous { BlueboxMenuButton(String(localized: "Play \(previous)"), systemImage: "backward.end.fill", action: playPrevious) }
+                BlueboxMenuButton("All Episodes", systemImage: "rectangle.stack", action: allEpisodes)
+            }
+        } else {
+            content
+        }
+    }
+}

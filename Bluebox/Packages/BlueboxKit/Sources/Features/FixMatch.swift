@@ -152,20 +152,19 @@ extension AppModel {
 // MARK: - Menu
 
 /// Fix Match…, Unmatch and Reset Match for a file's context menu.
-struct FixMatchMenuItems: View {
-    @Environment(AppModel.self) private var app
-    let variant: MediaVariant
-    let fix: () -> Void
-
-    var body: some View {
-        Button("Fix Match…", systemImage: "wand.and.stars", action: fix)
+@MainActor
+enum FixMatchMenu {
+    /// Fix Match…, Unmatch and Reset Match for one file, as Bluebox menu entries.
+    @BlueboxMenuBuilder
+    static func entries(_ variant: MediaVariant, app: AppModel, fix: @escaping @MainActor () -> Void) -> [BlueboxMenuEntry] {
+        BlueboxMenuButton("Fix Match…", systemImage: "wand.and.stars", action: fix)
         if variant.mediaKey != nil {
-            Button("Unmatch", systemImage: "xmark.circle") {
+            BlueboxMenuButton("Unmatch", systemImage: "xmark.circle") {
                 app.unmatch([FixMatchFile(variant: variant, parsed: MediaNameParser.parse(filename: variant.displayName))])
             }
         }
         if app.matchOverride(for: variant) != nil {
-            Button("Reset Match", systemImage: "arrow.uturn.backward") { app.resetMatch([variant]) }
+            BlueboxMenuButton("Reset Match", systemImage: "arrow.uturn.backward") { app.resetMatch([variant]) }
         }
     }
 }

@@ -6,6 +6,7 @@ import SwiftUI
 /// Settings › Playback: a live player frame, then the profile's own
 /// autoplay switch, then (for everyone on this device) which player, where
 /// playback starts, the transport controls, the Up Next countdown and sound.
+/// Headers say whose settings each run of sections is (`SettingsScopeHeader`).
 /// The audio language is the profile's too, on Language (`ProfileLanguagesPage`).
 struct PlaybackSettingsPage: View {
     @Environment(AppModel.self) private var app
@@ -25,7 +26,7 @@ struct PlaybackSettingsPage: View {
                 Toggle("Autoplay Next Episode", isOn: $settings.autoplayNextEpisode)
                     .settingsRow("Autoplay Next Episode")
             } header: {
-                Text("Only for \(app.currentProfile.name)")
+                SettingsScopeHeader(scope: .profile(app.currentProfile))
             } footer: {
                 Text(settings.autoplayNextEpisode
                      ? "Up Next counts down, then plays the next episode."
@@ -36,10 +37,17 @@ struct PlaybackSettingsPage: View {
                 SettingsPicker("Player", selection: $settings.enginePreference,
                                options: AppSettings.EnginePreference.allCases.map { .init($0.title, value: $0) })
                     .settingsRow("Player")
+                Toggle("Preview Thumbnails While Scrubbing", isOn: $settings.scrubThumbnails)
+                    .settingsRow("Preview Thumbnails While Scrubbing")
+                Toggle("Handoff", isOn: $settings.handoff)
+                    .settingsRow("Handoff")
+                Toggle("Show Party Messages Over the Video", isOn: $partyBubbles)
+                    .settingsRow("Show Party Messages Over the Video")
             } header: {
-                Text("Player")
+                SettingsScopeHeader("Player", scope: .everyone)
             } footer: {
                 Text(engineFooter)
+                Text("Handoff offers what's playing to your other Apple devices, to pick up where you are. In a Watch Party, while the chat is closed, the last two messages show over the film for a few seconds.")
             }
 
             Section {
@@ -95,21 +103,15 @@ struct PlaybackSettingsPage: View {
                                      footer: "Skip Intro and Skip Credits don't appear for these. Swipe to remove one, or turn skipping back on from the player.")
                 }
                 .settingsRow("Shows with Skipping Off")
-            } header: {
-                Text("Skipping")
-            } footer: {
-                Text("Show Button offers Skip Intro and Next Episode; Automatic skips without asking. Automatic credits move on to the next episode only when the profile's Autoplay is on. Always Skipping lists the shows you chose \u{201C}Always for this show\u{201D} for; they skip without asking, whatever these say.")
-            }
-
-            Section {
                 SettingsLink("Shows Ignoring Community Times", value: countLabel(settings.crowdSkipDisabledShows.count)) {
                     SkipShowListPage(title: "Ignoring Community Times", keys: $settings.crowdSkipDisabledShows,
                                      footer: "These shows only skip using the file's own chapters. Swipe to remove one and use community times again.")
                 }
                 .settingsRow("Community Intro Timestamps")
             } header: {
-                Text("Community Intro Timestamps")
+                Text("Skipping")
             } footer: {
+                Text("Show Button offers Skip Intro and Next Episode; Automatic skips without asking. Automatic credits move on to the next episode only when the profile's Autoplay is on. Always Skipping lists the shows you chose \u{201C}Always for this show\u{201D} for; they skip without asking, whatever these say.")
                 Text("Intro and credits times shared on TheIntroDB and IntroDB fill in when a file has no chapters. Mark a wrong time from the player.")
             }
 
@@ -120,7 +122,7 @@ struct PlaybackSettingsPage: View {
             } header: {
                 Text("Episodes")
             } footer: {
-                Text("How long Up Next counts down before the next episode. Whether it plays on is each profile's choice, in its Playback.")
+                Text("How long Up Next counts down before the next episode. Whether it plays on is each profile's own choice, at the top of this page.")
             }
 
             Section {
@@ -131,7 +133,7 @@ struct PlaybackSettingsPage: View {
             } header: {
                 Text("Audio")
             } footer: {
-                Text("Dialogue Boost lifts speech; Night Mode evens out loud and quiet scenes. You can also change these for each video in the player's Tools. The audio language is each profile's, in Languages.")
+                Text("Dialogue Boost lifts speech; Night Mode evens out loud and quiet scenes. You can also change these for each video in the player's Tools. The audio language is each profile's, on the Language page.")
             }
 
             Section {
@@ -139,38 +141,18 @@ struct PlaybackSettingsPage: View {
                     .padding(.vertical, 6)
                     .settingsRow("Equaliser")
             } header: {
-                Text("Equaliser · \(app.currentProfile.name)")
+                SettingsScopeHeader("Equaliser", scope: .profile(app.currentProfile))
             } footer: {
-                Text("Plays with every video \(app.currentProfile.name) watches, and syncs. Change it while watching in Tools › Sound. HLS streams play without it.")
+                Text("Plays with every video this profile watches, and syncs. Change it while watching in Tools › Sound. HLS streams play without it.")
             }
 
             Section {
                 SettingsPicker("Open Videos In", selection: $settings.openVideosIn, options: openVideosInOptions)
                     .settingsRow("Open Videos In")
             } header: {
-                Text("External Player")
+                SettingsScopeHeader("External Player", scope: .everyone)
             } footer: {
                 Text(externalPlayerFooter)
-            }
-
-            Section {
-                Toggle("Preview Thumbnails While Scrubbing", isOn: $settings.scrubThumbnails)
-                    .settingsRow("Preview Thumbnails While Scrubbing")
-                Toggle("Handoff", isOn: $settings.handoff)
-                    .settingsRow("Handoff")
-            } header: {
-                Text("Player")
-            } footer: {
-                Text("Handoff offers what's playing to your other Apple devices, to pick up where you are.")
-            }
-
-            Section {
-                Toggle("Show Party Messages Over the Video", isOn: $partyBubbles)
-                    .settingsRow("Show Party Messages Over the Video")
-            } header: {
-                Text("Watch Party")
-            } footer: {
-                Text("While the chat is closed, the last two messages show over the film for a few seconds.")
             }
 
             Section {
@@ -195,9 +177,7 @@ struct PlaybackSettingsPage: View {
 
             #if os(iOS)
             Section {
-                SettingsLink("Streaming on Mobile Data", value: settings.mobileData.streaming.title) {
-                    MobileDataSettingsPage()
-                }
+                SettingsPageLink("Streaming on Mobile Data", page: .mobileData, value: settings.mobileData.streaming.title)
                 .settingsRow("Stream over Cellular")
             } header: {
                 Text("Network")

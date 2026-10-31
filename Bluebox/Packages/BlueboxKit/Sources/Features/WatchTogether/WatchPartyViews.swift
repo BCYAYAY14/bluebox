@@ -278,9 +278,11 @@ private struct PartyMessageRow: View {
             }
         }
         .onHover { hovering = $0 }
-        .contextMenu {
-            Button("Reply") { party.replyingTo = message }
-            ForEach(TogetherReaction.quick, id: \.self) { e in Button("React \(e)") { party.react(e, to: message) } }
+        .blueboxContextMenu(mine ? String(localized: "Your Message") : message.name) {
+            BlueboxMenuButton("Reply", systemImage: "arrowshape.turn.up.left") { party.replyingTo = message }
+            BlueboxMenuSection(String(localized: "React")) {
+                for e in TogetherReaction.quick { BlueboxMenuButton(e) { party.react(e, to: message) } }
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Reply") { party.replyingTo = message }
@@ -311,7 +313,8 @@ struct PartyFaces: View {
         HStack(spacing: -size * 0.3) {
             ForEach(people.prefix(5)) { p in
                 ProfileAvatar(symbol: p.symbol, color: p.color, size: size)
-                    .overlay(Circle().strokeBorder(Color.black, lineWidth: 1.5))
+                    // A ring of the background between overlapping faces.
+                    .overlay(RoundedRectangle(cornerRadius: size * 0.2, style: .continuous).strokeBorder(Palette.background, lineWidth: 1.5))
                     .opacity(p.away ? 0.45 : 1)
             }
         }
@@ -423,8 +426,8 @@ struct PartyOverlay: View {
                 PartyStatusCard(text: "Finding your copy of \(name)…")
             }
         }
-        .animation(reduceMotion ? nil : .snappy, value: party.bubbles)
-        .animation(reduceMotion ? nil : .snappy, value: party.away)
+        .animation(Motion.snappy(reduceMotion), value: party.bubbles)
+        .animation(Motion.snappy(reduceMotion), value: party.away)
     }
 
     private var floats: some View {
@@ -507,6 +510,7 @@ struct PartyStatusCard: View {
 
 /// Before it starts: who's ready, the code, and the host's Start · 3, 2, 1.
 struct PartyLobby: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var app
     let party: WatchParty
     @State private var inviteOpen = false
@@ -518,7 +522,7 @@ struct PartyLobby: View {
                 Text("\(n)")
                     .font(.system(size: 120, weight: .black, design: .rounded))
                     .contentTransition(.numericText(countsDown: true))
-                    .animation(.snappy, value: n)
+                    .animation(Motion.snappy(reduceMotion), value: n)
                     .accessibilityLabel("Starting in \(n)")
             } else {
                 card
@@ -590,6 +594,7 @@ struct PartyLobby: View {
 /// The episode ended: the next one for everyone in ten seconds (anyone can
 /// cancel), and the party's queue under it.
 struct PartyUpNextCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let party: WatchParty
     let next: TogetherUpNext
 
@@ -597,7 +602,7 @@ struct PartyUpNextCard: View {
         VStack(spacing: Spacing.s) {
             if let n = party.upNextRemaining {
                 Text("\(n)").font(.system(size: 44, weight: .black, design: .rounded)).monospacedDigit()
-                    .contentTransition(.numericText(countsDown: true)).animation(.snappy, value: n)
+                    .contentTransition(.numericText(countsDown: true)).animation(Motion.snappy(reduceMotion), value: n)
             } else {
                 ProgressView().controlSize(.small).tint(Palette.brandBright)
             }
@@ -695,58 +700,77 @@ struct PartyJoinSheet: View {
 
     var body: some View {
         let profile = app.currentProfile
-        VStack(spacing: Spacing.l) {
-            VStack(spacing: 4) {
-                Text(request.invite == nil ? "Join a Party" : "Join the Watch Party").font(.title3.weight(.bold))
-                Text(request.invite.map { "Code \($0.code.description) · on \($0.projectURL.host() ?? "a Bluebox server")" }
-                     ?? "Paste the invite link, or type the code if the party is on your Bluebox server.")
-                    .font(.callout).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
-            }
-            if request.invite == nil {
-                TextField("K7QM-2XDP or bluebox://party/…", text: $typed)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.characters)
-                    #endif
-                    .accessibilityIdentifier("partyCode")
-                if !typed.isEmpty, invite == nil {
-                    Text(TogetherJoinCode(typed) != nil ? "A code works only with a Bluebox server set up in Settings › Account & Sync. Ask for the link instead."
-                                                        : "That isn't a party code or invite link.")
-                        .font(.caption).foregroundStyle(Palette.warning).multilineTextAlignment(.center)
-                }
-            }
-            HStack(spacing: Spacing.s) {
-                ProfileAvatar(symbol: profile.symbol, color: profile.color, size: 30)
-                if changingName {
-                    TextField("Name for this party", text: $name).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
-                } else {
-                    Text(profile.name).font(.headline)
-                    Button("Change for this party") { name = profile.name; changingName = true }
-                        .buttonStyle(.plain).font(.caption).foregroundStyle(Palette.brandBright)
-                }
-            }
-            HStack(spacing: Spacing.s) {
-                Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle())
-                Button {
-                    guard let invite else { return }
-                    joining = true
-                    Task {
-                        await app.joinParty(invite, as: changingName ? name : nil)
-                        dismiss()
+        // The app's usual form sheet (as Add Plex Server and Fix Match are), not a card drawn inside a sheet.
+        NavigationStack {
+            Form {
+                if let opened = request.invite {
+                    Section {
+                        LabeledContent("Code", value: opened.code.description)
+                        LabeledContent("Server", value: opened.projectURL.host() ?? String(localized: "A Bluebox server"))
                     }
-                } label: {
-                    if joining { ProgressView().controlSize(.small) } else { Text("Join") }
+                } else {
+                    Section {
+                        TextField("Code or Invite Link", text: $typed)
+                            .autocorrectionDisabled()
+                            #if os(iOS)
+                            .textInputAutocapitalization(.characters)
+                            #endif
+                            .accessibilityIdentifier("partyCode")
+                    } footer: {
+                        if !typed.isEmpty, invite == nil {
+                            Text(TogetherJoinCode(typed) != nil ? "A code works only with a Bluebox server set up in Settings › Account & Sync. Ask for the link instead."
+                                                                : "That isn't a party code or invite link.")
+                                .foregroundStyle(Palette.warning)
+                        } else {
+                            Text("Paste the invite link, or type the code if the party is on your Bluebox server.")
+                        }
+                    }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(invite == nil || joining)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("partyJoin")
+                Section {
+                    HStack(spacing: Spacing.m) {
+                        ProfileAvatar(symbol: profile.symbol, color: profile.color, size: 30)
+                        if changingName {
+                            TextField("Name for this party", text: $name)
+                        } else {
+                            Text(verbatim: profile.name)
+                        }
+                    }
+                    Button(changingName ? "Use My Profile Name" : "Change for this party") {
+                        if changingName { changingName = false } else { name = profile.name; changingName = true }
+                    }
+                } header: {
+                    Text("Join As")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(request.invite == nil ? "Join a Party" : "Join the Watch Party")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        guard let invite else { return }
+                        joining = true
+                        Task {
+                            await app.joinParty(invite, as: changingName ? name : nil)
+                            dismiss()
+                        }
+                    } label: {
+                        if joining { ProgressView().controlSize(.small) } else { Text("Join") }
+                    }
+                    .disabled(invite == nil || joining)
+                    .accessibilityIdentifier("partyJoin")
+                }
             }
         }
-        .padding(Spacing.xl)
-        .frame(minWidth: 360)
-        .presentationDetents([.medium])
+        .frame(minWidth: 380, minHeight: 320)
+        .preferredColorScheme(.dark)
+        #if os(iOS)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
     }
 }
 
@@ -785,16 +809,17 @@ struct PartyJoiningBanner: View {
 /// party has no player open yet.
 struct PartyHost: ViewModifier {
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         @Bindable var app = app
         content
             .overlay(alignment: .bottom) {
                 if let party = app.party, app.activePlayer == nil {
-                    PartyJoiningBanner(party: party).transition(.move(edge: .bottom).combined(with: .opacity))
+                    PartyJoiningBanner(party: party).transition(Motion.slide(from: .bottom, reduceMotion))
                 }
             }
-            .animation(.snappy, value: app.party == nil || app.activePlayer != nil)
+            .animation(Motion.snappy(reduceMotion), value: app.party == nil || app.activePlayer != nil)
             .sheet(item: $app.partyJoin) { request in PartyJoinSheet(request: request).environment(app) }
     }
 }

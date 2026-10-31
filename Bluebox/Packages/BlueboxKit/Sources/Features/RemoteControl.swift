@@ -475,6 +475,20 @@ public final class RemoteControl {
         send(.seek(seconds))
     }
 
+    /// A device picked in the Play On menu: it becomes the one controlled, and the
+    /// remote opens on it straight away, so an idle Mac can be browsed without
+    /// playing something first. This iPhone (nil) only stops playing elsewhere.
+    public func choose(_ deviceID: String?) {
+        target = deviceID
+        if deviceID != nil { presentRequest += 1 }
+    }
+
+    /// Open Remote: the remote for the chosen device, or the only one there is.
+    public func openRemote() {
+        guard controlled != nil else { return }
+        presentRequest += 1
+    }
+
     /// "Play on" another device: Play there instead of here, and open the remote. False when nothing's chosen.
     public func playOnTarget(_ play: RemotePlay) -> Bool {
         guard let target, devices.contains(where: { $0.id == target && $0.version >= 3 }) else { return false }

@@ -121,10 +121,10 @@ struct DownloadQueueRow: View {
                         EmptyView()
                     }
                 }
-                .contextMenu { DownloadActions.contextMenu(record, app: app) }
                 .blueboxMenu(isPresented: $menuOpen, title: record.title) {
                     DownloadActions.menu(record, app: app, details: DownloadRowModel(record: record, stats: manager.liveStats(id), wait: nil).speedLine)
                 }
+                .opensMenuOnHold($menuOpen)
                 .accessibilityElement(children: .combine)
                 .accessibilityAction(named: "Delete") { app.deleteDownloadWithUndo(record) }
         }

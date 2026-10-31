@@ -2,6 +2,26 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.1 (31 October 2026)
+
+### Settings
+- A link to another page, like Language on Appearance, now opens that page properly: the Mac's sidebar moves to it, and on iPhone the back button comes back.
+- The Appearance preview shows the app icon on the Mac.
+- Every live preview uses the same sunset scene.
+- On Subtitles, each site keeps its key, sign-in and switches together. OpenSubtitles, Subdl and debrid keys all save the same way, and the debrid key no longer saves on every keystroke.
+- Each section says whose settings it holds, the same way on every page: only for you, or everyone on this device.
+- Clearer wording throughout, merged duplicate sections, and every setting appears in one place and in search.
+
+### Menus and sheets
+- Right-click or touch and hold now opens Bluebox's own menu everywhere: downloads (with Show Episodes for a show), the debrid library, local files, recent searches, saved subtitle looks, the release list on the Mac, party chat and the player's Next Episode button.
+- Jump to Time is a short sheet whose example fits the video, and it says why Go is greyed out.
+- Join a Party is a standard form, with Cancel and Join at the top.
+- Deleting downloads, a season or a list, and downloading a whole collection, ask in Bluebox's own dialog.
+- Profile pictures are the same shape everywhere, and Search's filter chips show a choice in the theme colour.
+
+### Remote control
+- Picking your Mac in the iPhone's Play On menu opens the remote straight away, even when nothing is playing, and the menu has Open Remote.
+
 ## 1.2.0 (31 October 2026)
 
 ### Watch Party

@@ -68,11 +68,10 @@ struct PanelSegmentsWithMore<Value: Hashable>: View {
             ForEach(shown, id: \.1) { title, value in
                 segment(title, on: value == selection) { selection = value }
             }
-            Menu {
-                ForEach(more, id: \.1) { title, value in
-                    Button { selection = value } label: {
-                        if value == selection { Label(title, systemImage: "checkmark") } else { Text(ui: title) }
-                    }
+            // Bluebox's own menu, as everywhere else in the player.
+            BlueboxMenu(String(localized: "More")) {
+                for (title, value) in more {
+                    BlueboxMenuButton(title, checked: value == selection) { selection = value }
                 }
             } label: {
                 HStack(spacing: 3) {
@@ -86,7 +85,6 @@ struct PanelSegmentsWithMore<Value: Hashable>: View {
                 .background(picked != nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .contentShape(Rectangle())
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
             .accessibilityLabel(picked.map { "\($0.0), more choices" } ?? "More choices")
         }
         .padding(2)

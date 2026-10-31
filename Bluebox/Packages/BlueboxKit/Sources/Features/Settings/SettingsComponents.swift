@@ -1,4 +1,5 @@
 import DesignSystem
+import Domain
 import SwiftUI
 
 // Settings' look: Netflix's account pages on Bluebox's OLED-black finish.
@@ -378,6 +379,96 @@ struct SettingsLink<Destination: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SettingsRowPressStyle())
+    }
+}
+
+/// Opens another page of Settings, as choosing it in the sidebar would: iPad
+/// and Mac switch the sidebar's selection, iPhone pushes the page. Set by
+/// `SettingsView`; elsewhere (a page drawn on its own) it does nothing.
+struct SelectSettingsPageAction {
+    let action: @MainActor @Sendable (SettingsPage) -> Void
+    @MainActor func callAsFunction(_ page: SettingsPage) { action(page) }
+}
+
+extension EnvironmentValues {
+    @Entry var selectSettingsPage = SelectSettingsPageAction { _ in }
+}
+
+/// A row that opens another sidebar page ("Language" on Appearance): looks
+/// like `SettingsLink`, but goes there through `selectSettingsPage` rather
+/// than pushing a copy of the page inside this one, so the sidebar, the
+/// page's title and its back button stay right.
+struct SettingsPageLink: View {
+    let title: String
+    let page: SettingsPage
+    var value: String?
+    @Environment(\.selectSettingsPage) private var select
+
+    init(_ title: String, page: SettingsPage, value: String? = nil) {
+        self.title = title; self.page = page; self.value = value
+    }
+
+    var body: some View {
+        Button { select(page) } label: {
+            HStack(spacing: Spacing.l) {
+                Text(ui: title).foregroundStyle(Palette.textPrimary).layoutPriority(1)
+                Spacer(minLength: 0)
+                if let value {
+                    Text(ui: value).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                }
+                SettingsChevron()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SettingsRowPressStyle())
+    }
+}
+
+/// A section header that also says whose settings the section holds, drawn
+/// the same way on every page: the topic leading, then "Only for Brian" with
+/// the profile's badge, or "Everyone on this Mac". With no topic, the scope
+/// is the whole header (a section that's there only to hold the profile's own switches).
+struct SettingsScopeHeader: View {
+    enum Scope {
+        case profile(Profile)
+        case everyone
+    }
+
+    var title: String?
+    let scope: Scope
+
+    init(_ title: String? = nil, scope: Scope) {
+        self.title = title; self.scope = scope
+    }
+
+    var body: some View {
+        HStack(spacing: Spacing.s) {
+            if let title {
+                Text(ui: title)
+                Spacer(minLength: Spacing.s)
+            }
+            HStack(spacing: 5) {
+                switch scope {
+                case .profile(let profile):
+                    ProfileBadge(symbol: profile.symbol, color: profile.color, size: 14)
+                    Self.onlyFor(profile)
+                case .everyone:
+                    Image(systemName: "person.2.fill").font(.caption2)
+                    Text(ui: SettingsPage.everyoneTitle)
+                }
+            }
+            // The topic reads first; the scope is a quieter tag beside it.
+            .foregroundStyle(title == nil ? Palette.textSecondary : Palette.textTertiary)
+            .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settingsScopeHeader")
+    }
+
+    /// "Only for Brian", or "Only for You" for the profile that's still called "Me"
+    /// (`HomeRowTitles.name`), as whole phrases so each translates on its own.
+    static func onlyFor(_ profile: Profile) -> Text {
+        HomeRowTitles.name(profile) == profile.name ? Text("Only for \(profile.name)") : Text("Only for You")
     }
 }
 

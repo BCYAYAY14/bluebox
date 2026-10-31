@@ -20,6 +20,8 @@ public enum Route: Hashable {
     case castCrew(TitleCredits)
     /// Your debrid cloud (Real-Debrid, Premiumize, TorBox, AllDebrid or Debrid-Link).
     case debridLibrary
+    /// A show's downloaded episodes, from Downloads' Shows shelf.
+    case downloadedShow(seriesKey: MediaKey, title: String, artworkURL: URL?)
     /// "See All" from Home's rows (iPhone, where these aren't tabs).
     case continueWatching
     case myList
@@ -94,6 +96,7 @@ struct RouteDestination: View {
         case .collection(let ref): CollectionView(ref: ref)
         case .castCrew(let credits): CastCrewListView(credits: credits)
         case .debridLibrary: DebridLibraryView()
+        case .downloadedShow(let key, let title, let art): DownloadedShowView(seriesKey: key, title: title, artworkURL: art)
         case .continueWatching: LibraryView(section: .watching, fixed: true)
         case .myList: LibraryView(section: .myList, fixed: true)
         case .list(let id): ListDetailView(id: id)
@@ -927,10 +930,7 @@ struct ProfileMenu: View {
         Button { isPresented.toggle() } label: {
             HStack(spacing: 6) {
                 // Rounded square, like Netflix's profile icons (the picker uses the same shape).
-                RoundedRectangle(cornerRadius: size * 0.2, style: .continuous)
-                    .fill(Palette.profileColor(current.color))
-                    .frame(width: size, height: size)
-                    .overlay(Image(systemName: current.symbol).font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(.white))
+                ProfileBadge(symbol: current.symbol, color: current.color, size: size)
                     .overlay(RoundedRectangle(cornerRadius: size * 0.2, style: .continuous).strokeBorder(.white.opacity(0.15)))
                     // Where the switch animation's avatar lands. Hidden while it flies in.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
@@ -1145,7 +1145,7 @@ struct AppAlertPresenter: ViewModifier {
                         .zIndex(10)
                 }
             }
-            .animation(.easeOut(duration: 0.18), value: shown)
+            .animation(Motion.appear, value: shown)
     }
 }
 

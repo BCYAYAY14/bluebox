@@ -24,22 +24,3 @@ struct ExternalPlayerMenuSection: BlueboxMenuElement {
             + [.note(ExternalPlayer.progressNote)]
     }
 }
-
-/// "Open In" as a submenu of a system context menu.
-struct ExternalPlayerContextMenu: View {
-    let players: [ExternalPlayer]
-    let open: @MainActor (ExternalPlayer) -> Void
-
-    var body: some View {
-        if !players.isEmpty {
-            Menu {
-                ForEach(players) { player in
-                    Button { open(player) } label: { Label(player.name, systemImage: player.symbol) }
-                }
-                Section(ExternalPlayer.progressNote) {}
-            } label: {
-                Label("Open In", systemImage: "arrow.up.forward.app")
-            }
-        }
-    }
-}

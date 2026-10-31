@@ -123,7 +123,7 @@ struct SourcesSettingsPage: View {
                         .settingsRow("Debrid Library")
                 } else {
                     // Not set up: the way to set it up, rather than a disabled row.
-                    SettingsLink("Set Up a Debrid Service") { TorrentsSettingsPage() }
+                    SettingsPageLink("Set Up a Debrid Service", page: .torrents)
                         .settingsRow("Debrid Library")
                 }
             } header: {
@@ -392,7 +392,7 @@ struct AddMediaServerSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("https://media.example.com", text: $server)
+                TextField("Server Address", text: $server)
                     #if os(iOS)
                     .keyboardType(.URL).textInputAutocapitalization(.never)
                     #endif
@@ -406,7 +406,7 @@ struct AddMediaServerSheet: View {
                     .autocorrectionDisabled()
                 SecureField("Password", text: $password).textContentType(.password)
                 if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
-                Text("Bluebox signs in once and keeps only the server's access token, in your Keychain. Use https:// for servers outside your home network.")
+                Text("The server's address, such as https://media.example.com or http://192.168.1.20:8096. Bluebox signs in once and keeps only the server's access token, in your Keychain. Use https:// for servers outside your home network.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
                 Text("What you watch here and on the server's own apps stays in step: watched, unwatched and where you stopped.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
@@ -451,7 +451,7 @@ struct AddWebDAVSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("https://nas.example.com/dav/Movies", text: $server)
+                TextField("Folder Address", text: $server)
                     #if os(iOS)
                     .keyboardType(.URL).textInputAutocapitalization(.never)
                     #endif
@@ -465,7 +465,7 @@ struct AddWebDAVSheet: View {
                     .autocorrectionDisabled()
                 SecureField("Password", text: $password).textContentType(.password)
                 if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
-                Text("A folder of videos on a NAS, Nextcloud or other WebDAV server. Its subfolders are scanned and matched to the catalog by file name. The password is kept in your Keychain. Use https:// for servers outside your home network.")
+                Text("A folder of videos on a NAS, Nextcloud or other WebDAV server, by its address, such as https://nas.example.com/dav/Movies. Its subfolders are scanned and matched to the catalog by file name. The password is kept in your Keychain. Use https:// for servers outside your home network.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
             }
             .formStyle(.grouped)
@@ -507,7 +507,8 @@ struct AddPlexSheet: View {
     @State private var pin: PlexSource.PIN?
     /// Waiting on plex.tv; closing the sheet stops it.
     @State private var signIn: Task<Void, Never>?
-    @State private var error: String?
+    @State private var signInError: String?
+    @State private var connectError: String?
     @State private var working = false
 
     var body: some View {
@@ -523,25 +524,27 @@ struct AddPlexSheet: View {
                             .disabled(working)
                             .accessibilityIdentifier("plexSignInButton")
                     }
+                    // Each error sits with the way in that caused it, like the other sheets' errors.
+                    if let signInError { Text(signInError).font(.footnote).foregroundStyle(Palette.warning) }
                 } footer: {
                     Text("Opens plex.tv in your browser. Bluebox finds your server and keeps only its access token, in your Keychain.")
                 }
                 Section {
-                    TextField("https://plex.example.com:32400", text: $server)
+                    TextField("Server Address", text: $server)
                         #if os(iOS)
                         .keyboardType(.URL).textInputAutocapitalization(.never)
                         #endif
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("plexServerField")
-                    SecureField("X-Plex-Token", text: $token)
+                    SecureField("Token", text: $token)
                     Button(working && pin == nil ? "Connecting…" : "Connect") { Task { await connect() } }
                         .disabled(server.isEmpty || token.isEmpty || working)
+                    if let connectError { Text(connectError).font(.footnote).foregroundStyle(Palette.warning) }
                 } header: {
                     Text("Or Enter the Server")
                 } footer: {
-                    Text("Use https:// for servers outside your home network.")
+                    Text("The address with its port, such as https://plex.example.com:32400 or http://192.168.1.20:32400. Use https:// for servers outside your home network. The token is your X-Plex-Token.")
                 }
-                if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
             }
             .formStyle(.grouped)
             .navigationTitle("Add Plex Server")
@@ -555,29 +558,29 @@ struct AddPlexSheet: View {
     }
 
     private func signInWithPlex() async {
-        working = true; error = nil
+        working = true; signInError = nil; connectError = nil
         defer { working = false; pin = nil }
         do {
             let pin = try await app.startPlexSignIn()
             self.pin = pin
             openURL(pin.authURL)
-            if try await app.finishPlexSignIn(pin) { dismiss() } else { error = "Plex sign-in timed out. Try again." }
+            if try await app.finishPlexSignIn(pin) { dismiss() } else { signInError = "Plex sign-in timed out. Try again." }
         } catch is CancellationError {
         } catch {
-            self.error = UserFacingError.message(for: error)
+            signInError = UserFacingError.message(for: error)
         }
     }
 
     private func connect() async {
-        working = true; error = nil
+        working = true; signInError = nil; connectError = nil
         defer { working = false }
         do {
             try await app.addPlex(server: server, token: token)
             dismiss()
         } catch SourceError.unauthorized {
-            error = "The server didn't accept that token."
+            connectError = "The server didn't accept that token."
         } catch {
-            self.error = UserFacingError.message(for: error)
+            connectError = UserFacingError.message(for: error)
         }
     }
 }

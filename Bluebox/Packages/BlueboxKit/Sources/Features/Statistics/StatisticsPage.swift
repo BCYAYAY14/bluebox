@@ -56,7 +56,10 @@ struct StatisticsPage: View {
             Text("My Bluebox")
                 .font(SettingsMetrics.titleFont)
                 .accessibilityAddTraits(.isHeader)
-            Text("\(HomeRowTitles.name(app.currentProfile) == "You" ? "Your" : "\(app.currentProfile.name)\u{2019}s") viewing, in numbers.")
+            // Whole sentences, so each translates as one: "Me" (not yet renamed) reads as "Your".
+            (HomeRowTitles.name(app.currentProfile) == app.currentProfile.name
+                ? Text("What \(app.currentProfile.name) watches, in numbers.")
+                : Text("Your viewing, in numbers."))
                 .font(.subheadline)
                 .foregroundStyle(Palette.textSecondary)
         }
@@ -65,9 +68,9 @@ struct StatisticsPage: View {
     @ViewBuilder private func content(_ s: WatchStatistics) -> some View {
         YearCard(year: s.year)
         totals(s)
-        if !s.topShows.isEmpty { RankedList(title: "Top Shows", items: s.topShows, unit: { "\($0.count) episode\($0.count == 1 ? "" : "s")" }) }
+        if !s.topShows.isEmpty { RankedList(title: "Top Shows", items: s.topShows, unit: { $0.count == 1 ? String(localized: "1 episode") : String(localized: "\($0.count) episodes") }) }
         if !s.topFilms.isEmpty { RankedList(title: "Top Films", items: s.topFilms, unit: { _ in nil }) }
-        if !s.topGenres.isEmpty { RankedList(title: "Top Genres", items: s.topGenres, unit: { "\($0.count) title\($0.count == 1 ? "" : "s")" }) }
+        if !s.topGenres.isEmpty { RankedList(title: "Top Genres", items: s.topGenres, unit: { $0.count == 1 ? String(localized: "1 title") : String(localized: "\($0.count) titles") }) }
         if let binge = s.longestBinge { bingeCard(binge) }
         rhythmChart(s)
     }

@@ -60,12 +60,12 @@ struct AddonCatalogView: View {
 
     /// The add-on's genres; "All" only when it answers without one.
     private func genrePicker(_ catalog: AddonCatalog) -> some View {
-        Menu {
+        BlueboxMenu(String(localized: "Genre")) {
             if !catalog.genreRequired {
-                Button("All") { genre = nil }
+                BlueboxMenuButton(String(localized: "All"), checked: genre == nil) { genre = nil }
             }
-            ForEach(catalog.genres, id: \.self) { g in
-                Button { genre = g } label: { Text(verbatim: g) }
+            for g in catalog.genres {
+                BlueboxMenuButton(g, checked: genre == g) { genre = g }
             }
         } label: {
             HStack(spacing: 4) {
@@ -78,8 +78,6 @@ struct AddonCatalogView: View {
             }
             .foregroundStyle(Palette.brandBright)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
         .accessibilityLabel("Genre")
     }
 

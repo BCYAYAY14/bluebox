@@ -286,7 +286,7 @@ struct ExternalOpenPresenter: ViewModifier {
                     .zIndex(5)
                 }
             }
-            .animation(.easeOut(duration: 0.18), value: app.externalOpen)
+            .animation(Motion.appear, value: app.externalOpen)
     }
 }
 

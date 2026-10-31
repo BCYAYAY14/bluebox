@@ -13,6 +13,8 @@ public struct DebridLibraryView: View {
     @State private var error: String?
     @State private var isLoading = false
     @State private var fixingMatch: FixMatchRequest?
+    @State private var gate = QuickActionGate()
+    @Environment(\.pushRoute) private var pushRoute
 
     public init() {}
 
@@ -91,7 +93,10 @@ public struct DebridLibraryView: View {
     private func grid(_ groups: [DebridLibraryContents.Group], width: CGFloat, inset: CGFloat) -> some View {
         LazyVGrid(columns: columns(width), alignment: .leading, spacing: Spacing.l) {
             ForEach(groups) { group in
-                NavigationLink(value: Route.title(group.title)) {
+                Button {
+                    guard !gate.consumeHold() else { return }
+                    pushRoute(.title(group.title))
+                } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         ArtworkView(url: app.imageURL(group.title.poster, width: 200), fallbackTitle: group.title.name,
                                     kind: .poster, pixelWidth: 400)
@@ -102,14 +107,14 @@ public struct DebridLibraryView: View {
                 }
                 .buttonStyle(PressableStyle())
                 .accessibilityLabel("\(group.title.name), \(caption(group))")
-                .contextMenu {
+                .blueboxContextMenu(group.title.name, gate: gate) {
                     // Every file under the poster: a wrong show is usually wrong for all its episodes.
-                    Button("Fix Match…", systemImage: "wand.and.stars") {
+                    BlueboxMenuButton("Fix Match…", systemImage: "wand.and.stars") {
                         Task { fixingMatch = await app.fixMatchRequest(for: group.entries) }
                     }
-                    Button("Unmatch", systemImage: "xmark.circle") { Task { await unmatch(group.entries) } }
+                    BlueboxMenuButton("Unmatch", systemImage: "xmark.circle") { Task { await unmatch(group.entries) } }
                     if group.entries.contains(where: { app.matchOverride(for: variant($0)) != nil }) {
-                        Button("Reset Match", systemImage: "arrow.uturn.backward") { app.resetMatch(group.entries.map(variant)) }
+                        BlueboxMenuButton("Reset Match", systemImage: "arrow.uturn.backward") { app.resetMatch(group.entries.map(variant)) }
                     }
                 }
             }
@@ -130,7 +135,10 @@ public struct DebridLibraryView: View {
             Text("Unmatched files").font(Typography.rowTitle).foregroundStyle(Palette.textPrimary)
                 .padding(.bottom, Spacing.s)
             ForEach(entries) { entry in
-                Button { Task { await app.play(entry) } } label: {
+                Button {
+                    guard !gate.consumeHold() else { return }
+                    Task { await app.play(entry) }
+                } label: {
                     HStack(spacing: Spacing.m) {
                         Image(systemName: "play.circle").font(.title2).foregroundStyle(Palette.textPrimary)
                         VStack(alignment: .leading, spacing: 2) {
@@ -144,8 +152,8 @@ public struct DebridLibraryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PressableStyle())
-                .contextMenu {
-                    FixMatchMenuItems(variant: variant(entry)) {
+                .blueboxContextMenu(entry.file.filename, gate: gate) {
+                    FixMatchMenu.entries(variant(entry), app: app) {
                         Task { fixingMatch = await app.fixMatchRequest(for: variant(entry)) }
                     }
                 }

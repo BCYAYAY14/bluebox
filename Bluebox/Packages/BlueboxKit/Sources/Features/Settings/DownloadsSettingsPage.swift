@@ -34,13 +34,14 @@ struct DownloadsSettingsPage: View {
                                options: DownloadSettings.concurrencyChoices.map { .init("\($0)", value: $0) })
                     .settingsRow("Simultaneous Downloads")
                 #if os(iOS)
-                Toggle("Wi‑Fi Only", isOn: download(\.wifiOnly))
-                    .settingsRow("Wi‑Fi Only")
+                // Wi‑Fi Only is set on Mobile Data, with the rest of what may use it.
+                SettingsPageLink("Mobile Data", page: .mobileData,
+                                 value: app.downloadSettings.wifiOnly ? "Wi‑Fi Only" : "Allowed")
                 #endif
             } header: {
                 Text("Downloading")
             } footer: {
-                Text("More at once finishes a queue sooner but splits your bandwidth. With Wi‑Fi Only, downloads wait for Wi‑Fi instead of using mobile data.")
+                Text("More at once finishes a queue sooner but splits your bandwidth.")
             }
 
             let smart = app.downloadSettings.smartDownloads

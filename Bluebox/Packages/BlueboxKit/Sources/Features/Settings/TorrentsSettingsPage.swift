@@ -11,8 +11,9 @@ import TorrentStreaming
 struct TorrentsSettingsPage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.settingsReveal) private var reveal
+    /// A debrid key being typed or pasted; saved with `SettingsKeyField`, then cleared.
     @State private var debridKey = ""
-    @State private var loadedKey = false
+    @State private var savingKey = false
     @State private var health: SourceHealthText?
     @State private var testing = false
     @State private var showsEngine = false
@@ -44,13 +45,9 @@ struct TorrentsSettingsPage: View {
             }
         }
         .task {
-            guard !loadedKey else { return }
-            debridKey = app.debridKey
-            loadedKey = true
             // The plan's days left change daily; read them fresh.
             await app.refreshDebridAccount()
         }
-        .onChange(of: debridKey) { _, new in if loadedKey { app.setDebridKey(new) } }
         // A search hit for an engine setting opens Torrent Engine, which scrolls to it.
         .task(id: reveal?.target?.id) {
             if let target = reveal?.target, target.page == .torrents, target.subpage == TorrentEngineSettingsPage.title,
@@ -96,9 +93,21 @@ struct TorrentsSettingsPage: View {
                            options: DebridProvider.allCases.map { .init($0.title, value: $0) })
                 .settingsRow("Debrid Service")
             if settings.debrid.requiresKey {
-                SecureField("API Key", text: $debridKey, prompt: Text("Paste your \(settings.debrid.title) key"))
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
+                if app.debridKey.isEmpty {
+                    // Saved on Return or as soon as a key is pasted, like every key in Settings.
+                    SettingsKeyField(label: String(localized: "\(settings.debrid.title) API key"), text: $debridKey, working: savingKey, error: nil) {
+                        await saveDebridKey()
+                    }
+                    .settingsRow("Debrid API Key")
+                } else {
+                    // The key isn't checked when it's saved; a plan read with it shows it works.
+                    LabeledContent("API Key", value: app.debridPlanSummary == nil ? "Saved" : "Connected")
+                        .settingsRow("Debrid API Key")
+                    Button("Remove Key", role: .destructive) {
+                        app.setDebridKey("")
+                        Task { await app.refreshDebridAccount() }
+                    }
+                }
                 Toggle("Share Key with Community Add-ons", isOn: setting(\.shareKeyWithCommunityHosts))
                     .settingsRow("Share Key with Community Add-ons")
                 if settings.debrid.canCheckCache {
@@ -180,6 +189,15 @@ struct TorrentsSettingsPage: View {
         case 1, 2: return hidden.map(\.shortTitle).joined(separator: ", ")
         default: return "\(hidden.count) Hidden"
         }
+    }
+
+    private func saveDebridKey() async {
+        guard !savingKey, !debridKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        savingKey = true
+        defer { savingKey = false }
+        app.setDebridKey(debridKey)
+        debridKey = ""
+        await app.refreshDebridAccount()
     }
 
     private func test() async {

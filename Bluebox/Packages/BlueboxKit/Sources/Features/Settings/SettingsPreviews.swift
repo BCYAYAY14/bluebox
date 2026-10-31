@@ -4,11 +4,10 @@ import Subtitles
 import SwiftUI
 
 // The live video frames on the look-and-feel pages (Subtitles, Picture,
-// Playback). A still from the catalogue (a trending backdrop with TMDB, the
-// sample catalogue's generated art without it) with the page's settings drawn
-// over it, so every change shows at once.
+// Playback). A dusk scene drawn in code with the page's settings drawn over
+// it, so every change shows at once.
 
-/// A 16:9 frame with a catalogue still, picture adjustments, and an overlay.
+/// A 16:9 frame with the dusk scene, picture adjustments, and an overlay.
 struct SettingsVideoPreview<Overlay: View>: View {
     var picture = PictureDefaults()
     @ViewBuilder var overlay: (CGSize) -> Overlay
@@ -42,88 +41,23 @@ struct SettingsVideoPreview<Overlay: View>: View {
     }
 }
 
-/// The still: loaded once per launch and shared by every preview.
+/// The still: the painted dusk scene, the same on every page and with or
+/// without a catalogue, so a change is judged against the same frame each time.
 struct SettingsPreviewStill: View {
-    @Environment(AppModel.self) private var app
-    @State private var still: StillChoice? = SettingsPreviewStill.cached
-
-    struct StillChoice: Sendable, Equatable {
-        let name: String
-        let url: URL?
-    }
-
-    @MainActor static var cached: StillChoice?
-
     var body: some View {
         ZStack {
-            if let still, still.url != nil {
-                ArtworkView(url: still.url, fallbackTitle: still.name, kind: .backdrop, pixelWidth: 1280,
-                            showsFallbackTitle: false)
-            } else {
-                // No artwork (sample catalogue, or offline): a painted dusk scene with
-                // enough colour and light for picture changes to show.
-                SettingsPreviewScene()
-            }
+            // Enough colour and light for picture changes to show.
+            SettingsPreviewScene()
             // A dark grade over the lower part, where subtitles and controls sit, so
-            // white text is judged against a frame like a film's, not a bright poster.
+            // white text is judged against a frame like a film's, not a bright sky.
             LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.6), location: 1)],
                            startPoint: .top, endPoint: .bottom)
         }
-        .task {
-            guard still == nil else { return }
-            let choice = await Self.darkestStill(app: app)
-            Self.cached = choice
-            still = choice
-        }
         .accessibilityHidden(true)
-    }
-
-    /// The darkest of the first few trending backdrops, judged on the lower
-    /// part of the frame where subtitles sit. Bright ones (cream poster
-    /// collages are common) lose to the painted scene, which is dark at the bottom.
-    private static func darkestStill(app: AppModel) async -> StillChoice {
-        let titles = (try? await app.metadata.list(.trending, page: 1).items) ?? []
-        var best: (title: Title, luminance: Double)?
-        for t in titles.filter({ $0.backdrop != nil }).prefix(8) {
-            guard let thumb = app.imageURL(t.backdrop, width: 300),
-                  let image = try? await ImagePipeline.shared.image(for: thumb, maxPixelWidth: 64),
-                  let l = lowerLuminance(image) else { continue }
-            if best == nil || l < best!.luminance { best = (t, l) }
-            if l < 0.15 { break }  // dark enough; stop downloading
-        }
-        guard let best, best.luminance < 0.4 else { return StillChoice(name: "Bluebox", url: nil) }
-        return StillChoice(name: best.title.name, url: app.imageURL(best.title.backdrop, width: 1280))
-    }
-
-    /// Mean luminance (0–1) of the bottom 40% of an image, from a 16×9 sample.
-    nonisolated static func lowerLuminance(_ image: CGImage) -> Double? {
-        let w = 16, h = 9
-        var pixels = [UInt8](repeating: 0, count: w * h * 4)
-        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
-            guard let ctx = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            ctx.interpolationQuality = .medium
-            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-            return true
-        }
-        guard drawn else { return nil }
-        // Rows run top to bottom in memory; take the last four (the lower 40%).
-        var total = 0.0
-        var count = 0
-        for y in (h - 4)..<h {
-            for x in 0..<w {
-                let i = (y * w + x) * 4
-                let r = Double(pixels[i]) / 255, g = Double(pixels[i + 1]) / 255, b = Double(pixels[i + 2]) / 255
-                total += 0.2126 * r + 0.7152 * g + 0.0722 * b
-                count += 1
-            }
-        }
-        return count == 0 ? nil : total / Double(count)
     }
 }
 
-/// A dusk over hills and water, drawn in code, for the preview when there's no still.
+/// A dusk over hills and water, drawn in code: every preview's frame.
 struct SettingsPreviewScene: View {
     var body: some View {
         GeometryReader { geo in

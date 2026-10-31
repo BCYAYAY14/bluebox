@@ -33,7 +33,7 @@ struct AlwaysSkipListPage: View {
                         }
                         HStack(spacing: Spacing.s) {
                             ForEach(ShowSkipRules.Part.allCases) { part in
-                                PartChip(title: part.title, isOn: settings.showSkipRules.alwaysSkips(part, show: show)) {
+                                PartChip(part: part, isOn: settings.showSkipRules.alwaysSkips(part, show: show)) {
                                     let on = !settings.showSkipRules.alwaysSkips(part, show: show)
                                     withAnimation(Motion.snappy(reduceMotion)) { settings.showSkipRules.setAlways(on, part, show: show) }
                                 }
@@ -64,7 +64,7 @@ struct AlwaysSkipListPage: View {
 
 /// Intro / Recap / Credits: a filled chip when that part is always skipped.
 private struct PartChip: View {
-    let title: String
+    let part: ShowSkipRules.Part
     let isOn: Bool
     let toggle: () -> Void
 
@@ -72,7 +72,7 @@ private struct PartChip: View {
         Button(action: toggle) {
             HStack(spacing: 4) {
                 if isOn { Image(systemName: "checkmark").font(.caption2.weight(.heavy)) }
-                Text(ui: title).font(.caption.weight(.semibold))
+                Text(ui: part.title).font(.caption.weight(.semibold))
             }
             .foregroundStyle(isOn ? Palette.textPrimary : Palette.textSecondary)
             .padding(.horizontal, 10)
@@ -82,8 +82,17 @@ private struct PartChip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Always skip \(title.lowercased())")
+        .accessibilityLabel(label)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(.isToggle)
+    }
+
+    /// A whole phrase per part, so each translates as one.
+    private var label: Text {
+        switch part {
+        case .intro: Text("Always skip the intro")
+        case .recap: Text("Always skip the recap")
+        case .credits: Text("Always skip the credits")
+        }
     }
 }

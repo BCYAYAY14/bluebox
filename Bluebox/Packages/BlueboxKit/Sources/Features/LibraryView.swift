@@ -58,6 +58,7 @@ struct LibraryView: View {
     @State private var folderProblems: [String] = []
     /// Fix Match for a file in My Sources.
     @State private var fixingMatch: FixMatchRequest?
+    @State private var rowGate = QuickActionGate()
     @State private var listFilter: MyListFilter = .all
     @State private var listSort: MyListSort = .recentlyAdded
     @State private var scrolled = false
@@ -539,6 +540,7 @@ struct LibraryView: View {
                                 .padding(.leading, Spacing.l + SourceItemRow.artWidth + Spacing.m)
                         }
                         SourceItemRow(item: item, posterURL: item.title.flatMap { app.imageURL($0.poster, width: 80) }) {
+                            guard !rowGate.consumeHold() else { return }
                             Task {
                                 let key = item.variant.mediaKey ?? MediaKey(rawValue: "url:\(item.variant.id)")
                                 await app.play(NowPlayingItem(key: key, title: item.title?.name ?? item.variant.displayName,
@@ -546,14 +548,11 @@ struct LibraryView: View {
                                                variant: item.variant)
                             }
                         }
-                        .contextMenu {
-                            // Matched by file name: local folders can be put right by hand.
-                            if item.variant.location == .localFile {
-                                FixMatchMenuItems(variant: item.variant) {
-                                    Task { fixingMatch = await app.fixMatchRequest(for: item.variant) }
-                                }
-                            }
-                        }
+                        // Matched by file name: local folders can be put right by hand.
+                        .modifier(LocalFileMenu(variant: item.variant, title: item.title?.name ?? item.variant.displayName,
+                                                gate: rowGate) {
+                            Task { fixingMatch = await app.fixMatchRequest(for: item.variant) }
+                        })
                     }
                 }
                 .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
@@ -722,6 +721,23 @@ struct SourceItemRow: View {
         .accessibilityAddTraits(supported ? .isButton : [])
         .accessibilityHint(supported ? "Plays it" : "This format can't play on this device")
         .accessibilityAction { if supported { play() } }
+    }
+}
+
+/// Fix Match on a hold or right-click, for files from a local folder (others have no menu).
+private struct LocalFileMenu: ViewModifier {
+    @Environment(AppModel.self) private var app
+    let variant: MediaVariant
+    let title: String
+    let gate: QuickActionGate
+    let fix: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        if variant.location == .localFile {
+            content.blueboxContextMenu(title, gate: gate) { FixMatchMenu.entries(variant, app: app, fix: fix) }
+        } else {
+            content
+        }
     }
 }
 

@@ -295,12 +295,13 @@ struct FilterChipLabel: View {
             Text(ui: title).lineLimit(1)
             if opensMenu { Image(systemName: "chevron.down").font(.system(size: 8, weight: .heavy)) }
         }
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(selected ? Color.black : Palette.textPrimary)
-        .padding(.horizontal, 12)
-        .frame(minHeight: 30)
-        .background(selected ? Color.white : (hovering ? Palette.elevated : Palette.surface), in: Capsule())
-        .overlay(Capsule().strokeBorder(selected ? .clear : Color.white.opacity(0.16), lineWidth: 1))
+        // CategoryChip's look (Library, New & Hot), so a chosen chip reads the same everywhere.
+        .font(.subheadline.weight(selected ? .semibold : .medium))
+        .foregroundStyle(Palette.textPrimary)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 34)
+        .background(selected ? Palette.brand.opacity(0.28) : (hovering ? Palette.glassFill : .clear), in: Capsule())
+        .overlay(Capsule().strokeBorder(selected ? Palette.brandBright.opacity(0.9) : .white.opacity(0.45), lineWidth: 1))
         .contentShape(Capsule())
         .frame(minHeight: 44)
         .fixedSize()

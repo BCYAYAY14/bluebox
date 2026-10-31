@@ -15,8 +15,9 @@ import SwiftUI
 struct SubtitlePresetGrid: View {
     @Binding var style: SubtitleStyle
     var columns = 2
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renaming: SubtitleStyle.SavedLook?
-    @State private var newName = ""
+    @State private var gate = QuickActionGate()
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns), spacing: 6) {
@@ -25,15 +26,25 @@ struct SubtitlePresetGrid: View {
                     .accessibilityIdentifier("subtitlePreset.\(p.rawValue)")
             }
             ForEach(style.savedLooks) { saved in
-                button(saved.name, look: saved.look, selected: style.look == saved.look) { style.look = saved.look }
-                    .contextMenu {
-                        Button("Rename…") { newName = saved.name; renaming = saved }
-                        Button("Update to Current Look") { update(saved.id) { $0.look = style.look } }
-                        Button("Delete", role: .destructive) { style.savedLooks.removeAll { $0.id == saved.id } }
+                button(saved.name, look: saved.look, selected: style.look == saved.look) {
+                    guard !gate.consumeHold() else { return }
+                    style.look = saved.look
+                }
+                // Bluebox's own menu, as on posters, not the system's.
+                .blueboxContextMenu(saved.name, gate: gate) {
+                    BlueboxMenuButton("Rename…", systemImage: "pencil") { renaming = saved }
+                    BlueboxMenuButton("Update to Current Look", systemImage: "arrow.triangle.2.circlepath") {
+                        update(saved.id) { $0.look = style.look }
                     }
+                    BlueboxMenuSection {
+                        BlueboxMenuButton("Delete", systemImage: "trash", role: .destructive) {
+                            style.savedLooks.removeAll { $0.id == saved.id }
+                        }
+                    }
+                }
             }
             if !isSaved {
-                Button { withAnimation(.snappy(duration: 0.2)) { style.saveCurrentLook() } } label: {
+                Button { withAnimation(Motion.snappy(reduceMotion)) { style.saveCurrentLook() } } label: {
                     Label("Save Current", systemImage: "plus")
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: PanelMetrics.control + 4)
@@ -46,14 +57,9 @@ struct SubtitlePresetGrid: View {
                 .help("Keep this look as a preset of your own")
             }
         }
-        .alert("Rename Look", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Rename") {
-                let name = newName.trimmingCharacters(in: .whitespaces)
-                if let id = renaming?.id, !name.isEmpty { update(id) { $0.name = name } }
-                renaming = nil
-            }
-            Button("Cancel", role: .cancel) { renaming = nil }
+        // A small form sheet, as the app's other edits are, not a system alert with a field in it.
+        .sheet(item: $renaming) { saved in
+            RenameLookSheet(name: saved.name) { name in update(saved.id) { $0.name = name } }
         }
     }
 
@@ -83,6 +89,42 @@ struct SubtitlePresetGrid: View {
         .buttonStyle(PanelPressStyle())
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Rename a saved look.
+private struct RenameLookSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var name: String
+    let rename: (String) -> Void
+
+    var body: some View {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name).onSubmit(save)
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Rename Look")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Rename", action: save).disabled(trimmed.isEmpty) }
+            }
+        }
+        .frame(minWidth: 320, minHeight: 160)
+        #if os(iOS)
+        .presentationDetents([.height(200)])
+        #endif
+    }
+
+    private func save() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        rename(trimmed)
+        dismiss()
     }
 }
 
@@ -192,6 +234,7 @@ struct SubtitleLookRows: View {
 /// to Top, Middle and Bottom (anywhere else is a distance from the nearer edge),
 /// with the alignment underneath. The same model as dragging on the video.
 struct SubtitlePositionPad: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var style: SubtitleStyle
     @State private var dragY: Double?
     @State private var candidate: SubtitlePlacement?
@@ -227,7 +270,7 @@ struct SubtitlePositionPad: View {
                         candidate = placement(midY: y)
                     }
                     .onEnded { _ in
-                        if let candidate { withAnimation(.snappy(duration: 0.2)) { style.place(candidate) } }
+                        if let candidate { withAnimation(Motion.snappy(reduceMotion)) { style.place(candidate) } }
                         dragY = nil; candidate = nil
                     })
                 #if os(macOS)
@@ -251,7 +294,7 @@ struct SubtitlePositionPad: View {
             Grid(alignment: .leading, horizontalSpacing: Spacing.s, verticalSpacing: 10) {
                 StyleRow("Alignment") {
                     PanelSegments(selection: Binding(get: { style.alignment }, set: { a in
-                        withAnimation(.snappy(duration: 0.2)) { style.alignment = a; style.horizontalOffset = 0 }
+                        withAnimation(Motion.snappy(reduceMotion)) { style.alignment = a; style.horizontalOffset = 0 }
                     }), options: [("Left", .leading), ("Centre", .center), ("Right", .trailing)])
                 }
             }

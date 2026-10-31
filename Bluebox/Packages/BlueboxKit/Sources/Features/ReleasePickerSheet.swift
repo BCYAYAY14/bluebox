@@ -410,18 +410,18 @@ struct ReleasePickerSheet: View {
         .background(shape.fill(isBest ? Palette.wash : nested ? Palette.chrome : Palette.surface))
         .overlay { shape.strokeBorder(isBest ? Palette.brand : Palette.edge, lineWidth: 1) }
         .padding(.leading, nested ? Spacing.l : 0)
+        // Touch and hold (iOS) or right-click (Mac): the solid Bluebox panel (decision 5), not the system menu.
         #if os(iOS)
-        // Touch and hold: the solid Bluebox panel (decision 5), not the glass system menu.
         .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in
             longPressAt = Date()
             menuRelease = r.id
         })
+        #else
+        .overlay { SecondaryClickCatcher { menuRelease = r.id } }
+        #endif
         .blueboxMenu(isPresented: Binding(get: { menuRelease == r.id }, set: { if !$0, menuRelease == r.id { menuRelease = nil } }),
                      title: "Release") { menuEntries(r, marks: marks) }
         .accessibilityAction(named: "Release Details") { menuRelease = r.id }
-        #else
-        .contextMenu { contextMenu(r, marks: marks) }
-        #endif
         .accessibilityIdentifier(isBest ? "bestRelease" : "release")
         // Row traits last: the List reads them from the outermost view.
         .listRowInsets(EdgeInsets(top: 2, leading: Spacing.l, bottom: 2, trailing: Spacing.l))
@@ -469,20 +469,6 @@ struct ReleasePickerSheet: View {
         if marks.sameGroup { lines.append("Same group as last time") }
         if marks.aboveCap { lines.append("Above your mobile data quality") }
         return lines
-    }
-
-    @ViewBuilder private func contextMenu(_ r: AddonRelease, marks: ReleaseMarks) -> some View {
-        Section(r.fileName) {
-            ForEach(facts(r, marks: marks), id: \.self) { Text($0) }
-        }
-        Button { choose(r) } label: { Label("Play", systemImage: "play.fill") }
-        ExternalPlayerContextMenu(players: app.externalPlayers(for: r)) { chooseExternally(r, in: $0) }
-        if r.isDebrid || app.addonsCanStreamTorrents {
-            Button { Task { await app.download(r, for: downloadItem) } } label: {
-                Label("Download", systemImage: "arrow.down.circle")
-            }
-        }
-        Button { copy(r.fileName) } label: { Label("Copy Name", systemImage: "doc.on.doc") }
     }
 
     private func copy(_ text: String) {

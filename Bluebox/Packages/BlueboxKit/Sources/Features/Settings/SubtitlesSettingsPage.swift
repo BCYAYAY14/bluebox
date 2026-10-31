@@ -4,8 +4,9 @@ import SwiftUI
 
 /// Settings › (profile) › Subtitles: a live frame, then the look and
 /// placement, which are the profile's own, then timing and online search,
-/// which everyone on the device shares. Languages are on the profile's
-/// Languages page. Every change shows on the frame at once.
+/// which everyone on the device shares (the first section of each says so in
+/// its header). Languages are on the Language page. Every change shows on
+/// the frame at once.
 struct SubtitlesSettingsPage: View {
     @Environment(AppModel.self) private var app
     @State private var confirmReset = false
@@ -17,16 +18,11 @@ struct SubtitlesSettingsPage: View {
             SubtitleStylePreview(style: $app.subtitleStyle)
         } content: {
             Section {
-                ProfileOwnerCaption(profile: app.currentProfile,
-                                    note: "The style is only for \(app.currentProfile.name). Timing and online search are for \(SettingsPage.everyoneTitle.lowercased()).")
-            }
-
-            Section {
                 SubtitlePresetGrid(style: $app.subtitleStyle, columns: 3)
                     .padding(.vertical, 4)
                     .settingsRow("Subtitle Style")
             } header: {
-                Text("Presets")
+                SettingsScopeHeader("Presets", scope: .profile(app.currentProfile))
             } footer: {
                 Text("A preset sets the font, size, colour, outline and box. Save Current keeps your own look; right-click or long-press it to rename or delete it.")
             }
@@ -34,13 +30,16 @@ struct SubtitlesSettingsPage: View {
             Section("Font") {
                 SubtitleFontList(style: $app.subtitleStyle)
                     .padding(.vertical, 4)
+                    .settingsRow("Font")
                 SubtitleWeightPicker(style: $app.subtitleStyle)
+                    .settingsRow("Weight")
             }
 
             Section {
                 SubtitleLookRows(style: $app.subtitleStyle)
                     .padding(.vertical, 4)
                 Toggle("Hide Sound Cues", isOn: $app.subtitleStyle.hidesSoundCues)
+                    .settingsRow("Hide Sound Cues")
             } header: {
                 Text("Look")
             } footer: {
@@ -51,6 +50,7 @@ struct SubtitlesSettingsPage: View {
                 SubtitlePositionPad(style: $app.subtitleStyle)
                     .padding(.vertical, 4)
                 Toggle("Move Up for Player Controls", isOn: $app.subtitleStyle.avoidControls)
+                    .settingsRow("Move Up for Player Controls")
                 Button("Reset Style", role: .destructive) { confirmReset = true }
                     .confirmationDialog("Reset subtitle style?", isPresented: $confirmReset, titleVisibility: .visible) {
                         Button("Reset Style", role: .destructive) { resetStyle() }
@@ -68,6 +68,7 @@ struct SubtitlesSettingsPage: View {
                     SettingsSlider("Size", value: $app.subtitleStyle.secondaryScale, in: 0.5...1.2) {
                         "\(Int(($0 * 100).rounded()))%"
                     }
+                    .settingsRow("Second Language Size")
                     SettingsColorRow(title: "Colour", color: $app.subtitleStyle.secondaryColor)
                 } header: {
                     Text("Second Language")
@@ -85,22 +86,17 @@ struct SubtitlesSettingsPage: View {
                     Button("Reset Delay") { settings.defaultSubtitleDelay = 0 }
                 }
             } header: {
-                Text("Timing · Everyone")
+                SettingsScopeHeader("Timing", scope: .everyone)
             } footer: {
                 Text("Positive values show subtitles later. Fine-tune one video in the player with [ and ].")
             }
 
+            // One section per site that needs a key: its key, sign-in and switches together.
             OpenSubtitlesSection()
 
-            SubtitleSitesSection()
+            SubdlSection()
 
-            Section {
-                Toggle("Search Automatically", isOn: $settings.autoSearchSubtitles)
-                    .disabled(!app.hasOpenSubtitlesKey)
-                    .settingsRow("Search Automatically")
-            } footer: {
-                Text(autoSearchFooter)
-            }
+            SubtitleSitesSection()
         }
     }
 
@@ -110,12 +106,6 @@ struct SubtitlesSettingsPage: View {
         fresh.secondaryLanguage = app.subtitleStyle.secondaryLanguage
         fresh.savedLooks = app.subtitleStyle.savedLooks
         app.subtitleStyle = fresh
-    }
-
-    private var autoSearchFooter: String {
-        if !app.hasOpenSubtitlesKey { return "Add an OpenSubtitles API key above to search automatically." }
-        if app.subtitleStyle.preferredLanguage == nil { return "Choose a subtitle language in Languages first; automatic search looks for it." }
-        return "When a video has nothing in your language, Bluebox adds the best match from OpenSubtitles. Each counts toward your daily limit."
     }
 
     private func delayLabel(_ d: Double) -> String {

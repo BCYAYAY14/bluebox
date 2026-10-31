@@ -93,7 +93,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .picture: "Brightness, contrast and saturation every video starts with."
         case .torrents: "Add-ons that find releases, your debrid service, and how releases are picked."
         case .downloads: "Downloading for offline, Smart Downloads, and quality."
-        case .sources: "Your folders, Jellyfin servers, links and torrents."
+        case .sources: "Your folders, media servers (Jellyfin, Emby, Plex), WebDAV folders, links and torrents."
         case .catalog: "Where titles, artwork and ratings come from."
         case .mobileData: "What may use mobile data, and how much it has used."
         case .notifications: "Alerts for new episodes."
@@ -288,6 +288,11 @@ public struct SettingsView: View {
                     .settingsDestinations()
             }
             .id(selection.wrappedValue)  // each page starts at its root
+            // A link to another page ("Language" on Appearance) moves the sidebar there too.
+            .environment(\.selectSettingsPage, SelectSettingsPageAction { page in
+                detailPath = []
+                selection.wrappedValue = page
+            })
         }
         .background(Palette.background.ignoresSafeArea())
     }
@@ -317,7 +322,7 @@ public struct SettingsView: View {
                                         .accessibilityIdentifier("settings.\(page.rawValue)")
                                 }
                             } header: {
-                                Text("Only for \(app.currentProfile.name)")
+                                SettingsScopeHeader.onlyFor(app.currentProfile)
                             }
                             ForEach(SettingsPage.groups, id: \.title) { group in
                                 Section {
@@ -354,6 +359,8 @@ public struct SettingsView: View {
             .toolbarBackground(Palette.background, for: .navigationBar)
             .settingsDestinations(close: { dismiss() })
         }
+        // A link to another page pushes it, so ‹ comes back to the page the link was on.
+        .environment(\.selectSettingsPage, SelectSettingsPageAction { page in path.append(.page(page)) })
     }
     #endif
 }
@@ -391,7 +398,7 @@ struct SettingsSidebar: View {
                         SettingsProfileCard(compact: true)
                             .padding(.horizontal, Spacing.m)
                             .padding(.bottom, Spacing.s)
-                        SidebarGroupHeader(title: "Only for \(profileName)")
+                        SidebarGroupHeader(text: SettingsScopeHeader.onlyFor(app.currentProfile))
                         VStack(spacing: 2) {
                             ForEach(SettingsPage.profileGroup) { page in
                                 SidebarRow(page: page, selected: page == selection) { select(page, nil) }
@@ -400,7 +407,7 @@ struct SettingsSidebar: View {
                         .padding(.bottom, Spacing.m)
                         // Every other group is the same for everyone on this device, under its own heading.
                         ForEach(SettingsPage.groups, id: \.title) { group in
-                            SidebarGroupHeader(title: group.title)
+                            SidebarGroupHeader(text: Text(ui: group.title))
                             VStack(spacing: 2) {
                                 ForEach(group.pages) { page in
                                     SidebarRow(page: page, selected: page == selection) { select(page, nil) }
@@ -421,16 +428,14 @@ struct SettingsSidebar: View {
         .foregroundStyle(Palette.textPrimary)
         .background(Palette.chrome.ignoresSafeArea())
     }
-
-    private var profileName: String { app.currentProfile.name }
 }
 
 /// A group's small grey heading in the sidebar.
 private struct SidebarGroupHeader: View {
-    let title: String
+    let text: Text
 
     var body: some View {
-        Text(ui: title)
+        text
             .font(.caption.weight(.semibold))
             .textCase(.uppercase)
             .tracking(0.5)

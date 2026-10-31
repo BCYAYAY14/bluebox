@@ -352,6 +352,17 @@ private struct BlueboxContextMenu: ViewModifier {
     func body(content view: Content) -> some View {
         view
             .blueboxMenu(isPresented: $open, title: title, content: content)
+            .opensMenuOnHold($open, gate: gate)
+    }
+}
+
+/// Hold (iOS) or right-click (Mac) opens a Bluebox menu the view already has.
+private struct OpensMenuOnHold: ViewModifier {
+    @Binding var open: Bool
+    let gate: QuickActionGate?
+
+    func body(content view: Content) -> some View {
+        view
             #if os(iOS)
             .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                 gate?.held()
@@ -370,6 +381,12 @@ extension View {
     func blueboxContextMenu(_ title: String, gate: QuickActionGate? = nil,
                             @BlueboxMenuBuilder content: @escaping @MainActor () -> [BlueboxMenuEntry]) -> some View {
         modifier(BlueboxContextMenu(title: title, gate: gate, content: content))
+    }
+
+    /// For a view with its own `blueboxMenu(isPresented:)` (a tap opens it, say):
+    /// a hold or right-click opens it too, instead of the system's context menu.
+    func opensMenuOnHold(_ open: Binding<Bool>, gate: QuickActionGate? = nil) -> some View {
+        modifier(OpensMenuOnHold(open: open, gate: gate))
     }
 }
 

@@ -26,7 +26,6 @@ struct DownloadsView: View {
     @State private var shelves = DownloadShelves.make([])
     /// Any download at all, finished or not (the empty state otherwise).
     @State private var hasDownloads = false
-    @State private var confirm: Confirmation?
     @State private var visible = false
     @State private var width: CGFloat = 390
 
@@ -70,7 +69,7 @@ struct DownloadsView: View {
                 shelf("Shows", inset: inset) {
                     ForEach(shelves.shows) { show in
                         DownloadShowPoster(show: show, width: poster) {
-                            confirm = .deleteShow(title: show.title, show.rows.map(\.record))
+                            ask(.deleteShow(title: show.title, show.rows.map(\.record)))
                         }
                     }
                 }
@@ -100,27 +99,6 @@ struct DownloadsView: View {
                 } else {
                     ToolbarItem(placement: .primaryAction) { actionsMenu }
                 }
-            }
-        }
-        .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
-                            titleVisibility: .visible, presenting: confirm) { c in
-            switch c {
-            case .deleteAll(let list):
-                Button("Delete All Downloads", role: .destructive) { app.deleteDownloads(list) }
-            case .deleteWatched(let list):
-                Button("Delete \(list.count) Watched", role: .destructive) { app.deleteDownloads(list) }
-            case .deleteShow(_, let list):
-                Button("Delete \(list.count) Episode\(list.count == 1 ? "" : "s")", role: .destructive) { app.deleteDownloads(list) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { c in
-            switch c {
-            case .deleteAll(let list):
-                Text("\(list.count) download\(list.count == 1 ? "" : "s") and \(Formatters.bytes(Self.bytes(list))) will be removed from this device, including unfinished ones.")
-            case .deleteWatched(let list):
-                Text("Frees \(Formatters.bytes(Self.bytes(list))). Movies and episodes you finished watching.")
-            case .deleteShow(_, let list):
-                Text("Frees \(Formatters.bytes(Self.bytes(list))) on this device.")
             }
         }
         .onAppear { visible = true; updateScreenAwake() }
@@ -188,12 +166,12 @@ struct DownloadsView: View {
                         if watched.isEmpty {
                             app.alert = AppAlert(title: "Nothing to delete", message: "None of your downloads has been watched to the end.")
                         } else {
-                            confirm = .deleteWatched(watched)
+                            ask(.deleteWatched(watched))
                         }
                     }
                 }
                 BlueboxMenuButton("Delete All…", systemImage: "trash", role: .destructive) {
-                    confirm = .deleteAll(app.downloads.all())
+                    ask(.deleteAll(app.downloads.all()))
                 }
             }
         } label: {
@@ -212,13 +190,30 @@ struct DownloadsView: View {
         .accessibilityIdentifier("downloadsActions")
     }
 
-    private var confirmTitle: String {
-        switch confirm {
-        case .deleteAll: "Delete all downloads?"
-        case .deleteWatched(let list): "Delete \(list.count) watched download\(list.count == 1 ? "" : "s")?"
-        case .deleteShow(let title, _): "Delete every download of \(title)?"
-        case nil: ""
+    /// Asks in Bluebox's own dialog, as the rest of the app does, not the system's.
+    private func ask(_ c: Confirmation) {
+        let (title, message, button): (String, String, String), list: [DownloadRecord]
+        switch c {
+        case .deleteAll(let all):
+            list = all
+            (title, message, button) = (String(localized: "Delete all downloads?"),
+                                        "\(all.count) download\(all.count == 1 ? "" : "s") and \(Formatters.bytes(Self.bytes(all))) will be removed from this device, including unfinished ones.",
+                                        String(localized: "Delete All Downloads"))
+        case .deleteWatched(let watched):
+            list = watched
+            (title, message, button) = ("Delete \(watched.count) watched download\(watched.count == 1 ? "" : "s")?",
+                                        "Frees \(Formatters.bytes(Self.bytes(watched))). Movies and episodes you finished watching.",
+                                        "Delete \(watched.count) Watched")
+        case .deleteShow(let show, let episodes):
+            list = episodes
+            (title, message, button) = ("Delete every download of \(show)?",
+                                        "Frees \(Formatters.bytes(Self.bytes(episodes))) on this device.",
+                                        "Delete \(episodes.count) Episode\(episodes.count == 1 ? "" : "s")")
         }
+        app.alert = AppAlert(title: title, message: message, actions: [
+            .init(button, role: .primary) { [app] in app.deleteDownloads(list) },
+            .init(String(localized: "Cancel"), role: .cancel),
+        ])
     }
 
     /// Rebuilds the shelves from finished downloads. Progress ticks change
@@ -534,6 +529,7 @@ struct DownloadPoster: View {
     let model: DownloadRowModel
     let width: CGFloat
     @State private var menuOpen = false
+    @State private var gate = QuickActionGate()
 
     private var record: DownloadRecord { model.record }
     private var height: CGFloat { (width * 1.5).rounded() }
@@ -541,6 +537,7 @@ struct DownloadPoster: View {
     var body: some View {
         let upgrade = app.upgradeOffer(for: record)
         Button {
+            guard !gate.consumeHold() else { return }
             if record.state == .completed { Task { await app.playDownloadChecked(record) } } else { menuOpen = true }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
@@ -564,7 +561,7 @@ struct DownloadPoster: View {
         }
         .buttonStyle(PressableStyle())
         .blueboxMenu(isPresented: $menuOpen, title: record.title) { DownloadActions.menu(record, app: app, details: model.speedLine) }
-        .contextMenu { DownloadActions.contextMenu(record, app: app) }
+        .opensMenuOnHold($menuOpen, gate: gate)
         .accessibilityLabel([record.title, upgrade != nil ? "Better version available" : "Downloaded"].joined(separator: ", "))
         .accessibilityHint("Plays the download")
         .accessibilityIdentifier("downloadPoster")
@@ -574,13 +571,18 @@ struct DownloadPoster: View {
 /// A show on the Shows shelf: its poster with how many episodes are saved
 /// ("4 EP"), the name and the season and size. Opens the show's page.
 struct DownloadShowPoster: View {
+    @Environment(\.pushRoute) private var pushRoute
     let show: DownloadShelves.Show
     let width: CGFloat
     let deleteAll: () -> Void
+    @State private var gate = QuickActionGate()
+
+    private var route: Route { .downloadedShow(seriesKey: show.seriesKey, title: show.title, artworkURL: show.artworkURL) }
 
     var body: some View {
-        NavigationLink {
-            DownloadedShowView(seriesKey: show.seriesKey, title: show.title, artworkURL: show.artworkURL)
+        Button {
+            guard !gate.consumeHold() else { return }
+            pushRoute(route)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ArtworkView(url: show.artworkURL, fallbackTitle: show.title, kind: .poster, pixelWidth: Int(width * 2))
@@ -606,8 +608,14 @@ struct DownloadShowPoster: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
-        .contextMenu {
-            Button(role: .destructive, action: deleteAll) { Label("Delete All Episodes", systemImage: "trash") }
+        // Bluebox's own menu, as on every poster, not the system's.
+        .blueboxContextMenu(show.title, gate: gate) {
+            BlueboxMenuSection {
+                BlueboxMenuButton("Show Episodes", systemImage: "list.bullet", subtitle: show.shortSummary) { pushRoute(route) }
+            }
+            BlueboxMenuSection {
+                BlueboxMenuButton("Delete All Episodes", systemImage: "trash", role: .destructive) { deleteAll() }
+            }
         }
         .accessibilityLabel("\(show.title), \(show.summary)")
         .accessibilityHint("Opens the show's downloads")
@@ -659,39 +667,6 @@ enum DownloadActions {
         BlueboxMenuSection {
             BlueboxMenuButton(r.state == .completed ? "Delete Download" : "Cancel Download", systemImage: "trash",
                               role: .destructive) { app.deleteDownloadWithUndo(r) }
-        }
-    }
-
-    @ViewBuilder
-    static func contextMenu(_ r: DownloadRecord, app: AppModel) -> some View {
-        if let offer = app.upgradeOffer(for: r) {
-            Button { Task { await app.swapDownload(r, to: offer) } } label: {
-                Label("Swap for \(offer.label)", systemImage: "arrow.triangle.2.circlepath")
-            }
-        }
-        switch r.state {
-        case .completed:
-            Button { Task { await app.playDownloadChecked(r) } } label: { Label("Play", systemImage: "play.fill") }
-            ExternalPlayerContextMenu(players: app.externalPlayersForDownloads) { player in
-                Task { await app.playDownloadChecked(r, in: player) }
-            }
-        case .downloading, .queued:
-            Button { app.pauseDownload(r) } label: { Label("Pause", systemImage: "pause") }
-        case .paused:
-            Button { Task { await app.resumeDownload(r) } } label: { Label("Resume", systemImage: "arrow.down") }
-        case .failed:
-            Button { Task { await app.resumeDownload(r) } } label: { Label("Retry", systemImage: "arrow.clockwise") }
-        }
-        if r.state == .queued || r.state == .paused {
-            Button { app.prioritizeDownload(r) } label: { Label("Download First", systemImage: "arrow.up.to.line") }
-        }
-        if let key = r.mediaKey, key.episodeNumbers != nil {
-            Button { Task { await app.downloadNextEpisodesAnnounced(after: key, showTitle: r.title) } } label: {
-                Label("Download Next 3 Episodes", systemImage: "square.stack.3d.down.forward")
-            }
-        }
-        Button(role: .destructive) { app.deleteDownloadWithUndo(r) } label: {
-            Label(r.state == .completed ? "Delete Download" : "Cancel Download", systemImage: "trash")
         }
     }
 }

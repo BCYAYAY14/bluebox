@@ -42,7 +42,7 @@ struct PrivacySettingsPage: View {
                               detail: "Top Picks and Because You Watched on Home, and genre rows in the order you like them, from what this profile watches and rates. Worked out on this device. Off: Home shows the same rows for everyone.")
                     .settingsRow("Rows Based on Your Taste")
             } header: {
-                Text(HomeRowTitles.name(app.currentProfile) == "You" ? "This Profile" : app.currentProfile.name)
+                SettingsScopeHeader(scope: .profile(app.currentProfile))
             } footer: {
                 Text("These follow the profile to your other devices.")
             }
@@ -51,12 +51,9 @@ struct PrivacySettingsPage: View {
                 FeatureToggle("Release Alerts", isOn: releaseAlerts,
                               detail: "Every 12 hours at most, asks your add-ons about films on My List that had nothing to play, and tells you when one appears, or when a release is ready on your debrid service. Asks for permission to notify you when you turn it on.")
                     .settingsRow("Release Alerts")
-                FeatureToggle("Smart Downloads Can Delete Watched Downloads", isOn: download(\.allowsDeleting),
-                              detail: "To make room for the next episodes, Smart Downloads may delete episodes you've finished. It never deletes anything you haven't watched.")
-                    .settingsRow("Smart Downloads Can Delete Watched Downloads")
-                FeatureToggle("Follow Watching on Other Devices", isOn: download(\.followOtherDevices),
-                              detail: "What you watch on your other devices, or on Trakt, counts here too: Smart Downloads tops up and cleans up after it.")
-                    .settingsRow("Follow Watching on Other Devices")
+                // What Smart Downloads may do on its own is on Downloads, beside Smart Downloads.
+                SettingsPageLink("What Smart Downloads Does on Its Own", page: .downloads)
+                    .settingsRow("What Smart Downloads Does on Its Own")
             } header: {
                 Text("Your Account")
             } footer: {
@@ -122,7 +119,7 @@ struct StatisticsLinkSection: View {
                 SettingsLink("My Bluebox", value: "Statistics") { StatisticsPage() }
                     .settingsRow("My Bluebox")
             } footer: {
-                Text("\(app.currentProfile.name)\u{2019}s hours, top shows and genres, and the Year in Bluebox.")
+                Text("Hours watched, top shows and genres, and the Year in Bluebox, for the profile that's watching.")
             }
         }
     }
@@ -150,17 +147,5 @@ private struct FeatureToggle: View {
             .padding(.vertical, 4)
         }
         .accessibilityHint(detail)
-    }
-}
-
-extension PrivacySettingsPage {
-    /// These two live in `DownloadSettings` (Smart Downloads reads them, and
-    /// Settings › Downloads shows them too), so both pages flip the same value.
-    fileprivate func download(_ keyPath: WritableKeyPath<DownloadSettings, Bool>) -> Binding<Bool> {
-        Binding { app.downloadSettings[keyPath: keyPath] } set: { value in
-            var s = app.downloadSettings
-            s[keyPath: keyPath] = value
-            app.setDownloadSettings(s)
-        }
     }
 }

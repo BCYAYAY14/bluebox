@@ -58,7 +58,8 @@ struct RemoteControlHost: ViewModifier {
             }
             .animation(Motion.standard(reduceMotion), value: app.remote.nowPlaying == nil)
             .sheet(isPresented: $showsRemote) {
-                RemoteControlScreen().environment(app)
+                // Its own sheet: menus (the device pill's) draw here, not under it.
+                RemoteControlScreen().environment(app).blueboxMenuHost()
             }
             .onChange(of: showsRemote) { _, open in app.remote.screenOpen = open }
             .onChange(of: app.remote.presentRequest) { showsRemote = true }
@@ -87,15 +88,20 @@ struct PlayOnButton: View {
         let remote = app.remote
         if app.featureSwitches.useAsRemote, !remote.devices.isEmpty || remote.target != nil {
             let chosen = remote.devices.first { $0.id == remote.target }
-            Menu {
-                Picker("Play On", selection: Binding(get: { remote.target }, set: { remote.target = $0 })) {
-                    Label("This iPhone", systemImage: "iphone").tag(String?.none)
-                    ForEach(remote.devices) { d in
-                        Label {
-                            Text(verbatim: d.name)
-                            if let playing = d.playing { Text("Playing \(playing)") } else { Text("Idle") }
-                        } icon: { Image(systemName: Self.symbol(d.kind)) }
-                        .tag(String?.some(d.id))
+            // Bluebox's own menu, as everywhere else. Picking a device opens its remote too (`RemoteControl.choose`).
+            BlueboxMenu(String(localized: "Play On")) {
+                BlueboxMenuSection(String(localized: "Play On")) {
+                    BlueboxMenuButton(String(localized: "This iPhone"), systemImage: "iphone", checked: remote.target == nil) { remote.choose(nil) }
+                    for d in remote.devices {
+                        BlueboxMenuButton(d.name, systemImage: Self.symbol(d.kind),
+                                          subtitle: d.playing.map { String(localized: "Playing \($0)") } ?? String(localized: "Idle"),
+                                          checked: remote.target == d.id) { remote.choose(d.id) }
+                    }
+                }
+                // Back to the remote without picking again, playing or not.
+                if remote.controlled != nil {
+                    BlueboxMenuSection {
+                        BlueboxMenuButton(String(localized: "Open Remote"), systemImage: "appletvremote.gen4") { remote.openRemote() }
                     }
                 }
             } label: {
@@ -139,14 +145,13 @@ struct RemoteDevicePill: View {
         let remote = app.remote
         let name = remote.controlled?.name ?? remote.nowPlaying?.deviceName ?? String(localized: "Mac")
         HStack(spacing: Spacing.s) {
-            Menu {
-                Picker("Control", selection: Binding(get: { remote.target ?? remote.controlled?.id }, set: { remote.target = $0 })) {
-                    ForEach(remote.devices) { d in
-                        Label {
-                            Text(verbatim: d.name)
-                            if let playing = d.playing { Text("Playing \(playing)") } else { Text("Idle") }
-                        } icon: { Image(systemName: PlayOnButton.symbol(d.kind)) }
-                        .tag(String?.some(d.id))
+            BlueboxMenu(String(localized: "Control")) {
+                BlueboxMenuSection(String(localized: "Control")) {
+                    let current = remote.target ?? remote.controlled?.id
+                    for d in remote.devices {
+                        BlueboxMenuButton(d.name, systemImage: PlayOnButton.symbol(d.kind),
+                                          subtitle: d.playing.map { String(localized: "Playing \($0)") } ?? String(localized: "Idle"),
+                                          checked: current == d.id) { remote.target = d.id }
                     }
                 }
             } label: {
@@ -409,12 +414,12 @@ private struct PlayingRemote: View {
                     .buttonStyle(SecondaryButtonStyle())
                     .accessibilityLabel("Next Episode")
                 }
-                Menu {
-                    Button("Close Player", systemImage: "xmark") { app.remote.send(.closePlayer) }
-                } label: {
-                    SecondaryButtonLabel { Image(systemName: "ellipsis") }
+                // One action, so a button, not a ⋯ menu holding a single item.
+                Button { app.remote.send(.closePlayer) } label: {
+                    Image(systemName: "xmark")
                 }
-                .accessibilityLabel("More")
+                .buttonStyle(SecondaryButtonStyle())
+                .accessibilityLabel("Close Player")
             }
             .padding(.horizontal, Spacing.xl).padding(.top, Spacing.l)
 

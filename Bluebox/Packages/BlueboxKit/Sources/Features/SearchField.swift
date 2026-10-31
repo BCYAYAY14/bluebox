@@ -199,6 +199,7 @@ private struct RecentSearchRow: View {
     let onPick: () -> Void
     let onRemove: () -> Void
     @State private var hovering = false
+    @State private var gate = QuickActionGate()
     /// How far the row has been dragged left.
     @State private var offset: CGFloat = 0
     /// A drag this far left removes the row.
@@ -206,7 +207,10 @@ private struct RecentSearchRow: View {
 
     var body: some View {
         HStack(spacing: Spacing.m) {
-            Button(action: onPick) {
+            Button {
+                guard !gate.consumeHold() else { return }
+                onPick()
+            } label: {
                 HStack(spacing: Spacing.m) {
                     thumbnail
                     VStack(alignment: .leading, spacing: 2) {
@@ -256,9 +260,9 @@ private struct RecentSearchRow: View {
         #endif
         .onHover { hovering = $0 }
         .animation(Motion.hover, value: hovering)
-        .contextMenu {
-            Button { onPick() } label: { Label("Search Again", systemImage: "magnifyingglass") }
-            Button(role: .destructive) { onRemove() } label: { Label("Remove", systemImage: "xmark") }
+        .blueboxContextMenu(recent.query, gate: gate) {
+            BlueboxMenuButton("Search Again", systemImage: "magnifyingglass") { onPick() }
+            BlueboxMenuButton("Remove", systemImage: "xmark", role: .destructive) { onRemove() }
         }
         .accessibilityAction(named: "Remove") { onRemove() }
     }

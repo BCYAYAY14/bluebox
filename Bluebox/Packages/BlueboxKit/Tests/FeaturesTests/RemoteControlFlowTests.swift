@@ -226,6 +226,23 @@ import Testing
         #expect(!p.phone.playOnTarget(play))
     }
 
+    /// Picking an idle Mac in Play On opens its remote straight away (its Touch
+    /// pad, since nothing plays); Open Remote opens it again, and This iPhone doesn't.
+    @Test func pickingAnIdleMacOpensItsRemote() async {
+        let p = await appPair()
+        p.phone.choose(nil)
+        let before = p.phone.presentRequest
+        p.phone.choose(p.mac.deviceID)
+        #expect(p.phone.presentRequest == before + 1)
+        #expect(p.phone.controlled?.id == p.mac.deviceID)
+        #expect(p.phone.nowPlaying == nil)
+        p.phone.openRemote()
+        #expect(p.phone.presentRequest == before + 2)
+        p.phone.choose(nil)
+        #expect(p.phone.target == nil)
+        #expect(p.phone.presentRequest == before + 2)
+    }
+
     /// With two Macs playing, the remote follows the one chosen, not whichever published last.
     @Test func theRemoteFollowsTheChosenMac() async throws {
         let hub = FakeRemoteHub()

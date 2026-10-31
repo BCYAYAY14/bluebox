@@ -27,7 +27,6 @@ struct DownloadedShowView: View {
     @State private var backdrop: URL?
     @State private var progress: [MediaKey: WatchProgress] = [:]
     @State private var episodes: [MediaKey: Episode] = [:]
-    @State private var confirmDelete = false
     @State private var width: CGFloat = 390
 
     var body: some View {
@@ -78,14 +77,17 @@ struct DownloadedShowView: View {
                 ToolbarItem(placement: .primaryAction) { actions }
             }
         }
-        .confirmationDialog("Delete every download of \(title)?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete All Episodes", role: .destructive) {
-                let all = app.downloads.all().filter { $0.mediaKey?.seriesKey == seriesKey }
-                app.deleteDownloads(all)
+    }
+
+    /// Asks in Bluebox's own dialog, as the rest of the app does.
+    private func confirmDeleteAll() {
+        app.alert = AppAlert(title: "Delete every download of \(title)?", message: String(localized: "Every saved episode is removed from this device. You can download them again later."), actions: [
+            .init(String(localized: "Delete All Episodes"), role: .primary) { [app, seriesKey, dismiss] in
+                app.deleteDownloads(app.downloads.all().filter { $0.mediaKey?.seriesKey == seriesKey })
                 dismiss()
-            }
-            Button("Cancel", role: .cancel) {}
-        }
+            },
+            .init(String(localized: "Cancel"), role: .cancel),
+        ])
     }
 
     private var header: some View {
@@ -117,7 +119,7 @@ struct DownloadedShowView: View {
                 }
             }
             BlueboxMenuSection {
-                BlueboxMenuButton("Delete All Episodes…", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                BlueboxMenuButton("Delete All Episodes…", systemImage: "trash", role: .destructive) { confirmDeleteAll() }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -186,6 +188,7 @@ struct DownloadedEpisodeRow: View {
     let progress: [MediaKey: WatchProgress]
     let upNext: MediaKey?
     @State private var menuOpen = false
+    @State private var gate = QuickActionGate()
 
     var body: some View {
         let _ = app.downloadsRevision
@@ -193,6 +196,7 @@ struct DownloadedEpisodeRow: View {
             let ep = episodes[key]
             let watched = progress[key]?.isCompleted == true
             Button {
+                guard !gate.consumeHold() else { return }
                 if r.state == .completed { Task { await app.playDownloadChecked(r) } } else { menuOpen = true }
             } label: {
                 HStack(spacing: Spacing.m) {
@@ -216,7 +220,7 @@ struct DownloadedEpisodeRow: View {
             }
             .buttonStyle(PressableStyle())
             .blueboxMenu(isPresented: $menuOpen, title: title(r, ep)) { DownloadActions.menu(r, app: app) }
-            .contextMenu { DownloadActions.contextMenu(r, app: app) }
+            .opensMenuOnHold($menuOpen, gate: gate)
             .accessibilityElement(children: .combine)
             .accessibilityHint(r.state == .completed ? "Plays the download" : "Shows actions")
             .accessibilityAction(named: "Delete") { app.deleteDownloadWithUndo(r) }

@@ -379,11 +379,9 @@ struct EqualizerEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Menu {
-                    ForEach(EqualizerPreset.allCases, id: \.self) { p in
-                        Button { settings = settings.applying(p); onCommit() } label: {
-                            if settings.preset == p { Label(p.title, systemImage: "checkmark") } else { Text(p.title) }
-                        }
+                BlueboxMenu(String(localized: "Equaliser")) {
+                    for p in EqualizerPreset.allCases {
+                        BlueboxMenuButton(p.title, checked: settings.preset == p) { settings = settings.applying(p); onCommit() }
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -396,7 +394,6 @@ struct EqualizerEditor: View {
                     .background(.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .contentShape(Rectangle())
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
                 .accessibilityLabel("Equaliser preset, \(settings.preset?.title ?? "Custom")")
                 Toggle("Equaliser", isOn: Binding(get: { settings.isOn }, set: { settings.isOn = $0; onCommit() }))
                     .labelsHidden().toggleStyle(.switch).tint(Palette.brand)

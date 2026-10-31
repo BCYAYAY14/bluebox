@@ -14,7 +14,7 @@ public struct HiddenTitlesSettingsPage: View {
 
     public var body: some View {
         let hidden = app.hiddenTitleList()
-        SettingsForm(title: "Hidden Titles") {
+        SettingsForm(.hiddenTitles) {
             Section {
                 if hidden.isEmpty {
                     Text("Nothing hidden. Choose Not Interested on a poster to keep it off Home.")
@@ -61,9 +61,14 @@ private struct HiddenTitleRow: View {
         }
     }
 
+    /// "2021 · Film · Hidden yesterday", as whole phrases so each translates as one.
     private var detail: String {
-        let kind = item.title.kind == .movie ? "Film" : "Series"
-        return [item.title.year.map(String.init), kind].compactMap { $0 }.joined(separator: " · ")
-            + " · Hidden " + item.hiddenAt.formatted(.relative(presentation: .named))
+        let when = item.hiddenAt.formatted(.relative(presentation: .named))
+        let film = item.title.kind == .movie
+        guard let year = item.title.year else {
+            return film ? String(localized: "Film · Hidden \(when)") : String(localized: "Series · Hidden \(when)")
+        }
+        return film ? String(localized: "\(String(year)) · Film · Hidden \(when)")
+            : String(localized: "\(String(year)) · Series · Hidden \(when)")
     }
 }

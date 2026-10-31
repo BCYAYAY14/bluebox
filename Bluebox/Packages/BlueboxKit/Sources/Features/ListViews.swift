@@ -120,7 +120,6 @@ struct ListDetailView: View {
     @State private var editing = false
     @State private var editOrder: [Title] = []
     @State private var selection: Set<MediaKey> = []
-    @State private var confirmDelete = false
 
     private var isSmart: Bool { !id.isEditable }
 
@@ -157,15 +156,17 @@ struct ListDetailView: View {
             ViewMemory.set(s.rawValue, memoryKey, profile: app.currentProfileID)
             rearrange()
         }
-        .confirmationDialog("Delete “\(name)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete List", role: .destructive) {
-                guard let list else { return }
-                // The reload that follows finds the list gone and leaves the page.
-                Task { await app.deleteList(list) }
-            }
-        } message: {
-            Text("The titles stay on My List and your other lists.")
-        }
+    }
+
+    /// Asks in Bluebox's own dialog, as the rest of the app does.
+    private func askDelete() {
+        guard let list else { return }
+        app.alert = AppAlert(title: "Delete “\(name)”?", message: String(localized: "The titles stay on My List and your other lists."),
+                             actions: [.init(String(localized: "Delete List"), role: .primary) {
+                                           // The reload that follows finds the list gone and leaves the page.
+                                           [app] in Task { await app.deleteList(list) }
+                                       },
+                                       .init(String(localized: "Cancel"), role: .cancel)])
     }
 
     private var memoryKey: String {
@@ -337,7 +338,7 @@ struct ListDetailView: View {
                 if let list { app.listEditor = ListEditorRequest(list: list, adding: nil) }
             }
             BlueboxMenuSection {
-                BlueboxMenuButton("Delete List", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                BlueboxMenuButton("Delete List", systemImage: "trash", role: .destructive) { askDelete() }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -597,7 +598,7 @@ struct ListEditorCard: View {
                     .buttonStyle(SecondaryButtonStyle())
                     .keyboardShortcut(.cancelAction)
                 Button(isNew ? "Create" : "Save", action: save)
-                    .buttonStyle(PlayButtonStyle())
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(!canSave)
                     .keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("listEditor.save")
@@ -606,7 +607,7 @@ struct ListEditorCard: View {
         .padding(Spacing.l)
         .frame(maxWidth: 380)
         .background {
-            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous)
             ZStack {
                 shape.fill(Palette.surface)
                 shape.strokeBorder(Palette.edge, lineWidth: 1)

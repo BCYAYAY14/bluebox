@@ -160,6 +160,59 @@
         }
       }
     },
+    "A Bluebox server": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Bluebox-Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un servidor de Bluebox"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un serveur Bluebox"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un server Bluebox"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blueboxサーバ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bluebox 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um servidor Bluebox"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一台 Bluebox 服务器"
+          }
+        }
+      }
+    },
     "A code works only with a Bluebox server set up in Settings › Account & Sync. Ask for the link instead.": {
       "extractionState": "manual",
       "localizations": {
@@ -5036,6 +5089,59 @@
         }
       }
     },
+    "Allowed": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erlaubt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consentito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "許可済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "허용됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitido"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已允许"
+          }
+        }
+      }
+    },
     "Already downloaded": {
       "extractionState": "manual",
       "localizations": {
@@ -5456,6 +5562,165 @@
           "stringUnit": {
             "state": "translated",
             "value": "此节目始终如此"
+          }
+        }
+      }
+    },
+    "Always skip the credits": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abspann immer überspringen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saltar siempre los créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toujours passer le générique de fin"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salta sempre i titoli di coda"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エンドクレジットを常にスキップ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "엔딩 크레딧 항상 건너뛰기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre pular os créditos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "始终跳过片尾"
+          }
+        }
+      }
+    },
+    "Always skip the intro": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intro immer überspringen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saltar siempre la intro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toujours passer le générique"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salta sempre la sigla"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オープニングを常にスキップ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "오프닝 항상 건너뛰기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre pular a abertura"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "始终跳过片头"
+          }
+        }
+      }
+    },
+    "Always skip the recap": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rückblick immer überspringen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saltar siempre el resumen"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toujours passer le résumé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salta sempre il riassunto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前回のあらすじを常にスキップ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지난 줄거리 항상 건너뛰기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre pular o resumo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "始终跳过前情提要"
           }
         }
       }
@@ -16325,6 +16590,59 @@
         }
       }
     },
+    "Code or Invite Link": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code oder Einladungslink"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código o enlace de invitación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code ou lien d’invitation"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice o link d’invito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードまたは招待リンク"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "코드 또는 초대 링크"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código ou link de convite"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码或邀请链接"
+          }
+        }
+      }
+    },
     "Collections need the internet.": {
       "extractionState": "manual",
       "localizations": {
@@ -17222,6 +17540,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "已连接为"
+          }
+        }
+      }
+    },
+    "Connected · Signed In": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbunden · Angemeldet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectado · Sesión iniciada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecté · Session ouverte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connesso · Accesso eseguito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続済み · サインイン済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결됨 · 로그인됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectado · Sessão iniciada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接 · 已登录"
           }
         }
       }
@@ -22155,6 +22526,59 @@
         }
       }
     },
+    "Debrid API Key": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debrid-API-Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clave de API de debrid"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clé d’API debrid"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiave API debrid"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デブリッドAPIキー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debrid API 키"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chave de API do debrid"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debrid API 密钥"
+          }
+        }
+      }
+    },
     "Debrid Library": {
       "extractionState": "manual",
       "localizations": {
@@ -24165,6 +24589,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "“对白增强”会提升人声；“夜间模式”会平衡响亮和安静场景的音量。你也可以在播放器的“工具”中为每个视频更改。音频语言按个人资料设置，位于“语言”中。"
+          }
+        }
+      }
+    },
+    "Dialogue Boost lifts speech; Night Mode evens out loud and quiet scenes. You can also change these for each video in the player's Tools. The audio language is each profile's, on the Language page.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dialogverstärkung hebt Sprache hervor; der Nachtmodus gleicht laute und leise Szenen an. Du kannst beides auch für jedes Video in den Werkzeugen des Players ändern. Die Audiosprache gehört zu jedem Profil, auf der Seite „Sprache“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Realzar diálogos sube las voces; el modo nocturno iguala las escenas fuertes y suaves. También puedes cambiarlos para cada vídeo en Herramientas del reproductor. El idioma del audio es de cada perfil, en la página Idioma."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le renfort des dialogues met en avant les voix ; le mode nuit égalise les scènes fortes et calmes. Vous pouvez aussi les modifier pour chaque vidéo dans les Outils du lecteur. La langue audio est propre à chaque profil, sur la page Langue."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potenzia dialoghi mette in risalto le voci; la modalità notte uniforma le scene forti e quelle silenziose. Puoi cambiarli anche per ogni video negli Strumenti del player. La lingua audio è di ciascun profilo, nella pagina Lingua."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダイアログブーストは声を聞き取りやすくし、ナイトモードは大きな場面と静かな場面の音量差をならします。プレーヤーのツールでビデオごとに変更することもできます。音声の言語はプロファイルごとで、「言語」ページにあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대사 강조는 목소리를 키우고, 야간 모드는 큰 장면과 조용한 장면의 차이를 줄입니다. 플레이어의 도구에서 동영상마다 바꿀 수도 있습니다. 오디오 언어는 프로필마다 다르며 언어 페이지에 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Realçar diálogos destaca as falas; o modo noturno equilibra cenas altas e baixas. Você também pode mudá-los em cada vídeo nas Ferramentas do player. O idioma do áudio é de cada perfil, na página Idioma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对白增强让人声更清晰；夜间模式平衡响亮和安静的场景。你也可以在播放器的“工具”中为每个视频单独更改。音频语言属于每个个人资料，在“语言”页面中设置。"
           }
         }
       }
@@ -30105,6 +30582,59 @@
         }
       }
     },
+    "Every saved episode is removed from this device. You can download them again later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle gespeicherten Folgen werden von diesem Gerät entfernt. Du kannst sie später erneut laden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se eliminan de este dispositivo todos los episodios guardados. Puedes volver a descargarlos más tarde."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tous les épisodes enregistrés sont supprimés de cet appareil. Vous pourrez les retélécharger plus tard."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutti gli episodi salvati vengono rimossi da questo dispositivo. Potrai scaricarli di nuovo in seguito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存したすべてのエピソードがこのデバイスから削除されます。あとでもう一度ダウンロードできます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장된 모든 에피소드가 이 기기에서 삭제됩니다. 나중에 다시 다운로드할 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos os episódios salvos são removidos deste dispositivo. Você pode baixá-los de novo depois."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有已保存的剧集都会从此设备移除。你可以稍后重新下载。"
+          }
+        }
+      }
+    },
     "Everyone on this Mac": {
       "extractionState": "manual",
       "localizations": {
@@ -31267,6 +31797,112 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件默认值"
+          }
+        }
+      }
+    },
+    "File's Default, autoplay off": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard der Datei, Autoplay aus"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predeterminado del archivo, reproducción automática desactivada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Par défaut du fichier, lecture automatique désactivée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predefinito del file, riproduzione automatica disattivata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルのデフォルト、自動再生オフ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 기본값, 자동 재생 끔"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Padrão do arquivo, reprodução automática desativada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件默认，自动播放关闭"
+          }
+        }
+      }
+    },
+    "File's Default, autoplay on": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard der Datei, Autoplay an"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predeterminado del archivo, reproducción automática activada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Par défaut du fichier, lecture automatique activée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predefinito del file, riproduzione automatica attiva"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルのデフォルト、自動再生オン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "파일 기본값, 자동 재생 켬"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Padrão do arquivo, reprodução automática ativada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件默认，自动播放开启"
           }
         }
       }
@@ -32649,6 +33285,59 @@
         }
       }
     },
+    "Folder Address": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordneradresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección de la carpeta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse du dossier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo della cartella"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダのアドレス"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 주소"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereço da pasta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件夹地址"
+          }
+        }
+      }
+    },
     "Follow Watching on Other Devices": {
       "extractionState": "manual",
       "localizations": {
@@ -33868,6 +34557,59 @@
         }
       }
     },
+    "Get a free API key at subdl.com › Panel › API. It stays in your Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hol dir einen kostenlosen API-Schlüssel unter subdl.com › Panel › API. Er bleibt in deinem Schlüsselbund."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consigue una clave de API gratuita en subdl.com › Panel › API. Se guarda en tu llavero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenez une clé d’API gratuite sur subdl.com › Panel › API. Elle reste dans votre trousseau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni una chiave API gratuita su subdl.com › Panel › API. Resta nel tuo portachiavi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "subdl.com › Panel › APIで無料のAPIキーを取得できます。キーはキーチェーンに保存されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "subdl.com › Panel › API에서 무료 API 키를 받으세요. 키는 키체인에 보관됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenha uma chave de API gratuita em subdl.com › Panel › API. Ela fica nas suas Chaves."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 subdl.com › Panel › API 获取免费 API 密钥。它保存在你的钥匙串中。"
+          }
+        }
+      }
+    },
     "Get a free token at themoviedb.org › Settings › API. It stays in your Keychain and only goes to TMDB.": {
       "extractionState": "manual",
       "localizations": {
@@ -34553,6 +35295,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "“接力”会将正在播放的内容提供给你的其他 Apple 设备，让你从当前位置继续。"
+          }
+        }
+      }
+    },
+    "Handoff offers what's playing to your other Apple devices, to pick up where you are. In a Watch Party, while the chat is closed, the last two messages show over the film for a few seconds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoff bietet die laufende Wiedergabe deinen anderen Apple-Geräten an, um dort weiterzumachen. In einer Watch Party erscheinen bei geschlossenem Chat die letzten zwei Nachrichten ein paar Sekunden über dem Film."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoff ofrece lo que se está reproduciendo a tus otros dispositivos Apple para continuar donde estás. En una Watch Party, con el chat cerrado, los dos últimos mensajes aparecen sobre la película unos segundos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoff propose ce qui est en cours de lecture à vos autres appareils Apple, pour reprendre là où vous en êtes. Dans une Watch Party, quand le chat est fermé, les deux derniers messages s’affichent sur le film quelques secondes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoff propone ciò che è in riproduzione agli altri tuoi dispositivi Apple, per riprendere da dove sei. In un Watch Party, con la chat chiusa, gli ultimi due messaggi compaiono sul film per qualche secondo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoffは再生中の作品をほかのAppleデバイスに渡し、続きから見られるようにします。Watch Partyでは、チャットを閉じている間、最新の2件のメッセージが数秒間映像の上に表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handoff는 재생 중인 항목을 다른 Apple 기기에 넘겨 이어서 볼 수 있게 합니다. Watch Party에서는 채팅이 닫혀 있는 동안 마지막 메시지 두 개가 몇 초간 영상 위에 표시됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Handoff oferece o que está tocando aos seus outros dispositivos Apple, para continuar de onde você está. Numa Watch Party, com o chat fechado, as duas últimas mensagens aparecem sobre o filme por alguns segundos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接力会把正在播放的内容提供给你的其他 Apple 设备，以便从当前位置继续。在 Watch Party 中，聊天关闭时，最近两条消息会在影片上显示几秒钟。"
           }
         }
       }
@@ -35776,6 +36571,59 @@
         }
       }
     },
+    "Hours watched, top shows and genres, and the Year in Bluebox, for the profile that's watching.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gesehene Stunden, Top-Serien und -Genres und das Jahr in Bluebox für das Profil, das gerade schaut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horas vistas, series y géneros favoritos y el Año en Bluebox, del perfil que está viendo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heures regardées, séries et genres préférés, et l’Année dans Bluebox, pour le profil qui regarde."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ore guardate, serie e generi preferiti e l’Anno in Bluebox, per il profilo che sta guardando."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視聴しているプロファイルの視聴時間、よく見る番組とジャンル、Year in Bluebox。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시청 중인 프로필의 시청 시간, 인기 프로그램과 장르, 그리고 올해의 Bluebox."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horas assistidas, séries e gêneros favoritos e o Ano no Bluebox, do perfil que está assistindo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在观看的个人资料的观看时长、热门剧集和类型，以及 Bluebox 年度回顾。"
+          }
+        }
+      }
+    },
     "Hours watched, top shows and genres, and your Year in Bluebox, worked out on this device from your watch progress. Off: nothing is worked out and My Bluebox is hidden.": {
       "extractionState": "manual",
       "localizations": {
@@ -35984,6 +36832,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "“即将播放”在播放下一集前倒数的时长。是否继续播放由每个个人资料在其“播放”中决定。"
+          }
+        }
+      }
+    },
+    "How long Up Next counts down before the next episode. Whether it plays on is each profile's own choice, at the top of this page.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie lange „Als Nächstes“ vor der nächsten Folge herunterzählt. Ob weitergespielt wird, entscheidet jedes Profil oben auf dieser Seite."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuánto cuenta atrás «A continuación» antes del siguiente episodio. Si sigue reproduciendo lo decide cada perfil, arriba en esta página."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durée du compte à rebours d’« À suivre » avant l’épisode suivant. La lecture enchaînée est le choix de chaque profil, en haut de cette page."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quanto dura il conto alla rovescia di «Prossimo» prima dell’episodio successivo. Se continuare è una scelta di ciascun profilo, in cima a questa pagina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "次のエピソードまで「次に再生」がカウントダウンする時間です。続けて再生するかどうかは、このページの上部でプロファイルごとに選べます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 에피소드 전에 다음 재생이 카운트다운하는 시간입니다. 이어서 재생할지는 이 페이지 맨 위에서 프로필마다 정합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quanto tempo o «A seguir» conta antes do próximo episódio. Se continua tocando é escolha de cada perfil, no topo desta página."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“接下来播放”在下一集前倒数的时长。是否继续播放由每个个人资料在本页顶部自行选择。"
           }
         }
       }
@@ -36726,6 +37627,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "在你的资料库中"
+          }
+        }
+      }
+    },
+    "Include in Search Online": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Online-Suche einbeziehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluir en Buscar en línea"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inclure dans la recherche en ligne"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includi in Cerca online"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オンライン検索に含める"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "온라인 검색에 포함"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluir na Busca online"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包含在在线搜索中"
           }
         }
       }
@@ -37680,6 +38634,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入"
+          }
+        }
+      }
+    },
+    "Join As": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beitreten als"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unirse como"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejoindre en tant que"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unisciti come"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参加する名前"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여 이름"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrar como"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入身份"
           }
         }
       }
@@ -38899,6 +39906,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "儿童"
+          }
+        }
+      }
+    },
+    "Kids Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinderprofil"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil infantil"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil enfant"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profilo bambini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キッズ用プロファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "어린이 프로필"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil infantil"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儿童个人资料"
           }
         }
       }
@@ -43673,6 +44733,59 @@
         }
       }
     },
+    "Minutes and seconds, or hours, minutes and seconds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minuten und Sekunden oder Stunden, Minuten und Sekunden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutos y segundos, u horas, minutos y segundos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes et secondes, ou heures, minutes et secondes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minuti e secondi, oppure ore, minuti e secondi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分と秒、または時・分・秒。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "분과 초, 또는 시, 분, 초."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutos e segundos, ou horas, minutos e segundos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分和秒，或时、分和秒。"
+          }
+        }
+      }
+    },
     "Mobile Data": {
       "extractionState": "manual",
       "localizations": {
@@ -44093,6 +45206,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "更多类似内容"
+          }
+        }
+      }
+    },
+    "More at once finishes a queue sooner but splits your bandwidth.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr gleichzeitig arbeitet eine Warteschlange schneller ab, teilt aber deine Bandbreite."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más a la vez termina antes la cola, pero reparte tu ancho de banda."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus à la fois termine la file plus tôt mais partage votre bande passante."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Più alla volta finisce prima la coda ma divide la tua banda."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同時に多く進めると待ち行列は早く終わりますが、帯域を分け合います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "한 번에 더 많이 받으면 대기열이 빨리 끝나지만 대역폭이 나뉩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mais de uma vez termina a fila antes, mas divide sua banda."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时下载更多可更快完成队列，但会分摊带宽。"
           }
         }
       }
@@ -45471,6 +46637,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "需要上方的 API 密钥"
+          }
+        }
+      }
+    },
+    "Needs the key": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Braucht den Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesita la clave"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nécessite la clé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiede la chiave"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーが必要"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키 필요"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Precisa da chave"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要密钥"
           }
         }
       }
@@ -54008,6 +55227,59 @@
         }
       }
     },
+    "Open Remote": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fernbedienung öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir mando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir la télécommande"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri telecomando"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リモコンを開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "리모컨 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir controle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开遥控器"
+          }
+        }
+      }
+    },
     "Open SQL Editor": {
       "extractionState": "manual",
       "localizations": {
@@ -54510,6 +55782,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chiave API OpenSubtitles"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenSubtitles APIキー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenSubtitles API 키"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chave de API do OpenSubtitles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenSubtitles API 密钥"
+          }
+        }
+      }
+    },
+    "OpenSubtitles API key": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenSubtitles-API-Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clave de API de OpenSubtitles"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clé d’API OpenSubtitles"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiave API di OpenSubtitles"
           }
         },
         "ja": {
@@ -58036,6 +59361,59 @@
         }
       }
     },
+    "Play %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ abspielen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reproducir %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lire %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riproduci %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@を再生"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 재생"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reproduzir %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放 %@"
+          }
+        }
+      }
+    },
     "Play (Space)": {
       "extractionState": "manual",
       "localizations": {
@@ -59467,6 +60845,59 @@
         }
       }
     },
+    "Playing %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spielt %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reproduciendo %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lecture de %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In riproduzione: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@を再生中"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 재생 중"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reproduzindo %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在播放 %@"
+          }
+        }
+      }
+    },
     "Playing at double speed": {
       "extractionState": "manual",
       "localizations": {
@@ -59887,6 +61318,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "播放此资源"
+          }
+        }
+      }
+    },
+    "Plays with every video this profile watches, and syncs. Change it while watching in Tools › Sound. HLS streams play without it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gilt für jedes Video, das dieses Profil schaut, und wird synchronisiert. Ändere es beim Schauen unter Werkzeuge › Ton. HLS-Streams laufen ohne."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se aplica a todos los vídeos que ve este perfil y se sincroniza. Cámbialo mientras ves en Herramientas › Sonido. Las emisiones HLS se reproducen sin él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S’applique à chaque vidéo regardée par ce profil, et se synchronise. Modifiez-le pendant la lecture dans Outils › Son. Les flux HLS sont lus sans lui."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si applica a ogni video che guarda questo profilo e si sincronizza. Cambialo durante la visione in Strumenti › Audio. Gli stream HLS vengono riprodotti senza."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルが見るすべてのビデオに適用され、同期されます。視聴中に「ツール」›「サウンド」で変更できます。HLSストリームには適用されません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필이 보는 모든 동영상에 적용되며 동기화됩니다. 시청 중 도구 › 사운드에서 바꿀 수 있습니다. HLS 스트림은 적용되지 않습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale para todo vídeo que este perfil assiste e sincroniza. Mude enquanto assiste em Ferramentas › Som. Streams HLS tocam sem ele."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "适用于此个人资料观看的每个视频，并会同步。观看时可在“工具 › 声音”中更改。HLS 流不使用它。"
           }
         }
       }
@@ -62590,6 +64074,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "可连接，密钥已接受，表已存在。"
+          }
+        }
+      }
+    },
+    "React": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reagieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reaccionar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réagir"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reagisci"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リアクション"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "반응"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reagir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回应"
           }
         }
       }
@@ -68583,6 +70120,59 @@
         }
       }
     },
+    "Saved": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeichert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存"
+          }
+        }
+      }
+    },
     "Saved torrent metrics are deleted. A stream that's playing starts a new file next time.": {
       "extractionState": "manual",
       "localizations": {
@@ -69113,6 +70703,165 @@
         }
       }
     },
+    "Search Automatically looks for your subtitle language: choose one on the Language page first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch suchen sucht nach deiner Untertitelsprache: Wähle zuerst eine auf der Seite „Sprache“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar automáticamente busca tu idioma de subtítulos: elige uno antes en la página Idioma."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La recherche automatique cherche votre langue de sous-titres : choisissez-en une d’abord sur la page Langue."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca automaticamente cerca la tua lingua dei sottotitoli: scegline prima una nella pagina Lingua."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動検索は字幕の言語で探します。先に「言語」ページで言語を選んでください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 검색은 자막 언어로 찾습니다. 먼저 언어 페이지에서 언어를 고르세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Busca automática procura seu idioma de legendas: escolha um antes na página Idioma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动搜索会查找你的字幕语言：请先在“语言”页面中选择一种。"
+          }
+        }
+      }
+    },
+    "Search Automatically needs the key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch suchen braucht den Schlüssel."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar automáticamente necesita la clave."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La recherche automatique nécessite la clé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca automaticamente richiede la chiave."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動検索にはキーが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 검색에는 키가 필요합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Busca automática precisa da chave."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动搜索需要密钥。"
+          }
+        }
+      }
+    },
+    "Search Automatically: when a video has nothing in your language, Bluebox adds the best match from OpenSubtitles. Each counts toward your daily limit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch suchen: Hat ein Video nichts in deiner Sprache, fügt Bluebox den besten Treffer von OpenSubtitles hinzu. Jeder zählt zu deinem Tageslimit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar automáticamente: si un vídeo no tiene nada en tu idioma, Bluebox añade la mejor coincidencia de OpenSubtitles. Cada una cuenta para tu límite diario."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche automatique : quand une vidéo n’a rien dans votre langue, Bluebox ajoute la meilleure correspondance d’OpenSubtitles. Chacune compte dans votre limite quotidienne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca automaticamente: quando un video non ha nulla nella tua lingua, Bluebox aggiunge la corrispondenza migliore da OpenSubtitles. Ognuna conta nel tuo limite giornaliero."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動検索：ビデオに自分の言語の字幕がないとき、BlueboxがOpenSubtitlesから最適なものを追加します。それぞれ1日の上限に数えられます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 검색: 동영상에 내 언어의 자막이 없으면 Bluebox가 OpenSubtitles에서 가장 잘 맞는 것을 추가합니다. 각각 하루 한도에 포함됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Busca automática: quando um vídeo não tem nada no seu idioma, o Bluebox adiciona a melhor correspondência do OpenSubtitles. Cada uma conta no seu limite diário."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动搜索：当视频没有你的语言的字幕时，Bluebox 会添加 OpenSubtitles 上最匹配的字幕。每次都计入你的每日限额。"
+          }
+        }
+      }
+    },
     "Search History Cleared": {
       "extractionState": "manual",
       "localizations": {
@@ -69321,6 +71070,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "“在线搜索”会同时询问所有已开启的站点，并显示一个列表，最匹配该资源的排在最前。Subdl 需要来自 subdl.com›Panel›API 的免费 API 密钥。"
+          }
+        }
+      }
+    },
+    "Search Online in the player asks every site that's on at once, OpenSubtitles and Subdl above included, and shows one list with the best match for the release first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Online-Suche im Player fragt alle eingeschalteten Seiten gleichzeitig, auch OpenSubtitles und Subdl, und zeigt eine Liste mit dem besten Treffer für die Version zuerst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar en línea en el reproductor consulta a la vez todos los sitios activados, incluidos OpenSubtitles y Subdl, y muestra una lista con la mejor coincidencia para la versión primero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La recherche en ligne du lecteur interroge en même temps tous les sites activés, OpenSubtitles et Subdl compris, et affiche une seule liste avec la meilleure correspondance pour la version en premier."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca online nel player interroga insieme tutti i siti attivi, compresi OpenSubtitles e Subdl, e mostra un unico elenco con la corrispondenza migliore per la release in cima."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレーヤーのオンライン検索は、OpenSubtitlesとSubdlを含むオンのサイトすべてに同時に問い合わせ、リリースに最も合うものを先頭に1つのリストで表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "플레이어의 온라인 검색은 OpenSubtitles와 Subdl을 포함해 켜진 모든 사이트에 한 번에 묻고, 릴리스에 가장 잘 맞는 것을 맨 위에 둔 목록 하나로 보여 줍니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Busca online no player consulta ao mesmo tempo todos os sites ativados, incluindo OpenSubtitles e Subdl, e mostra uma lista com a melhor correspondência para a versão primeiro."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放器中的在线搜索会同时查询所有已开启的网站（包括上面的 OpenSubtitles 和 Subdl），并在一个列表中优先显示最匹配该版本的字幕。"
           }
         }
       }
@@ -70120,6 +71922,59 @@
         }
       }
     },
+    "Second Language Size": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Größe der zweiten Sprache"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamaño del segundo idioma"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taille de la deuxième langue"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dimensione della seconda lingua"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第2言語のサイズ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "두 번째 언어 크기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamanho do segundo idioma"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第二语言大小"
+          }
+        }
+      }
+    },
     "Second Line": {
       "extractionState": "manual",
       "localizations": {
@@ -70593,6 +72448,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "服务器"
+          }
+        }
+      }
+    },
+    "Server Address": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveradresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección del servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse du serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo del server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバのアドレス"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 주소"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereço do servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器地址"
           }
         }
       }
@@ -71971,6 +73879,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示全部"
+          }
+        }
+      }
+    },
+    "Show Episodes": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folgen anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar episodios"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher les épisodes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra episodi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エピソードを表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에피소드 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar episódios"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示剧集"
           }
         }
       }
@@ -79024,6 +80985,59 @@
         }
       }
     },
+    "Subdl": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl"
+          }
+        }
+      }
+    },
     "Subdl API Key": {
       "extractionState": "manual",
       "localizations": {
@@ -79049,6 +81063,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chiave API Subdl"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl APIキー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl API 키"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chave de API do Subdl"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl API 密钥"
+          }
+        }
+      }
+    },
+    "Subdl API key": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subdl-API-Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clave de API de Subdl"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clé d’API Subdl"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiave API di Subdl"
           }
         },
         "ja": {
@@ -91479,6 +93546,59 @@
         }
       }
     },
+    "Up Next counts down, then plays the next episode. Off: playback stops when an episode ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Als Nächstes“ zählt herunter und spielt dann die nächste Folge. Aus: Die Wiedergabe stoppt am Ende einer Folge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«A continuación» hace una cuenta atrás y reproduce el siguiente episodio. Desactivado: la reproducción se detiene al acabar un episodio."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "« À suivre » lance un compte à rebours, puis lit l’épisode suivant. Désactivé : la lecture s’arrête à la fin d’un épisode."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Prossimo» fa il conto alla rovescia, poi riproduce l’episodio successivo. Disattivato: la riproduzione si ferma alla fine di un episodio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「次に再生」がカウントダウンしてから次のエピソードを再生します。オフ：エピソードが終わると再生を止めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 재생이 카운트다운한 뒤 다음 에피소드를 재생합니다. 끔: 에피소드가 끝나면 재생이 멈춥니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O «A seguir» faz uma contagem e toca o próximo episódio. Desativado: a reprodução para quando um episódio termina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“接下来播放”倒数后播放下一集。关闭：一集结束时停止播放。"
+          }
+        }
+      }
+    },
     "Up next": {
       "extractionState": "manual",
       "localizations": {
@@ -91952,6 +94072,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "上传与缓存"
+          }
+        }
+      }
+    },
+    "Use My Profile Name": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meinen Profilnamen verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar el nombre de mi perfil"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser le nom de mon profil"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa il nome del mio profilo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイル名を使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 프로필 이름 사용"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar o nome do meu perfil"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用我的个人资料名称"
           }
         }
       }
@@ -94341,6 +96514,59 @@
         }
       }
     },
+    "Weight": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stärke"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grosor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Graisse"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spessore"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "太さ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "굵기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peso"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字重"
+          }
+        }
+      }
+    },
     "Welcome to Bluebox": {
       "extractionState": "manual",
       "localizations": {
@@ -94655,6 +96881,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bluebox 自动执行的操作"
+          }
+        }
+      }
+    },
+    "What Smart Downloads Does on Its Own": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was intelligente Downloads selbst erledigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que hacen las descargas inteligentes por sí solas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce que font les téléchargements intelligents d’eux-mêmes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cosa fanno da soli i download intelligenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スマートダウンロードが自動で行うこと"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스마트 다운로드가 스스로 하는 일"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que os downloads inteligentes fazem sozinhos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能下载会自动做什么"
           }
         }
       }
@@ -96832,6 +99111,59 @@
         }
       }
     },
+    "Your Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Nachricht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu mensaje"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre message"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo messaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分のメッセージ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 메시지"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua mensagem"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的消息"
+          }
+        }
+      }
+    },
     "Your Responsibility": {
       "extractionState": "manual",
       "localizations": {
@@ -97093,6 +99425,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的文件夹、Jellyfin 服务器、链接和种子。"
+          }
+        }
+      }
+    },
+    "Your folders, media servers (Jellyfin, Emby, Plex), WebDAV folders, links and torrents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Ordner, Medienserver (Jellyfin, Emby, Plex), WebDAV-Ordner, Links und Torrents."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus carpetas, servidores multimedia (Jellyfin, Emby, Plex), carpetas WebDAV, enlaces y torrents."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos dossiers, serveurs multimédias (Jellyfin, Emby, Plex), dossiers WebDAV, liens et torrents."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue cartelle, i server multimediali (Jellyfin, Emby, Plex), le cartelle WebDAV, i link e i torrent."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダ、メディアサーバ（Jellyfin、Emby、Plex）、WebDAVフォルダ、リンク、トレント。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더, 미디어 서버(Jellyfin, Emby, Plex), WebDAV 폴더, 링크와 토렌트."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas pastas, servidores de mídia (Jellyfin, Emby, Plex), pastas WebDAV, links e torrents."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的文件夹、媒体服务器（Jellyfin、Emby、Plex）、WebDAV 文件夹、链接和种子。"
           }
         }
       }
@@ -97517,6 +99902,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的登录已过期。进度已存储在此处，登录后会上传。"
+          }
+        }
+      }
+    },
+    "Your viewing, in numbers.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Schauen in Zahlen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que ves, en cifras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre visionnage, en chiffres."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue visioni, in numeri."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたの視聴を数字で。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "숫자로 보는 내 시청 기록."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que você assiste, em números."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用数字看你的观看记录。"
           }
         }
       }

@@ -58,6 +58,8 @@ extension AppModel {
         if args.contains("-demo-party") {
             await startDemoParty(lobby: args.contains("-demo-party-lobby"), chatOpen: !args.contains("-demo-party-closed"))
         }
+        // Screenshots: the Join a Party sheet, empty.
+        if args.contains("-open-join-party") { partyJoin = PartyJoinRequest() }
         if let count = value("-subtitle-stress").flatMap(Int.init) { await stressSubtitleStyle(count) }
         if let dir = value("-subtitle-check") { await checkSubtitles(saveTo: dir) }
     }
