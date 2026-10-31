@@ -31,7 +31,7 @@ public struct ExtrasRow: View {
             }
         }
         .frame(height: Self.rowHeight)
-        .sheet(item: $playing) { TrailerSheet(video: $0) }
+        .sheet(item: $playing) { TrailerSheet(video: $0).remoteModal() }
     }
 
     static let rowHeight: CGFloat = 200

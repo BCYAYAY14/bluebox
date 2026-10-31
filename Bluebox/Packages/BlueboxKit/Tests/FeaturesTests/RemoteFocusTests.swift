@@ -86,4 +86,97 @@ import Testing
         focus.hide()
         #expect(!focus.visible)
     }
+
+    /// The grid above, every item pressing into `pressed`; no window, unless a test gives one.
+    func grid(_ pressed: Box) -> RemoteFocus {
+        let focus = RemoteFocus()
+        focus.window = { nil }
+        for item in all {
+            focus.register(UUID(), .init(id: item.0, label: item.0, frame: item.1, layer: 0, select: { pressed.items.append(item.0) }))
+        }
+        return focus
+    }
+    final class Box { var items: [String] = [] }
+
+    @Test func whileTheHighlightIsHiddenATapOnlyShowsIt() {
+        let pressed = Box()
+        let focus = grid(pressed)
+        focus.select(driver: "iPhone")
+        #expect(focus.focusedID == "play" && focus.visible)
+        #expect(pressed.items.isEmpty)  // shown, not pressed: you hadn't seen it
+        focus.select(driver: "iPhone")
+        #expect(pressed.items == ["play"])
+        // Someone used the Mac's mouse: the ring hides, and the next tap brings it back first.
+        focus.hide()
+        focus.select(driver: "iPhone")
+        #expect(pressed.items == ["play"] && focus.visible)
+        // A swipe while hidden only shows it too.
+        focus.hide()
+        focus.move(.down, driver: "iPhone")
+        #expect(focus.focusedID == "play")
+    }
+
+    @Test func theHighlightStartsUnderTheMacsPointer() {
+        let pressed = Box()
+        let focus = grid(pressed)
+        let c = card(row: 1, 3)
+        focus.window = { (CGRect(x: 0, y: 0, width: 1000, height: 800), CGPoint(x: c.midX, y: c.midY)) }
+        focus.select(driver: "iPhone")
+        #expect(focus.focusedID == "r1c3")
+        #expect(pressed.items.isEmpty)
+    }
+
+    @Test func itemsScrolledOffScreenAreNotWhereItStarts() {
+        let focus = grid(Box())
+        // Scrolled down past the Play button and the first row.
+        focus.window = { (CGRect(x: 0, y: 250, width: 1000, height: 400), nil) }
+        focus.move(.right, driver: "iPhone")
+        #expect(focus.focusedID == "r1c0")
+    }
+
+    @Test func aSheetWithNothingToHighlightStillCoversThePage() {
+        let pressed = Box()
+        let focus = grid(pressed)
+        focus.select(driver: "iPhone")  // "play" highlighted
+        var closed = 0
+        let trailer = UUID()
+        focus.addModal(trailer, .init(layer: 1, dismiss: { closed += 1 }))
+        #expect(focus.focusedID == nil)
+        focus.select(driver: "iPhone")
+        focus.move(.down, driver: "iPhone")
+        #expect(pressed.items.isEmpty && focus.focusedID == nil)
+        // Back closes it.
+        #expect(focus.dismissTopModal())
+        #expect(closed == 1)
+        focus.removeModal(trailer)
+        #expect(!focus.dismissTopModal())
+        #expect(focus.focusedID == "play")  // the page's highlight is back where it was
+    }
+
+    @Test func aTapWithTheHighlightUnderANewSheetDoesNotPressThePage() {
+        let pressed = Box()
+        let focus = grid(pressed)
+        focus.select(driver: "iPhone")  // "play" highlighted and showing
+        focus.register(UUID(), .init(id: "release:1", label: "1080p", frame: CGRect(x: 300, y: 300, width: 400, height: 44), layer: 1,
+                                     select: { pressed.items.append("1080p") }))
+        focus.select(driver: "iPhone")
+        #expect(pressed.items.isEmpty)  // not Play again: the sheet's row is highlighted instead
+        #expect(focus.focusedID == "release:1")
+        focus.select(driver: "iPhone")
+        #expect(pressed.items == ["1080p"])
+    }
+
+    @Test func aNewLabelOnTheHighlightedItemReachesThePhone() {
+        let focus = RemoteFocus()
+        focus.window = { nil }
+        var changes = 0
+        focus.onChange = { changes += 1 }
+        let play = UUID()
+        focus.register(play, .init(id: "play", label: "Play", frame: self.play, layer: 0, select: {}))
+        focus.move(.down, driver: "iPhone")
+        let before = changes
+        focus.register(play, .init(id: "play", label: "Resume 12:04", frame: self.play, layer: 0, select: {}))
+        #expect(focus.focusedLabel == "Resume 12:04")
+        #expect(changes == before + 1)
+    }
 }

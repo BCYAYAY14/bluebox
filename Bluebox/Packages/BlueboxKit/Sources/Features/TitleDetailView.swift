@@ -257,7 +257,7 @@ struct TitleDetailView: View {
         }
         #else
         .overlay {
-            if showingSeasons { seasonList.transition(.opacity) }
+            if showingSeasons { seasonList.remoteModal { showingSeasons = false }.transition(.opacity) }
         }
         .animation(Motion.standard(reduceMotion), value: showingSeasons)
         #endif
@@ -269,9 +269,9 @@ struct TitleDetailView: View {
         .task(id: app.sourcesRevision) { await model.load(app) }
         .reloadsWhenBackOnline(model.error != nil && model.detail == nil) { await model.load(app) }
         .onChange(of: app.libraryRevision) { Task { await model.refreshProgress(app) } }
-        .sheet(item: $releaseItem) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true) }
+        .sheet(item: $releaseItem) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true).remoteModal() }
         .sheet(isPresented: $editingRules) {
-            ShowDownloadRulesSheet(series: model.title.key, showName: model.display.name).environment(app)
+            ShowDownloadRulesSheet(series: model.title.key, showName: model.display.name).environment(app).remoteModal()
         }
         #if DEBUG
         .task {
@@ -304,7 +304,7 @@ struct TitleDetailView: View {
         #endif
         .successHaptic(model.onList)
         // On its own view, apart from the release sheet above.
-        .background { Color.clear.sheet(item: $playingTrailer) { TrailerSheet(video: $0) } }
+        .background { Color.clear.sheet(item: $playingTrailer) { TrailerSheet(video: $0).remoteModal() } }
     }
 
     // MARK: Headers

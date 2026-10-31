@@ -43,6 +43,8 @@ extension EnvironmentValues {
     /// iPad and Mac: false on a tab kept alive behind the visible one, so
     /// it can stop what's only worth doing on screen (Home's preview).
     @Entry var isTabVisible = true
+    /// False on a page with another pushed over it: the remote can't reach its items.
+    @Entry var isTopPage = true
     /// Switches to a top-level tab (folded to its iPhone equivalent there),
     /// e.g. an empty state's "Browse" button opening Home.
     @Entry var selectTab = SelectTabAction { _ in }
@@ -226,6 +228,8 @@ public struct RootView: View {
                                   },
                                   manage: manageProfiles, addProfile: addProfileFromPicker)
                     .environment(\.profileSwitchFlight, flight)
+                    // Over the window: the remote can't reach the library under it; Back closes it if it may close.
+                    .remoteModal { if !profilePickerIsGate { showsProfilePicker = false } }
                     .transition(.opacity)
                     .zIndex(2)
             }
@@ -324,7 +328,7 @@ public struct RootView: View {
         .modifier(MacPlayerHost(session: app.activePlayer) { launchLayer })
         #endif
         // Releases… from an alert (a debrid link that led to a notice clip).
-        .sheet(item: $app.releasePickerRequest) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true) }
+        .sheet(item: $app.releasePickerRequest) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true).remoteModal() }
         // A magnet, .torrent or video opened from outside: one sheet with Play.
         .modifier(ExternalOpenPresenter())
         // Join a Party…, and a party being joined before its player opens (WatchPartyViews.swift).
@@ -769,10 +773,12 @@ public struct RootView: View {
                 .opacity(flight.contentHidden ? 0 : 1)
                 .modifier(CompactProfileButton(enabled: tab != .home, openSettings: openSettings))
                 .modifier(PageChrome(depth: 0))
+                .environment(\.isTopPage, (paths[tab] ?? []).isEmpty)
                 .navigationDestination(for: Route.self) { route in
                     let depth = (paths[tab]?.lastIndex(of: route) ?? 0) + 1
                     RouteDestination(route: route)
                         .modifier(PageChrome(depth: depth))
+                        .environment(\.isTopPage, depth == (paths[tab]?.count ?? 0))
                         .modifier(PushTransition(sourceID: zoomSources[tab]?[depth], namespace: zoomNamespace))
                 }
         }

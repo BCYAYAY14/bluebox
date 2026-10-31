@@ -990,6 +990,7 @@ struct StreamPreparingOverlay: View {
                     await app.play(request.item, release: release)
                 }
             }
+            .remoteModal()
         }
     }
 

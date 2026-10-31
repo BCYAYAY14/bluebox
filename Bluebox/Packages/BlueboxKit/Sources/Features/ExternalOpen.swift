@@ -282,6 +282,7 @@ struct ExternalOpenPresenter: ViewModifier {
                         ExternalOpenSheet(state: state)
                             .padding(Spacing.xl)
                     }
+                    .remoteModal { if case .working = state.phase {} else { app.externalOpen = nil } }
                     .transition(.opacity)
                     .zIndex(5)
                 }

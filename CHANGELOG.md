@@ -2,6 +2,16 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.2 (31 October 2026)
+
+### Remote control
+- Taps on the iPhone's touch pad no longer press the title page's Play button again once the film is playing. While the Mac plays, a tap plays or pauses and a swipe left or right skips 10 seconds.
+- While a stream is loading, the touch pad waits, so a second tap can't start it twice.
+- When nothing is highlighted on the Mac, the first tap or swipe shows the highlight: on whatever is under the Mac's pointer, or the first thing on screen. The next tap opens it.
+- Sheets and overlays, like a trailer, Download Rules or the season list, keep the touch pad off the page underneath, and Back closes them.
+- A page with another opened over it can't be reached by mistake, and the remote shows the highlighted item's current label, like Resume.
+- A swipe the iPhone interrupts no longer leaves the touch pad stuck.
+
 ## 1.2.1 (31 October 2026)
 
 ### Settings

@@ -820,6 +820,6 @@ struct PartyHost: ViewModifier {
                 }
             }
             .animation(Motion.snappy(reduceMotion), value: app.party == nil || app.activePlayer != nil)
-            .sheet(item: $app.partyJoin) { request in PartyJoinSheet(request: request).environment(app) }
+            .sheet(item: $app.partyJoin) { request in PartyJoinSheet(request: request).environment(app).remoteModal() }
     }
 }

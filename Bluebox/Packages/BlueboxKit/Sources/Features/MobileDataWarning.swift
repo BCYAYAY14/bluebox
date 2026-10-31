@@ -15,6 +15,7 @@ struct MobileDataWarningHost: ViewModifier {
                                     set: { if $0 == nil, app.settings.mobileDataPrompt != nil { app.answerMobileDataPrompt(.cancel) } })) { prompt in
             MobileDataWarningSheet(prompt: prompt)
                 .environment(app)
+                .remoteModal()
         }
         #if DEBUG
         .task {

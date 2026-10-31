@@ -589,6 +589,8 @@ struct RemoteTouchPad: View {
     @State private var size: CGSize = .zero
     @State private var start: (location: CGPoint, time: Date)?
     @State private var stepsTaken = CGSize.zero
+    /// Playing: how far the scrub has gone, to land it if the system cancels the drag.
+    @State private var scrubFraction: CGFloat?
     @State private var taps = 0
     @State private var steps = 0
     @GestureState private var pressing = false
@@ -604,6 +606,9 @@ struct RemoteTouchPad: View {
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .contentShape(RoundedRectangle(cornerRadius: Radius.sheet, style: .continuous))
             .gesture(drag)
+            // The system can cancel a drag (the sheet taking a swipe down) without
+            // `onEnded`: start the next touch afresh, and land a scrub where it was.
+            .onChange(of: pressing) { _, down in if !down { cancelled() } }
             .sensoryFeedback(.impact(weight: .medium), trigger: taps)
             .sensoryFeedback(.selection, trigger: steps)
             .accessibilityElement()
@@ -616,10 +621,16 @@ struct RemoteTouchPad: View {
         DragGesture(minimumDistance: 0)
             .updating($pressing) { _, state, _ in state = true }
             .onChanged { value in
-                if start == nil { start = (value.startLocation, Date()); stepsTaken = .zero }
+                // A new touch (by where it started): never carry on from a drag that didn't end.
+                if start?.location != value.startLocation {
+                    start = (value.startLocation, Date()); stepsTaken = .zero; scrubFraction = nil
+                }
                 let t = value.translation
                 if let onHorizontalDrag {
-                    if abs(t.width) > 8 { onHorizontalDrag(t.width / max(size.width, 1), false) }
+                    if abs(t.width) > 8 {
+                        scrubFraction = t.width / max(size.width, 1)
+                        onHorizontalDrag(t.width / max(size.width, 1), false)
+                    }
                 } else if let onSwipe {
                     // One step each `stepLength` along the main axis.
                     let horizontal = abs(t.width) >= abs(t.height)
@@ -635,7 +646,7 @@ struct RemoteTouchPad: View {
                 }
             }
             .onEnded { value in
-                defer { start = nil }
+                defer { start = nil; scrubFraction = nil }
                 let t = value.translation
                 let moved = hypot(t.width, t.height)
                 if let onHorizontalDrag, abs(t.width) > 8 { onHorizontalDrag(t.width / max(size.width, 1), true); return }
@@ -649,6 +660,13 @@ struct RemoteTouchPad: View {
     private func press() {
         taps += 1
         onTap()
+    }
+
+    /// The drag stopped without `onEnded` (after it, `start` is already nil).
+    private func cancelled() {
+        guard start != nil else { return }
+        if let scrubFraction { onHorizontalDrag?(scrubFraction, true) }
+        start = nil; stepsTaken = .zero; scrubFraction = nil
     }
 }
 

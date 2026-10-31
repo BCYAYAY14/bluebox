@@ -518,6 +518,7 @@ private struct ListEditorHost: ViewModifier {
                         .transition(.opacity)
                     ListEditorCard(request: request)
                         .id(request.id)
+                        .remoteModal { app.listEditor = nil }
                         .transition(Motion.pop(reduceMotion, scale: 0.96))
                 }
             }

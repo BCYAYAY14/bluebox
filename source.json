@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.2.2",
+          "buildVersion": "22",
+          "date": "2026-10-31T01:12:50Z",
+          "localizedDescription": "Remote control\n• Taps on the iPhone's touch pad no longer press the title page's Play button again once the film is playing.\n• While a stream is loading, the touch pad waits, so a second tap can't start it twice.\n• When nothing is highlighted on the Mac, the first tap or swipe shows the highlight: on whatever is under the Mac's pointer, or the first thing on screen.\n• Sheets and overlays, like a trailer, Download Rules or the season list, keep the touch pad off the page underneath, and Back closes them.\n• A page with another opened over it can't be reached by mistake, and the remote shows the highlighted item's current label, like Resume.\n• A swipe the iPhone interrupts no longer leaves the touch pad stuck.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.2/Bluebox-1.2.2.ipa",
+          "size": 37632206,
+          "sha256": "305cd3961b52fa0ec9dab2561723ad0b4580b84d1789b4c7a7d17df9f979f59d",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.2.1",
           "buildVersion": "21",
           "date": "2026-10-31T00:48:21Z",
@@ -143,11 +153,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.2.1",
-      "versionDate": "2026-10-31T00:48:21Z",
-      "versionDescription": "Settings\n• A link to another page, like Language on Appearance, now opens that page properly: the Mac's sidebar moves to it, and on iPhone the back button comes back.\n• The Appearance preview shows the app icon on the Mac.\n• Every live preview uses the same sunset scene.\n• On Subtitles, each site keeps its key, sign-in and switches together.\n• Each section says whose settings it holds, the same way on every page: only for you, or everyone on this device.\n• Clearer wording throughout, merged duplicate sections, and every setting appears in one place and in search.\n\nMenus and sheets\n• Right-click or touch and hold now opens Bluebox's own menu everywhere: downloads (with Show Episodes for a show), the debrid library, local files, recent searches, saved subtitle looks, the release list on the Mac, party chat and the player's Next Episode button.\n• Jump to Time is a short sheet whose example fits the video, and it says why Go is greyed out.\n• Join a Party is a standard form, with Cancel and Join at the top.\n• Deleting downloads, a season or a list, and downloading a whole collection, ask in Bluebox's own dialog.\n• Profile pictures are the same shape everywhere, and Search's filter chips show a choice in the theme colour.\n\nRemote control\n• Picking your Mac in the iPhone's Play On menu opens the remote straight away, even when nothing is playing, and the menu has Open Remote.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.1/Bluebox-1.2.1.ipa",
-      "size": 37607691
+      "version": "1.2.2",
+      "versionDate": "2026-10-31T01:12:50Z",
+      "versionDescription": "Remote control\n• Taps on the iPhone's touch pad no longer press the title page's Play button again once the film is playing.\n• While a stream is loading, the touch pad waits, so a second tap can't start it twice.\n• When nothing is highlighted on the Mac, the first tap or swipe shows the highlight: on whatever is under the Mac's pointer, or the first thing on screen.\n• Sheets and overlays, like a trailer, Download Rules or the season list, keep the touch pad off the page underneath, and Back closes them.\n• A page with another opened over it can't be reached by mistake, and the remote shows the highlighted item's current label, like Resume.\n• A swipe the iPhone interrupts no longer leaves the touch pad stuck.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.2/Bluebox-1.2.2.ipa",
+      "size": 37632206
     }
   ],
   "news": []
