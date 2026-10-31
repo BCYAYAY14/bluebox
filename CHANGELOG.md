@@ -2,6 +2,17 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.3 (31 October 2026)
+
+### Remote control
+- One remote instead of two tabs. Above the touch pad, the iPhone shows what's highlighted on the Mac with the items either side of it and the row it's in, so you can drive without looking up.
+- There's always a highlight: after a while it dims to an outline instead of disappearing, and a new page starts on its first item, so every swipe moves and every tap presses something.
+- Everything you could click on the Mac can be reached: the sidebar, TV Shows and Movies, More Info and My List, See All, the search field, Downloads, every Settings row and switch, and the buttons in sheets.
+- New gestures: a fast swipe jumps several items, holding at the edge keeps moving, holding opens an item's menu on both screens, two fingers scroll (and coast), and a swipe in from the left edge goes back.
+- A pointer, with a two-finger tap or Use a Pointer, for clicking anything. It comes on by itself on a screen with nothing to highlight.
+- At the end of what's showing, a swipe scrolls the page on and carries on.
+- While something plays: Skip Intro and Next Episode appear on the iPhone when the Mac offers them, the timeline shows chapters, and circling round the pad's edge scrubs in fine steps.
+
 ## 1.2.2 (31 October 2026)
 
 ### Remote control

@@ -151,6 +151,9 @@ public final class AppModel {
     @ObservationIgnored public let remoteFocus = RemoteFocus()
     /// Where the remote asked the Mac to go; RootView goes there and clears it.
     public var remoteNavigation: RemoteNavigation?
+    /// What the player's skip button offers now ("Skip Intro"), and taking it:
+    /// the phone shows the same button (PlayerView keeps it up to date).
+    @ObservationIgnored var remoteSkip: (title: String, accept: @MainActor () -> Void)?
     /// Text the remote typed for Search; SearchView takes it and clears it.
     public var remoteSearchText: String?
     /// Bumped by the Mac menu bar's Open Downloads; RootView shows the Downloads tab.

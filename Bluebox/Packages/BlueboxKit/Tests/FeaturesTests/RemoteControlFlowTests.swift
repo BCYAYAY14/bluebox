@@ -186,7 +186,7 @@ import Testing
         let p = await appPair()
         #expect(p.phone.devices.map(\.id) == [p.mac.deviceID])
         #expect(p.phone.devices.first?.controllable == true)
-        #expect(p.phone.devices.first?.version == 3)
+        #expect(p.phone.devices.first?.version == RemoteDevice.currentVersion)
         #expect(p.phone.nowPlaying == nil)
     }
 
@@ -202,6 +202,27 @@ import Testing
         #expect(await until { p.handler.log.count >= 4 })
         try? await Task.sleep(for: .milliseconds(300))
         #expect(p.handler.log == ["go title(tmdb:movie:7)", "move right", "move right", "select"])
+    }
+
+    /// The better remote's commands reach the Mac's app in order. A scroll
+    /// while the fingers move and a pointer move are sent once, never
+    /// acknowledged or retried; the scroll's last message (the coast) is.
+    @Test func theBetterRemotesCommandsLand() async {
+        let p = await appPair()
+        p.phone.send(.jump(RemoteJump(.right, count: 3)))
+        p.phone.send(.scroll(RemoteScroll(dx: 0, dy: 40)))
+        p.phone.send(.pointer(RemotePointerMove(dx: 5, dy: -2)))
+        p.phone.send(.scroll(RemoteScroll(dx: 0, dy: 10, velocityX: 0, velocityY: 900)))
+        p.phone.send(.menu)
+        #expect(await until { p.handler.log.count >= 5 })
+        #expect(p.handler.log == ["jump right 3", "scroll 40", "pointer 5,-2", "scroll 10 coast", "menu"])
+        let acked = Set(p.hub.sent.compactMap { if case .ack(let a) = $0 { a.commandID } else { nil } })
+        let continuous = p.hub.sent.compactMap { m -> UUID? in
+            guard case .command(let c) = m, c.action.isContinuous else { return nil }
+            return c.id
+        }
+        #expect(continuous.count == 2)
+        #expect(continuous.allSatisfy { !acked.contains($0) })
     }
 
     /// The Mac reports where it is and what's highlighted; the phone's Touch pad names it.
@@ -318,8 +339,17 @@ final class FakeAppHandler: RemoteAppHandler {
     func remoteFocus(_ id: String, driver: String) { log.append("focus \(id)") }
     func remoteMove(_ direction: RemoteDirection, driver: String) { log.append("move \(direction.rawValue)") }
     func remoteSelect(driver: String) { log.append("select") }
-    func remoteScreen() -> (title: String, focusedID: String?, focusedLabel: String?) {
-        ("Severance", focused?.id, focused?.label)
+    func remote4(_ action: RemoteCommand.Action, driver: String) {
+        switch action {
+        case .jump(let j): log.append("jump \(j.direction.rawValue) \(j.count)")
+        case .scroll(let s): log.append("scroll \(Int(s.dy))\(s.ends ? " coast" : "")")
+        case .pointer(let m): log.append("pointer \(Int(m.dx)),\(Int(m.dy))")
+        case .menu: log.append("menu")
+        default: log.append("\(action)")
+        }
+    }
+    func remoteScreen() -> RemoteScreen {
+        RemoteScreen(deviceID: "", title: "Severance", focusedID: focused?.id, focusedLabel: focused?.label)
     }
 }
 

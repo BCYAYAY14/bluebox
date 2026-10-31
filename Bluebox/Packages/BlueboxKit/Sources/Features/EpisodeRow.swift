@@ -95,7 +95,7 @@ struct EpisodeRow: View {
             .contentShape(RoundedRectangle(cornerRadius: Radius.hero - 4, style: .continuous))
         }
         .buttonStyle(EpisodeRowButtonStyle())
-        .remoteFocusable("episode:\(episode.key)", label: "\(episode.number) · \(episode.name)", cornerRadius: Radius.control) {
+        .remoteFocusable("episode:\(episode.key)", label: "\(episode.number) · \(episode.name)", cornerRadius: Radius.control, kind: .row) {
             actions.play()
         }
         .disabled(!isPlayable)

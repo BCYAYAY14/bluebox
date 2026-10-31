@@ -554,6 +554,7 @@ struct HomeView: View {
 
                     // Editorial and personal rows take turns (Top Picks, Because You Watched).
                     ForEach(visibleRows) { row in
+                        Group {
                         switch row.style {
                         case .poster:
                             posterRow(row.title, titles: row.titles, metrics: metrics, inset: inset,
@@ -575,6 +576,8 @@ struct HomeView: View {
                                 }
                             }
                         }
+                        }
+                        .remoteSection(row.title)  // the phone names the row (the better remote, question 6)
                     }
                     .modifier(ChromeTextCap())
 
@@ -666,6 +669,7 @@ struct HomeView: View {
                            width: metrics.posterWidth, isDownloaded: isDownloaded(t.key))
             }
         }
+        .remoteSection(title)
         .modifier(ChromeTextCap())
     }
 

@@ -376,7 +376,12 @@ struct BlueboxMenuPanel: View {
     let dismiss: @MainActor () -> Void
     var inPopover = false
 
-    @State private var highlighted: Int?
+    /// The highlighted item, kept where a remote can move it too (`BlueboxMenuRemote`).
+    @State private var driver = BlueboxMenuDriver()
+    private var highlighted: Int? {
+        get { driver.highlighted }
+        nonmutating set { driver.highlighted = newValue }
+    }
     @FocusState private var focused: Bool
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -396,7 +401,15 @@ struct BlueboxMenuPanel: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            driver.title = title
+            driver.entries = entries
+            driver.activateItem = { item in activate(item) }
+            driver.close = dismiss
+            BlueboxMenuRemote.opened(driver)
+        }
+        .onDisappear { BlueboxMenuRemote.closed(driver) }
         .onKeyPress(.downArrow) { step(1); return .handled }
         .onKeyPress(.upArrow) { step(-1); return .handled }
         .onKeyPress(.home) { highlighted = selectable.first; return .handled }
@@ -547,19 +560,9 @@ struct BlueboxMenuPanel: View {
 
     // MARK: Keyboard
 
-    private var selectable: [Int] {
-        entries.indices.filter { if case .item(let i) = entries[$0] { !i.isDisabled } else { false } }
-    }
+    private var selectable: [Int] { driver.selectable }
 
-    private func step(_ delta: Int) {
-        let list = selectable
-        guard !list.isEmpty else { return }
-        guard let current = highlighted, let at = list.firstIndex(of: current) else {
-            highlighted = delta > 0 ? list.first : list.last
-            return
-        }
-        highlighted = list[(at + delta + list.count) % list.count]
-    }
+    private func step(_ delta: Int) { driver.step(delta) }
 
     private func activateHighlighted() -> KeyPress.Result {
         guard let h = highlighted, case .item(let item) = entries[h] else { return .ignored }
@@ -585,6 +588,94 @@ struct BlueboxMenuPanel: View {
         dismiss()
         item.action()
     }
+}
+
+// MARK: - Remote
+
+/// The open Bluebox menu, for a remote control driving the app (the better
+/// remote, 31 Oct 2026): the touch pad moves through its items, a tap picks
+/// one, and the phone shows the same list to pick from.
+@MainActor public enum BlueboxMenuRemote {
+    public struct Item {
+        /// Its index among the menu's entries (`BlueboxMenuDriver.pick`).
+        public let index: Int
+        public let title: String
+        public let subtitle: String?
+        public let systemImage: String?
+        public let checked: Bool
+        public let disabled: Bool
+        public let destructive: Bool
+    }
+
+    /// The menu open now, if any.
+    public private(set) static var current: BlueboxMenuDriver?
+    /// A menu opened, closed or moved its highlight.
+    public static var onChange: (@MainActor () -> Void)?
+
+    static func opened(_ driver: BlueboxMenuDriver) {
+        current = driver
+        onChange?()
+    }
+
+    static func closed(_ driver: BlueboxMenuDriver) {
+        guard current === driver else { return }
+        current = nil
+        onChange?()
+    }
+}
+
+/// One open menu's items and highlight: what its panel draws, and what a remote drives.
+@MainActor @Observable public final class BlueboxMenuDriver {
+    public internal(set) var title = ""
+    var entries: [BlueboxMenuEntry] = []
+    var highlighted: Int? {
+        didSet { if highlighted != oldValue, BlueboxMenuRemote.current === self { BlueboxMenuRemote.onChange?() } }
+    }
+    @ObservationIgnored var activateItem: @MainActor (BlueboxMenuItem) -> Void = { _ in }
+    @ObservationIgnored var close: @MainActor () -> Void = {}
+
+    init() {}
+
+    /// The menu's items (not its headers, notes or separators).
+    public var items: [BlueboxMenuRemote.Item] {
+        entries.enumerated().compactMap { i, e in
+            guard case .item(let item) = e else { return nil }
+            let symbol: String? = if case .symbol(let s) = item.leading { s } else if case .avatar(let s, _) = item.leading { s } else { nil }
+            return BlueboxMenuRemote.Item(index: i, title: item.title, subtitle: item.subtitle, systemImage: symbol,
+                                          checked: item.isChecked, disabled: item.isDisabled, destructive: item.isDestructive)
+        }
+    }
+
+    /// The highlighted item's index.
+    public var highlightedIndex: Int? { highlighted }
+
+    var selectable: [Int] {
+        entries.indices.filter { if case .item(let i) = entries[$0] { !i.isDisabled } else { false } }
+    }
+
+    /// The next (or previous) item that can be picked, wrapping round.
+    public func step(_ delta: Int) {
+        let list = selectable
+        guard !list.isEmpty else { return }
+        guard let current = highlighted, let at = list.firstIndex(of: current) else {
+            highlighted = delta > 0 ? list.first : list.last
+            return
+        }
+        highlighted = list[(at + delta + list.count) % list.count]
+    }
+
+    /// Picks the highlighted item; with none highlighted yet, highlights the first.
+    public func activateHighlighted() {
+        guard let h = highlighted else { step(1); return }
+        pick(h)
+    }
+
+    public func pick(_ index: Int) {
+        guard entries.indices.contains(index), case .item(let item) = entries[index] else { return }
+        activateItem(item)
+    }
+
+    public func dismiss() { close() }
 }
 
 private struct MenuRow: View {

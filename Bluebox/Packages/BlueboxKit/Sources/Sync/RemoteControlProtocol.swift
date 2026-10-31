@@ -35,6 +35,11 @@ public struct RemoteNowPlaying: Codable, Hashable, Sendable {
     public var volume: Float
     /// An episode with a next one: the remote shows Next Episode.
     public var hasNext: Bool
+    /// What the Mac's skip button offers right now ("Skip Intro", "Next Episode"):
+    /// the phone shows the same button (`RemoteCommand.Action.acceptSkip`).
+    public var skipOffer: String?
+    /// Chapter starts, for marks on the phone's timeline.
+    public var chapters: [TimeInterval]?
     /// Counts up per publishing device, so a late message can't undo a newer one.
     /// Starts from the clock, so it keeps counting up across the Mac's relaunches.
     public var seq: Int
@@ -47,12 +52,14 @@ public struct RemoteNowPlaying: Codable, Hashable, Sendable {
 
     public init(deviceID: String, deviceName: String, title: String, subtitle: String? = nil, position: TimeInterval,
                 duration: TimeInterval?, paused: Bool, audioTracks: [RemoteTrack] = [], subtitleTracks: [RemoteTrack] = [],
-                audioID: String? = nil, subtitleID: String? = nil, volume: Float = 1, hasNext: Bool = false, seq: Int = 0,
+                audioID: String? = nil, subtitleID: String? = nil, volume: Float = 1, hasNext: Bool = false,
+                skipOffer: String? = nil, chapters: [TimeInterval]? = nil, seq: Int = 0,
                 version: Int? = RemoteNowPlaying.currentVersion) {
         self.deviceID = deviceID; self.deviceName = deviceName; self.title = title; self.subtitle = subtitle
         self.position = position; self.duration = duration; self.paused = paused
         self.audioTracks = audioTracks; self.subtitleTracks = subtitleTracks; self.audioID = audioID; self.subtitleID = subtitleID
-        self.volume = volume; self.hasNext = hasNext; self.seq = seq; self.version = version
+        self.volume = volume; self.hasNext = hasNext; self.skipOffer = skipOffer; self.chapters = chapters
+        self.seq = seq; self.version = version
     }
 
     /// The player acknowledges commands, so they can be retried.
@@ -98,6 +105,37 @@ public struct RemotePlay: Codable, Hashable, Sendable {
     }
 }
 
+/// Two fingers on the pad: scroll what's under the highlight, in points on
+/// the controlled screen (positive `dy` shows what's further down). The last
+/// one of a gesture carries the finger's speed, so the page coasts on.
+public struct RemoteScroll: Codable, Hashable, Sendable {
+    public var dx: Double
+    public var dy: Double
+    /// Points a second when the fingers lifted; nil while they're down.
+    public var velocityX: Double?
+    public var velocityY: Double?
+
+    public init(dx: Double, dy: Double, velocityX: Double? = nil, velocityY: Double? = nil) {
+        self.dx = dx; self.dy = dy; self.velocityX = velocityX; self.velocityY = velocityY
+    }
+
+    public var ends: Bool { velocityX != nil || velocityY != nil }
+}
+
+/// How far the pad moved the controlled screen's pointer, in points.
+public struct RemotePointerMove: Codable, Hashable, Sendable {
+    public var dx: Double
+    public var dy: Double
+    public init(dx: Double, dy: Double) { self.dx = dx; self.dy = dy }
+}
+
+/// A fast swipe: several steps one way, in one message.
+public struct RemoteJump: Codable, Hashable, Sendable {
+    public var direction: RemoteDirection
+    public var count: Int
+    public init(_ direction: RemoteDirection, count: Int) { self.direction = direction; self.count = count }
+}
+
 /// One thing the remote asked the controlled device to do: its player, or the app around it.
 public struct RemoteCommand: Codable, Hashable, Sendable {
     public enum Action: Hashable, Sendable {
@@ -121,6 +159,20 @@ public struct RemoteCommand: Codable, Hashable, Sendable {
         /// Press the highlighted item.
         case select
         case play(RemotePlay)
+        // Protocol 4: the better remote (31 Oct 2026).
+        case jump(RemoteJump)
+        case scroll(RemoteScroll)
+        /// Pointer mode on or off: the pad moves a pointer instead of the highlight.
+        case setPointer(Bool)
+        case pointer(RemotePointerMove)
+        /// Click under the pointer.
+        case click
+        /// Hold: the highlighted item's menu, as a right-click would open it.
+        case menu
+        /// An item of the open menu (`RemoteScreen.menu`), by its index there.
+        case menuPick(Int)
+        /// The player's skip button (`RemoteNowPlaying.skipOffer`).
+        case acceptSkip
     }
 
     public var id: UUID
@@ -154,6 +206,14 @@ extension RemoteCommand.Action: Codable {
         case "move": self = .move(try c.decode(RemoteDirection.self, forKey: .value))
         case "select": self = .select
         case "play": self = .play(try c.decode(RemotePlay.self, forKey: .value))
+        case "jump": self = .jump(try c.decode(RemoteJump.self, forKey: .value))
+        case "scroll": self = .scroll(try c.decode(RemoteScroll.self, forKey: .value))
+        case "setPointer": self = .setPointer(try c.decode(Bool.self, forKey: .value))
+        case "pointer": self = .pointer(try c.decode(RemotePointerMove.self, forKey: .value))
+        case "click": self = .click
+        case "menu": self = .menu
+        case "menuPick": self = .menuPick(try c.decode(Int.self, forKey: .value))
+        case "acceptSkip": self = .acceptSkip
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown remote action \(other)")
         }
@@ -175,6 +235,14 @@ extension RemoteCommand.Action: Codable {
         case .move(let d): try c.encode("move", forKey: .kind); try c.encode(d, forKey: .value)
         case .select: try c.encode("select", forKey: .kind)
         case .play(let p): try c.encode("play", forKey: .kind); try c.encode(p, forKey: .value)
+        case .jump(let j): try c.encode("jump", forKey: .kind); try c.encode(j, forKey: .value)
+        case .scroll(let s): try c.encode("scroll", forKey: .kind); try c.encode(s, forKey: .value)
+        case .setPointer(let on): try c.encode("setPointer", forKey: .kind); try c.encode(on, forKey: .value)
+        case .pointer(let m): try c.encode("pointer", forKey: .kind); try c.encode(m, forKey: .value)
+        case .click: try c.encode("click", forKey: .kind)
+        case .menu: try c.encode("menu", forKey: .kind)
+        case .menuPick(let i): try c.encode("menuPick", forKey: .kind); try c.encode(i, forKey: .value)
+        case .acceptSkip: try c.encode("acceptSkip", forKey: .kind)
         }
     }
 
@@ -183,6 +251,27 @@ extension RemoteCommand.Action: Codable {
     public var isAppCommand: Bool {
         switch self {
         case .go, .focus, .move, .select, .play: true
+        case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: true
+        default: false
+        }
+    }
+
+    /// Needs a device on protocol 4 (`RemoteDevice.version`): older Macs don't know it.
+    public var needsVersion4: Bool {
+        switch self {
+        case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: true
+        default: false
+        }
+    }
+
+    /// Sent many times a second while a finger moves (a scroll or the pointer):
+    /// not acknowledged or retried, since a lost one only means a little less
+    /// movement, and acks would double the traffic. A scroll's last message
+    /// (with its speed) is, so the page always coasts.
+    public var isContinuous: Bool {
+        switch self {
+        case .pointer: true
+        case .scroll(let s): !s.ends
         default: false
         }
     }
@@ -226,14 +315,61 @@ public struct RemoteDevice: Codable, Hashable, Sendable, Identifiable {
     /// What it's playing, if anything.
     public var playing: String?
     /// 3: takes app commands (go, focus, move, select, play) as well as the player's.
+    /// 4: also jumps, scrolls, the pointer, menus and the skip button.
     public var version: Int
 
     public static let announceInterval: TimeInterval = 20
     /// Not heard from for this long: off the list.
     public static let goneAfter: TimeInterval = 50
 
-    public init(id: String, name: String, kind: Kind, controllable: Bool, playing: String? = nil, version: Int = 3) {
+    public static let currentVersion = 4
+
+    public init(id: String, name: String, kind: Kind, controllable: Bool, playing: String? = nil, version: Int = RemoteDevice.currentVersion) {
         self.id = id; self.name = name; self.kind = kind; self.controllable = controllable; self.playing = playing; self.version = version
+    }
+}
+
+/// One item on the controlled screen, as the phone draws it beside the highlight.
+public struct RemoteScreenItem: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case poster, button, toggle, field, row, other }
+    public var label: String
+    public var kind: Kind
+    /// A poster's picture.
+    public var image: URL?
+    /// A switch's state.
+    public var isOn: Bool?
+
+    public init(label: String, kind: Kind = .button, image: URL? = nil, isOn: Bool? = nil) {
+        self.label = label; self.kind = kind; self.image = image; self.isOn = isOn
+    }
+}
+
+/// A Bluebox menu open on the controlled screen: the phone shows the same items.
+public struct RemoteMenu: Codable, Hashable, Sendable {
+    public struct Item: Codable, Hashable, Sendable {
+        /// Its index in the menu (`RemoteCommand.Action.menuPick`).
+        public var index: Int
+        public var title: String
+        public var subtitle: String?
+        public var systemImage: String?
+        public var checked: Bool
+        public var disabled: Bool
+        public var destructive: Bool
+
+        public init(index: Int, title: String, subtitle: String? = nil, systemImage: String? = nil,
+                    checked: Bool = false, disabled: Bool = false, destructive: Bool = false) {
+            self.index = index; self.title = title; self.subtitle = subtitle; self.systemImage = systemImage
+            self.checked = checked; self.disabled = disabled; self.destructive = destructive
+        }
+    }
+
+    public var title: String
+    public var items: [Item]
+    /// The item highlighted on the controlled screen.
+    public var highlighted: Int?
+
+    public init(title: String, items: [Item], highlighted: Int? = nil) {
+        self.title = title; self.items = items; self.highlighted = highlighted
     }
 }
 
@@ -246,9 +382,27 @@ public struct RemoteScreen: Codable, Hashable, Sendable {
     /// The highlighted item's ID and what it says ("3 · In Perpetuity").
     public var focusedID: String?
     public var focusedLabel: String?
+    // Protocol 4.
+    /// The highlighted item as the phone draws it, and the ones either side of it.
+    public var focused: RemoteScreenItem?
+    public var before: RemoteScreenItem?
+    public var after: RemoteScreenItem?
+    /// The neighbours are left and right (a row of posters) rather than above and below (a list).
+    public var horizontal: Bool?
+    /// The row or section it's in ("Continue Watching").
+    public var section: String?
+    /// The pad drives a pointer (`RemoteCommand.Action.setPointer`), e.g. on a page with nothing to highlight.
+    public var pointer: Bool?
+    /// Counts the moves that hit the end of a row: the phone bumps when it goes up.
+    public var bumps: Int?
+    public var menu: RemoteMenu?
 
-    public init(deviceID: String, title: String, focusedID: String? = nil, focusedLabel: String? = nil) {
+    public init(deviceID: String, title: String, focusedID: String? = nil, focusedLabel: String? = nil,
+                focused: RemoteScreenItem? = nil, before: RemoteScreenItem? = nil, after: RemoteScreenItem? = nil,
+                horizontal: Bool? = nil, section: String? = nil, pointer: Bool? = nil, bumps: Int? = nil, menu: RemoteMenu? = nil) {
         self.deviceID = deviceID; self.title = title; self.focusedID = focusedID; self.focusedLabel = focusedLabel
+        self.focused = focused; self.before = before; self.after = after; self.horizontal = horizontal
+        self.section = section; self.pointer = pointer; self.bumps = bumps; self.menu = menu
     }
 }
 
@@ -364,7 +518,8 @@ public struct RemoteReconciler: Sendable {
     public mutating func apply(_ action: RemoteCommand.Action, id: UUID? = nil, at now: Date) {
         pending.removeAll { Self.kind($0.action) == Self.kind(action) }
         switch action {
-        case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play: return  // nothing to draw on the player
+        case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
+             .click, .menu, .menuPick, .acceptSkip: return  // nothing to draw on the player
         default: break
         }
         pending.append(Pending(id: id, action: action, at: now, deadline: now.addingTimeInterval(timeout)))
@@ -420,7 +575,8 @@ public struct RemoteReconciler: Sendable {
             case .audio(let id): s.audioID = id
             case .subtitle(let id): s.subtitleID = id
             case .volume(let v): s.volume = v
-            case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play: break
+            case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
+                 .click, .menu, .menuPick, .acceptSkip: break
             }
         }
         var position = fix.position + (playing ? max(now.timeIntervalSince(fix.at), 0) : 0)
@@ -439,7 +595,7 @@ public struct RemoteReconciler: Sendable {
         case .volume: 5
         case .closePlayer: 6
         // Each press counts: never replaced by the next one.
-        case .go, .focus, .move, .select, .play: 100
+        case .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: 100
         }
     }
 
@@ -448,7 +604,8 @@ public struct RemoteReconciler: Sendable {
         switch a {
         case .setPaused(let p): s.paused == p
         case .seek(let t), .scrub(let t): abs(s.position - t) < 3
-        case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play: true
+        case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
+             .click, .menu, .menuPick, .acceptSkip: true
         case .audio(let id): s.audioID == id
         case .subtitle(let id): s.subtitleID == id
         case .volume(let v): abs(s.volume - v) < 0.02

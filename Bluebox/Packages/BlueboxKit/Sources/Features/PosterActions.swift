@@ -133,6 +133,7 @@ final class QuickActionGate {
 /// being its own `matchedTransitionSource` under a per-card ID: the same title
 /// can sit in several rows at once.
 struct TitleCardLink<Label: View>: View {
+    @Environment(AppModel.self) private var app
     @Environment(\.pushRoute) private var pushRoute
     @Environment(\.zoomNamespace) private var zoomNamespace
     let subject: QuickActionSubject
@@ -160,7 +161,8 @@ struct TitleCardLink<Label: View>: View {
         .buttonStyle(PressableStyle())
         .quickActions(subject, opened: gate)
         // The remote's touch pad can land on it (the Mac's highlight).
-        .remoteFocusable("title:\(subject.title.key)", label: subject.title.name) {
+        .remoteFocusable("title:\(subject.title.key)", label: subject.title.name, kind: .poster,
+                         image: app.imageURL(subject.title.poster, width: 185)) {
             onOpen()
             pushRoute(route ?? .title(subject.title), zoomFrom: nil)
         }

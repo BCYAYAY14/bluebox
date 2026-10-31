@@ -18,8 +18,17 @@ import SystemConfiguration
     func remoteFocus(_ id: String, driver: String)
     func remoteMove(_ direction: RemoteDirection, driver: String)
     func remoteSelect(driver: String)
-    /// Where the app is and what's highlighted, for `RemoteScreen`.
-    func remoteScreen() -> (title: String, focusedID: String?, focusedLabel: String?)
+    /// Protocol 4: jumps, scrolling, the pointer, menus and the skip button.
+    func remote4(_ action: RemoteCommand.Action, driver: String)
+    /// Where the app is and what's highlighted (`deviceID` is filled in by `RemoteControl`).
+    func remoteScreen() -> RemoteScreen
+    /// What the player's skip button offers now ("Skip Intro"), if anything.
+    func remoteSkipOffer() -> String?
+}
+
+public extension RemoteAppHandler {
+    func remote4(_ action: RemoteCommand.Action, driver: String) {}
+    func remoteSkipOffer() -> String? { nil }
 }
 
 /// iPhone as a remote for the Mac (DECISIONS.md, UI review 17; the new remote, 31 Oct 2026).
@@ -348,7 +357,8 @@ public final class RemoteControl {
         case .command(let command):
             guard command.target == deviceID, controllable || player != nil else { return }
             lastRemoteSeen = now()
-            enqueue(.ack(RemoteAck(commandID: command.id, deviceID: deviceID, seq: seq)))
+            // A scroll or pointer move is never retried, so it needs no ack.
+            if !command.action.isContinuous { enqueue(.ack(RemoteAck(commandID: command.id, deviceID: deviceID, seq: seq))) }
             guard !applied.contains(command.id) else { return }  // a retry of one already applied
             applied.append(command.id)
             if applied.count > 64 { applied.removeFirst(applied.count - 64) }
@@ -417,6 +427,11 @@ public final class RemoteControl {
     public func send(_ action: RemoteCommand.Action) {
         guard channel != nil, let device = controlled else { return }
         if action.isAppCommand, device.version < 3 { return }  // a build without app commands
+        if action.needsVersion4, device.version < 4 {
+            // A Mac from before the better remote: a jump becomes single steps; the rest it can't do.
+            if case .jump(let j) = action { for _ in 0..<j.count { send(.move(j.direction)) } }
+            return
+        }
         let command = RemoteCommand(target: device.id, action: action, from: deviceID)
         if !action.isAppCommand {
             // A newer command of the same kind replaces an unanswered one: stop sending that.
@@ -428,6 +443,7 @@ public final class RemoteControl {
             refreshDisplayed()
         }
         enqueue(.command(command))
+        if action.isContinuous { return }  // never retried (`isContinuous`)
         // Builds before acks would apply a resent Next Episode twice.
         let acknowledges = action.isAppCommand || (nowPlaying?.acknowledges ?? (device.version >= 2))
         guard acknowledges else { return }
@@ -513,6 +529,7 @@ public final class RemoteControl {
         case .select: handler?.remoteSelect(driver: driver)
         case .play(let p): await handler?.remotePlay(p)
         case .closePlayer: await handler?.remoteClosePlayer()
+        case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: handler?.remote4(action, driver: driver)
         default:
             guard let player else { return }
             await Self.apply(action, to: player)
@@ -524,8 +541,8 @@ public final class RemoteControl {
 
     private func publishScreen(force: Bool) {
         guard controllable, channel != nil, channelState == .joined, let handler else { return }
-        let s = handler.remoteScreen()
-        let screen = RemoteScreen(deviceID: deviceID, title: s.title, focusedID: s.focusedID, focusedLabel: s.focusedLabel)
+        var screen = handler.remoteScreen()
+        screen.deviceID = deviceID
         guard force || screen != lastScreen else { return }
         lastScreen = screen
         enqueue(.screen(screen))
@@ -565,7 +582,9 @@ public final class RemoteControl {
                                 audioTracks: s.snapshot.audioTracks.map { RemoteTrack(id: $0.id, label: $0.label) },
                                 subtitleTracks: s.allSubtitleTracks.map { RemoteTrack(id: $0.id, label: $0.label) },
                                 audioID: s.snapshot.selectedAudioID, subtitleID: subtitleID,
-                                volume: s.isMuted ? 0 : s.volume, hasNext: item.key.episodeNumbers != nil)
+                                volume: s.isMuted ? 0 : s.volume, hasNext: item.key.episodeNumbers != nil,
+                                skipOffer: handler?.remoteSkipOffer(),
+                                chapters: s.snapshot.chapters.isEmpty ? nil : s.snapshot.chapters.map(\.start))
     }
 
     /// The bridge to the player: only `PlayerSession`'s public controls.
@@ -588,7 +607,8 @@ public final class RemoteControl {
         case .volume(let v):
             if s.isMuted, v > 0 { s.setMuted(false) }
             s.setVolume(v)
-        case .closePlayer, .go, .focus, .move, .select, .play:
+        case .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer, .click, .menu,
+             .menuPick, .acceptSkip:
             break  // the app's, not the player's
         }
     }
@@ -603,14 +623,24 @@ public final class RemoteControl {
         heard = [mac.id: (mac, .distantFuture), other.id: (other, .distantFuture)]
         devices = [mac, other]
         target = mac.id
-        screen = RemoteScreen(deviceID: mac.id, title: "Severance", focusedID: "episode", focusedLabel: "3 · In Perpetuity")
+        screen = RemoteScreen(deviceID: mac.id, title: "Home", focusedID: "title:severance", focusedLabel: "Severance",
+                              focused: RemoteScreenItem(label: "Severance", kind: .poster),
+                              before: RemoteScreenItem(label: "Under Blue Ice", kind: .poster),
+                              after: RemoteScreenItem(label: "Harbor Lights", kind: .poster),
+                              horizontal: true, section: "Continue Watching", bumps: 0)
+        // `-seed-remote-idle`: the Mac on Home with nothing playing, for the remote's getting-around screen.
+        if ProcessInfo.processInfo.arguments.contains("-seed-remote-idle") {
+            refreshDisplayed()
+            return
+        }
         reconciler.receive(RemoteNowPlaying(
             deviceID: mac.id, deviceName: "Studio", title: "Severance", subtitle: "S1·E2 · Half Loop",
             position: 1_312, duration: 3_240, paused: false,
             audioTracks: [RemoteTrack(id: "a1", label: "English · 5.1"), RemoteTrack(id: "a2", label: "Español · Stereo")],
             subtitleTracks: [RemoteTrack(id: "s1", label: "English"), RemoteTrack(id: "s2", label: "English (SDH)"),
                              RemoteTrack(id: "s3", label: "Français")],
-            audioID: "a1", subtitleID: "s1", volume: 0.7, hasNext: true, seq: 1), at: now())
+            audioID: "a1", subtitleID: "s1", volume: 0.7, hasNext: true, skipOffer: "Skip Intro",
+            chapters: [0, 95, 1_260, 2_410], seq: 1), at: now())
         // Never stale while the screenshot is taken.
         reconciler.staleAfter = .infinity
         refreshDisplayed()

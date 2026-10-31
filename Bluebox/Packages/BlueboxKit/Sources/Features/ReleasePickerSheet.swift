@@ -406,7 +406,7 @@ struct ReleasePickerSheet: View {
         }
         // In the sheet's own layer: while it's up, the remote moves only among its releases.
         .remoteFocusable("release:\(r.id)", label: [r.resolution, r.sizeText].compactMap { $0 }.joined(separator: " · "),
-                         cornerRadius: 9, layer: 1) { choose(r) }
+                         cornerRadius: 9, layer: 1, kind: .row) { choose(r) }
         .background(shape.fill(isBest ? Palette.wash : nested ? Palette.chrome : Palette.surface))
         .overlay { shape.strokeBorder(isBest ? Palette.brand : Palette.edge, lineWidth: 1) }
         .padding(.leading, nested ? Spacing.l : 0)

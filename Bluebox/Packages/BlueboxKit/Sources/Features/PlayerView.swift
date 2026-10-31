@@ -148,6 +148,11 @@ struct PlayerView: View {
         #if os(iOS)
         .blueboxMenuHost()  // a full-screen cover: menus draw over the video, not under it
         #endif
+        // The phone's remote shows the same skip button (the better remote, question 8).
+        .onChange(of: skip.offer, initial: true) { _, offer in
+            app.remoteSkip = offer.map { o in (SkipSegmentPlanner.title(for: o), { perform(skip.accept()) }) }
+        }
+        .onDisappear { app.remoteSkip = nil }
         .sheet(isPresented: $jumping) { JumpToTimeSheet(duration: session.snapshot.duration ?? 0, position: session.displayPosition) { t in Task { await session.seek(to: t) } } }
         // On its own view: one sheet per view (see the tools sheet above).
         .background {

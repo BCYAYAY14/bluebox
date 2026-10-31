@@ -4559,6 +4559,10 @@
         }
       }
     },
+    "Alex": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Alignment": {
       "extractionState": "manual",
       "localizations": {
@@ -7894,59 +7898,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "返回"
-          }
-        }
-      }
-    },
-    "Back 10 Seconds": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10 Sekunden zurück"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retroceder 10 segundos"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reculer de 10 secondes"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Indietro di 10 secondi"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10秒戻る"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10초 뒤로"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voltar 10 Segundos"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "后退 10 秒"
           }
         }
       }
@@ -11498,6 +11449,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "最忙月份"
+          }
+        }
+      }
+    },
+    "Button": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taste"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Botón"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bouton"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulsante"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ボタン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "버튼"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Botão"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按钮"
           }
         }
       }
@@ -29681,6 +29685,14 @@
         }
       }
     },
+    "English (SDH)": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
+    "English · 5.1": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Enter It Again": {
       "extractionState": "manual",
       "localizations": {
@@ -30369,6 +30381,10 @@
           }
         }
       }
+    },
+    "Español · Stereo": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "Every 12 hours at most, asks your add-ons about films on My List that had nothing to play, and tells you when one appears, or when a release is ready on your debrid service. Asks for permission to notify you when you turn it on.": {
       "extractionState": "manual",
@@ -33917,59 +33933,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "AVPlayer 无法打开的格式将通过 SwiftVLC 使用 libVLC 播放，依据 GNU LGPL 2.1 或更高版本使用。"
-          }
-        }
-      }
-    },
-    "Forward 10 Seconds": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10 Sekunden vor"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avanzar 10 segundos"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avancer de 10 secondes"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avanti di 10 secondi"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10秒進む"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "10초 앞으로"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avançar 10 Segundos"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "前进 10 秒"
           }
         }
       }
@@ -41977,6 +41940,10 @@
         }
       }
     },
+    "Living Room Mac": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Loading": {
       "extractionState": "manual",
       "localizations": {
@@ -45524,6 +45491,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "上移以显示播放器控制项"
+          }
+        }
+      }
+    },
+    "Move like a trackpad · Tap to click": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie ein Trackpad bewegen · Tippen zum Klicken"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muévelo como un trackpad · Toca para hacer clic"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déplacez comme sur un trackpad · Touchez pour cliquer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muovi come su un trackpad · Tocca per fare clic"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トラックパッドのように動かす · タップでクリック"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙패드처럼 움직이기 · 탭하여 클릭"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mova como num trackpad · Toque para clicar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像触控板一样移动 · 轻点以点按"
           }
         }
       }
@@ -53160,6 +53180,59 @@
         }
       }
     },
+    "Off · Tap to turn on": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus · Tippen zum Einschalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivado · Toca para activar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactivé · Touchez pour activer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disattivato · Tocca per attivare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オフ · タップでオン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "끔 · 탭하여 켜기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desativado · Toque para ativar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关 · 轻点以打开"
+          }
+        }
+      }
+    },
     "Off: your API keys and add-on links stay in this device's Keychain. Each account has its own switch.": {
       "extractionState": "manual",
       "localizations": {
@@ -53739,6 +53812,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "在此设备上"
+          }
+        }
+      }
+    },
+    "On · Tap to turn off": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein · Tippen zum Ausschalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activado · Toca para desactivar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activé · Touchez pour désactiver"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attivato · Tocca per disattivare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オン · タップでオフ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켬 · 탭하여 끄기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ativado · Toque para desativar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开 · 轻点以关闭"
           }
         }
       }
@@ -56707,6 +56833,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开该节目的下载内容"
+          }
+        }
+      }
+    },
+    "Options": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optionen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Options"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opzioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オプション"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "옵션"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opções"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选项"
           }
         }
       }
@@ -61424,6 +61603,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "Plex 登录超时。请重试。"
+          }
+        }
+      }
+    },
+    "Pointer": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeiger"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puntero"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pointeur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puntatore"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ポインタ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포인터"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ponteiro"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指针"
           }
         }
       }
@@ -68901,6 +69133,59 @@
         }
       }
     },
+    "Row": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeile"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fila"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligne"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riga"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "행"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行"
+          }
+        }
+      }
+    },
     "Rows Based on Your Taste": {
       "extractionState": "manual",
       "localizations": {
@@ -69059,6 +69344,10 @@
           }
         }
       }
+    },
+    "S1·E2 · Half Loop": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "S1·E2 · Mass Budget": {
       "extractionState": "manual",
@@ -73140,6 +73429,10 @@
           }
         }
       }
+    },
+    "Severance": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "Shade": {
       "extractionState": "manual",
@@ -80932,6 +81225,10 @@
         }
       }
     },
+    "Studio": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Style": {
       "extractionState": "manual",
       "localizations": {
@@ -82204,108 +82501,108 @@
         }
       }
     },
-    "Swipe to move · Tap to open": {
+    "Swipe to scrub · Circle the edge for fine steps\nTap to pause · Hold for Audio & Subtitles": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wischen zum Bewegen · Tippen zum Öffnen"
+            "value": "Wischen zum Spulen · Am Rand kreisen für feine Schritte\nTippen zum Pausieren · Halten für Audio & Untertitel"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Desliza para moverte · Toca para abrir"
+            "value": "Desliza para avanzar · Gira por el borde para pasos finos\nToca para pausar · Mantén para Audio y subtítulos"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Balayez pour vous déplacer · Touchez pour ouvrir"
+            "value": "Balayez pour avancer · Tournez sur le bord pour un réglage fin\nTouchez pour mettre en pause · Maintenez pour Audio et sous-titres"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scorri per spostarti · Tocca per aprire"
+            "value": "Scorri per spostarti · Gira sul bordo per passi fini\nTocca per mettere in pausa · Tieni premuto per Audio e sottotitoli"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "スワイプで移動 · タップで開く"
+            "value": "スワイプで移動 · 縁をなぞって細かく調整\nタップで一時停止 · 長押しでオーディオと字幕"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "쓸어서 이동 · 탭하여 열기"
+            "value": "쓸어서 이동 · 가장자리를 돌려 세밀하게\n탭하여 일시정지 · 길게 눌러 오디오 및 자막"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deslize para mover · Toque para abrir"
+            "value": "Deslize para avançar · Gire pela borda para passos finos\nToque para pausar · Mantenha para Áudio e legendas"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "滑动以移动 · 轻点以打开"
+            "value": "轻扫以快进快退 · 沿边缘画圈以微调\n轻点以暂停 · 按住以打开音频与字幕"
           }
         }
       }
     },
-    "Swipe to scrub · Tap to pause": {
+    "Swipe · Fast to jump · Hold for options": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wischen zum Spulen · Tippen zum Pausieren"
+            "value": "Wischen · Schnell zum Springen · Halten für Optionen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Desliza para avanzar o retroceder · Toca para pausar"
+            "value": "Desliza · Rápido para saltar · Mantén para opciones"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Balayez pour parcourir · Touchez pour mettre en pause"
+            "value": "Balayez · Vite pour sauter · Maintenez pour les options"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scorri per spostarti nel video · Tocca per mettere in pausa"
+            "value": "Scorri · Veloce per saltare · Tieni premuto per le opzioni"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "スワイプで移動 · タップで一時停止"
+            "value": "スワイプ · 速くでジャンプ · 長押しでオプション"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "쓸어서 탐색 · 탭하여 일시 정지"
+            "value": "쓸기 · 빠르게 쓸어 건너뛰기 · 길게 눌러 옵션"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deslize para avançar ou voltar · Toque para pausar"
+            "value": "Deslize · Rápido para pular · Mantenha para opções"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "滑动以拖动进度 · 轻点以暂停"
+            "value": "轻扫 · 快扫以跳转 · 按住查看选项"
           }
         }
       }
@@ -83900,6 +84197,218 @@
         }
       }
     },
+    "Tap to click · Two fingers scroll": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippen zum Klicken · Mit zwei Fingern scrollen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para hacer clic · Desplázate con dos dedos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touchez pour cliquer · Faites défiler à deux doigts"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tocca per fare clic · Scorri con due dita"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タップでクリック · 2本指でスクロール"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "탭하여 클릭 · 두 손가락으로 스크롤"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque para clicar · Role com dois dedos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点以点按 · 双指滚动"
+          }
+        }
+      }
+    },
+    "Tap to open · Hold for options": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippen zum Öffnen · Halten für Optionen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para abrir · Mantén para opciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touchez pour ouvrir · Maintenez pour les options"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tocca per aprire · Tieni premuto per le opzioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タップで開く · 長押しでオプション"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "탭하여 열기 · 길게 눌러 옵션"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque para abrir · Mantenha para opções"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点以打开 · 按住查看选项"
+          }
+        }
+      }
+    },
+    "Tap to press · Hold for options": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippen zum Drücken · Halten für Optionen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para pulsar · Mantén para opciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touchez pour appuyer · Maintenez pour les options"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tocca per premere · Tieni premuto per le opzioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タップで押す · 長押しでオプション"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "탭하여 누르기 · 길게 눌러 옵션"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque para pressionar · Mantenha para opções"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点以按下 · 按住查看选项"
+          }
+        }
+      }
+    },
+    "Tap to type here": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippen, um hier zu schreiben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca para escribir aquí"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touchez pour écrire ici"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tocca per scrivere qui"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タップしてここに入力"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "탭하여 여기에 입력"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque para digitar aqui"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点以在此输入"
+          }
+        }
+      }
+    },
     "Teal": {
       "extractionState": "manual",
       "localizations": {
@@ -84267,6 +84776,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在测试…"
+          }
+        }
+      }
+    },
+    "Text Field": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Textfeld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campo de texto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Champ de texte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campo di testo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "テキストフィールド"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "텍스트 필드"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campo de texto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文本栏"
           }
         }
       }
@@ -86546,6 +87108,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "然后填写下方的两个框并点按“连接”。"
+          }
+        }
+      }
+    },
+    "Then tap to press it": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dann tippen, um es zu drücken"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Luego toca para pulsarlo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puis touchez pour appuyer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi tocca per premerlo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タップして押す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그런 다음 탭하여 누르기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois toque para pressionar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "然后轻点以按下"
           }
         }
       }
@@ -90896,59 +91511,6 @@
         }
       }
     },
-    "Touch": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Touch"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Táctil"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tactile"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Touch"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "タッチ"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "터치"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Toque"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "触控"
-          }
-        }
-      }
-    },
     "Touch and hold": {
       "extractionState": "manual",
       "localizations": {
@@ -90998,6 +91560,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "轻触并按住"
+          }
+        }
+      }
+    },
+    "Tracks": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spuren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pistas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pistes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracce"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トラック"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "트랙"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faixas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音轨"
           }
         }
       }
@@ -92380,6 +92995,59 @@
         }
       }
     },
+    "Two-finger tap for the highlight": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit zwei Fingern tippen für die Markierung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toca con dos dedos para el resaltado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touchez à deux doigts pour la sélection"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tocca con due dita per l'evidenziazione"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2本指でタップしてハイライトに戻る"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "두 손가락으로 탭하여 하이라이트로"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque com dois dedos para o destaque"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双指轻点以切换回高亮"
+          }
+        }
+      }
+    },
     "Type": {
       "extractionState": "manual",
       "localizations": {
@@ -92803,6 +93471,10 @@
           }
         }
       }
+    },
+    "Under Blue Ice": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "Undo": {
       "extractionState": "manual",
@@ -94182,6 +94854,59 @@
         }
       }
     },
+    "Use a Pointer": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeiger verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar un puntero"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser un pointeur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa un puntatore"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ポインタを使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포인터 사용"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar um ponteiro"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用指针"
+          }
+        }
+      }
+    },
     "Use a different token": {
       "extractionState": "manual",
       "localizations": {
@@ -94284,6 +95009,59 @@
           "stringUnit": {
             "state": "translated",
             "value": "改用访问令牌"
+          }
+        }
+      }
+    },
+    "Use the Highlight": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markierung verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar el resaltado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser la sélection"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa l'evidenziazione"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ハイライトを使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "하이라이트 사용"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar o destaque"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用高亮"
           }
         }
       }
@@ -95450,6 +96228,112 @@
           "stringUnit": {
             "state": "translated",
             "value": "音量（↑ ↓、M）"
+          }
+        }
+      }
+    },
+    "Volume Down": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leiser"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bajar volumen"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baisser le volume"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbassa volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音量を下げる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "볼륨 낮추기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diminuir volume"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "降低音量"
+          }
+        }
+      }
+    },
+    "Volume Up": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lauter"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subir volumen"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Augmenter le volume"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alza volume"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音量を上げる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "볼륨 높이기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aumentar volume"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提高音量"
           }
         }
       }

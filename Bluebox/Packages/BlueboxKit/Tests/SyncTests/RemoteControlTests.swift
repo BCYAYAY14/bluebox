@@ -45,10 +45,38 @@ import Testing
                                                                           resume: false, release: Data("{}".utf8))))),
             .device(RemoteDevice(id: mac, name: "Studio", kind: .mac, controllable: true, playing: "Dune")),
             .screen(RemoteScreen(deviceID: mac, title: "Severance", focusedID: "play", focusedLabel: "Play S1·E3")),
+            // The better remote (protocol 4).
+            .command(RemoteCommand(target: mac, action: .jump(RemoteJump(.down, count: 4)))),
+            .command(RemoteCommand(target: mac, action: .scroll(RemoteScroll(dx: -3, dy: 120)))),
+            .command(RemoteCommand(target: mac, action: .scroll(RemoteScroll(dx: 0, dy: 8, velocityX: 0, velocityY: 1400)))),
+            .command(RemoteCommand(target: mac, action: .setPointer(true))),
+            .command(RemoteCommand(target: mac, action: .pointer(RemotePointerMove(dx: 12.5, dy: -4)))),
+            .command(RemoteCommand(target: mac, action: .click)),
+            .command(RemoteCommand(target: mac, action: .menu)),
+            .command(RemoteCommand(target: mac, action: .menuPick(3))),
+            .command(RemoteCommand(target: mac, action: .acceptSkip)),
+            .state(RemoteNowPlaying(deviceID: mac, deviceName: "Studio", title: "Severance", position: 30, duration: 3000, paused: false,
+                                    skipOffer: "Skip Intro", chapters: [0, 312, 1800], seq: 9)),
+            .screen(RemoteScreen(deviceID: mac, title: "Home", focusedID: "title:x", focusedLabel: "Severance",
+                                 focused: RemoteScreenItem(label: "Severance", kind: .poster, image: URL(string: "https://example.com/p.jpg")),
+                                 before: RemoteScreenItem(label: "Dune", kind: .poster), after: RemoteScreenItem(label: "Skip intros", kind: .toggle, isOn: true),
+                                 horizontal: true, section: "Continue Watching", pointer: nil, bumps: 2,
+                                 menu: RemoteMenu(title: "Severance", items: [RemoteMenu.Item(index: 1, title: "Play", systemImage: "play.fill"),
+                                                                              RemoteMenu.Item(index: 3, title: "Remove", destructive: true)],
+                                                  highlighted: 1))),
         ]
         for m in messages {
             #expect(try RemoteMessage.decode(jsonObject: m.jsonObject()) == m)
         }
+    }
+
+    /// A screen from a Mac before protocol 4 has none of the new fields, and still reads.
+    @Test func anOlderScreenStillReads() throws {
+        let json: [String: Any] = ["type": "screen", "screen": ["deviceID": mac, "title": "Home", "focusedLabel": "Dune"]]
+        guard case .screen(let s) = try RemoteMessage.decode(jsonObject: json) else { Issue.record("not a screen"); return }
+        #expect(s.focusedLabel == "Dune" && s.focused == nil && s.menu == nil && s.pointer == nil)
+        #expect(RemoteCommand.Action.jump(RemoteJump(.left, count: 2)).needsVersion4)
+        #expect(!RemoteCommand.Action.move(.left).needsVersion4)
     }
 
     @Test func wireFormatIsStable() throws {
