@@ -932,7 +932,7 @@ public final class VLCEngine: PlaybackEngine {
         let position = Self.seconds(player.currentTime)
         let action = videoWatchdog.observe(.init(
             state: running ? .playing : .paused, position: position, newFrame: newFrame,
-            watchesVideo: counts && player.videoSize != nil, now: ProcessInfo.processInfo.systemUptime))
+            watchesVideo: counts && player.videoSize != nil && PictureOnScreen.countsFrames, now: ProcessInfo.processInfo.systemUptime))
         switch action {
         case .nudgeVideo:
             Log.playback.notice("VLC picture froze at \(position, privacy: .public)s: seeking to restart it")

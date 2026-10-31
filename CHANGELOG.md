@@ -2,6 +2,14 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.6 (31 October 2026)
+
+### Remote control
+- The Mac's window scrolls to follow the highlight, so moving down a list or a page keeps what's highlighted on screen.
+
+### Player
+- Fixed the Picture in Picture window on iPhone and iPad flashing grey and darkening every few seconds while a film played.
+
 ## 1.2.5 (31 October 2026)
 
 ### Remote control

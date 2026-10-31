@@ -557,6 +557,15 @@ public final class RemoteFocus {
 
     private func setFocus(_ ref: Candidate.Ref, driver: String) {
         focusedRef(ref)
+        // The window follows the highlight: an item partly off screen scrolls into view.
+        let frame: CGRect? = switch ref {
+        case .target(let id): targets[id]?.frame
+        case .element(let e): e.frame
+        }
+        if let frame, let platform, platform.scrollIntoView(frame) {
+            invalidate()
+            _ = currentCandidate(in: candidates())
+        }
         show(driver: driver)
         onChange?()
         relocateSoon()
@@ -736,6 +745,8 @@ public final class RemoteFocus {
     func scroll(at point: CGPoint, dx: CGFloat, dy: CGFloat) -> Bool
     /// Scrolls most of a screen that way, for a move at the edge; false when it can't go further.
     func scrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool
+    /// Scrolls whatever holds the rectangle until all of it shows; false when nothing had to move.
+    func scrollIntoView(_ frame: CGRect) -> Bool
     func draw(ring: CGRect?, driver: String, dimmed: Bool, pointer: CGPoint?)
 }
 

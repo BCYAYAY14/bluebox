@@ -562,7 +562,7 @@ public final class AVPlayerEngine: PlaybackEngine {
             _ = videoOutput.copyPixelBuffer(forItemTime: now, itemTimeForDisplay: nil)
             newFrame = true
         }
-        let watchesVideo = item.presentationSize != .zero && !player.isExternalPlaybackActive
+        let watchesVideo = item.presentationSize != .zero && !player.isExternalPlaybackActive && PictureOnScreen.countsFrames
         let sample = PlaybackWatchdog.Sample(
             state: state, position: now.seconds.isFinite ? now.seconds : snapshot.position,
             newFrame: newFrame, watchesVideo: watchesVideo, now: ProcessInfo.processInfo.systemUptime)

@@ -67,30 +67,42 @@ import SwiftUI
         let area = CGRect(origin: .zero, size: content.bounds.size)
         var out: [RemoteFocus.Element] = []
         var visited = 0
-        func walk(_ node: AnyObject, depth: Int) {
+        // `area` narrows to each scroll area on the way down: a row scrolled
+        // below a list's edge is still inside the window, but not on screen.
+        func walk(_ node: AnyObject, depth: Int, area: CGRect) {
             guard depth < 48, visited < 6000 else { return }
             visited += 1
             let role = AX.string(node, "accessibilityRole") ?? ""
             let frame = AX.frame(node).map { toWindow($0, in: w, content: content) }
             // A group scrolled out of sight: nothing inside it is on screen either.
             if depth > 0, let frame, frame.width > 0, frame.height > 0, !area.intersects(frame) { return }
+            var area = area
+            if role == "AXScrollArea", let frame, frame.width > 0, frame.height > 0 { area = area.intersection(frame) }
             if Self.pressable.contains(role) || role == "AXRow" {
-                guard let frame, frame.width >= 6, frame.height >= 6, area.intersects(frame) else { return }
+                // Mostly hidden counts as hidden: the next move scrolls the page on instead.
+                guard let frame, frame.width >= 6, frame.height >= 6, Self.mostlyShowing(frame, in: area) else { return }
                 let el = element(node, role: role, frame: frame)
                 if role == "AXRow" {
                     let before = out.count
-                    for c in AX.children(node) { walk(c, depth: depth + 1) }
+                    for c in AX.children(node) { walk(c, depth: depth + 1, area: area) }
                     if out.count == before { out.append(el) }
                     return
                 }
                 out.append(el)
                 return  // a control's insides aren't stops of their own
             }
-            for c in AX.children(node) { walk(c, depth: depth + 1) }
+            for c in AX.children(node) { walk(c, depth: depth + 1, area: area) }
         }
-        walk(content, depth: 0)
+        walk(content, depth: 0, area: area)
         // Covered by something on top (an open menu, an overlay): out of reach.
         return out.filter { uncovered($0, in: w, content: content) }
+    }
+
+    /// At least half of it (or 30 points of it) shows in `area`.
+    static func mostlyShowing(_ frame: CGRect, in area: CGRect) -> Bool {
+        let shown = frame.intersection(area)
+        guard !shown.isNull else { return false }
+        return shown.height >= min(frame.height / 2, 30) && shown.width >= min(frame.width / 2, 30)
     }
 
     private func element(_ node: AnyObject, role: String, frame: CGRect) -> RemoteFocus.Element {
@@ -196,6 +208,58 @@ import SwiftUI
             if move(sv, dx: d.dx, dy: d.dy) { return true }
         }
         return false
+    }
+
+    /// Scrolls every scroll view around the rectangle, innermost first, the
+    /// least it takes to show all of it with a little room (a row near a
+    /// list's edge, a poster half under the toolbar).
+    func scrollIntoView(_ frame: CGRect) -> Bool {
+        guard let (w, _) = active, let content = w.contentView else { return false }
+        let centre = CGPoint(x: frame.midX, y: frame.midY)
+        var found: [(NSScrollView, Int)] = []
+        func walk(_ v: NSView, depth: Int) {
+            if let sv = v as? NSScrollView, let doc = sv.documentView, topLeft(doc, in: content).contains(centre) { found.append((sv, depth)) }
+            for s in v.subviews where !s.isHidden { walk(s, depth: depth + 1) }
+        }
+        walk(content, depth: 0)
+        var rect = frame
+        var moved = false
+        for sv in found.sorted(by: { $0.1 > $1.1 }).map(\.0) {
+            let insets = sv.contentInsets
+            let clip = topLeft(sv.contentView, in: content)
+            let shown = CGRect(x: clip.minX + insets.left, y: clip.minY + insets.top,
+                               width: clip.width - insets.left - insets.right, height: clip.height - insets.top - insets.bottom)
+            let dx = Self.nudge(rect.minX, rect.maxX, into: shown.minX, shown.maxX, margin: 24)
+            let dy = Self.nudge(rect.minY, rect.maxY, into: shown.minY, shown.maxY, margin: 40)
+            guard dx != 0 || dy != 0 else { continue }
+            let before = sv.contentView.bounds.origin
+            guard move(sv, dx: dx, dy: dy) else { continue }
+            moved = true
+            // What moved, in the window's top-left terms, carries the rectangle with it for the views outside.
+            let after = sv.contentView.bounds.origin
+            let flipped = sv.documentView?.isFlipped ?? true
+            rect = rect.offsetBy(dx: -(after.x - before.x), dy: flipped ? -(after.y - before.y) : (after.y - before.y))
+        }
+        return moved
+    }
+
+    /// How far to scroll so `lo...hi` sits inside `from...to`; the start wins when it can't all fit.
+    static func nudge(_ lo: CGFloat, _ hi: CGFloat, into from: CGFloat, _ to: CGFloat, margin: CGFloat) -> CGFloat {
+        let room = to - from
+        if hi - lo > room - 2 * margin {
+            // Too big for the margins: line its start up, with what room there is.
+            let m = max(0, (room - (hi - lo)) / 2)
+            return lo - m - from
+        }
+        if lo - margin < from { return lo - margin - from }
+        if hi + margin > to { return hi + margin - to }
+        return 0
+    }
+
+    /// A view's bounds in the window's content, top-left origin.
+    private func topLeft(_ v: NSView, in content: NSView) -> CGRect {
+        let r = v.convert(v.bounds, to: content)
+        return content.isFlipped ? r : CGRect(x: r.minX, y: content.bounds.height - r.maxY, width: r.width, height: r.height)
     }
 
     /// The scroll views under the point, innermost first.

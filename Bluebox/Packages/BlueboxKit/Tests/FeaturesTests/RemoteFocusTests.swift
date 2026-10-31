@@ -264,6 +264,38 @@ import Testing
         #expect(window.ring != nil)
     }
 
+    /// A move onto a row half below the window's edge scrolls the window so the row shows, and the ring follows it.
+    @Test func theWindowFollowsTheHighlight() {
+        let window = FakeWindow()
+        window.items = [
+            .init(label: "First", kind: .row, frame: CGRect(x: 0, y: 600, width: 300, height: 40)),
+            .init(label: "Second", kind: .row, frame: CGRect(x: 0, y: 680, width: 300, height: 40)),
+        ]
+        let focus = RemoteFocus()
+        focus.window = { nil }
+        focus.platform = window
+        focus.move(.down, driver: "iPhone")  // shows "First", already in view
+        #expect(focus.focusedLabel == "First" && window.revealed.isEmpty)
+        focus.move(.down, driver: "iPhone")
+        #expect(focus.focusedLabel == "Second")
+        #expect(window.revealed.count == 1)
+        #expect(window.ring.map { $0.maxY <= window.bounds.maxY } == true)
+    }
+
+    #if os(macOS)
+    /// How far the real window scrolls: the least that shows all of it with room, and what counts as hidden.
+    @Test func scrollingIntoViewMovesTheLeastItTakes() {
+        #expect(RemoteWindow.nudge(100, 140, into: 0, 700, margin: 40) == 0)  // already showing
+        #expect(RemoteWindow.nudge(680, 720, into: 0, 700, margin: 40) == 60)  // below: up to 40 from the edge
+        #expect(RemoteWindow.nudge(-20, 20, into: 0, 700, margin: 40) == -60)  // above
+        #expect(RemoteWindow.nudge(500, 1300, into: 0, 700, margin: 40) == 500)  // taller than the view: its top
+        let list = CGRect(x: 0, y: 100, width: 400, height: 500)
+        #expect(RemoteWindow.mostlyShowing(CGRect(x: 0, y: 580, width: 300, height: 40), in: list))  // 20 of 40 shows
+        #expect(!RemoteWindow.mostlyShowing(CGRect(x: 0, y: 590, width: 300, height: 40), in: list))
+        #expect(!RemoteWindow.mostlyShowing(CGRect(x: 0, y: 650, width: 300, height: 40), in: list))  // below the list, still in the window
+    }
+    #endif
+
     /// An overlay in the window (the season list): its own controls are in reach, the page's under it aren't.
     @Test func anOverlayKeepsOnlyItsOwnControls() {
         let window = FakeWindow()
@@ -396,5 +428,14 @@ import Testing
         onScrollPage?()
         return true
     }
+    func scrollIntoView(_ frame: CGRect) -> Bool {
+        // Below the window: scroll the page up by the overhang, as RemoteWindow would.
+        let over = frame.maxY + 40 - bounds.maxY
+        guard canScroll, over > 0 else { return false }
+        revealed.append(frame)
+        for i in items.indices { items[i].frame.origin.y -= over }
+        return true
+    }
+    var revealed: [CGRect] = []
     func draw(ring: CGRect?, driver: String, dimmed: Bool, pointer: CGPoint?) { self.ring = ring }
 }
