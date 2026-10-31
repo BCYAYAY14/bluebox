@@ -10,13 +10,17 @@
 &nbsp;
 <a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg"><img src="https://img.shields.io/badge/Download_for_Mac-1C1C1E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac"></a>
 
-<sub><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a> · iOS 18 and later · Apple silicon Macs · <a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT licence</a></sub>
+<sub><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a> · iOS 18 and later · Apple silicon Macs · Apple TV coming soon · <a href="https://bcyayay14.github.io/bluebox/">Docs</a> · <a href="https://bcyayay14.github.io/bluebox/faq.html">FAQ</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT licence</a></sub>
 
 </div>
 
 ---
 
-Bluebox is a free, open-source movie and TV app for iPhone, iPad and Mac, styled like Netflix. It doesn't host anything: it plays what you bring, from Stremio add-ons, torrents, debrid services, Jellyfin and your own files.
+Bluebox is a free, open-source movie and TV app for iPhone, iPad and Mac, styled like Netflix. It doesn't host anything: it plays what you bring, from Stremio add-ons, torrents, debrid services, Jellyfin, Emby, Plex, WebDAV and your own files.
+
+> **Apple TV is coming soon.** A tvOS app is the next thing being built, driven by the same iPhone remote.
+
+**New here?** The [documentation](https://bcyayay14.github.io/bluebox/) covers installing, adding sources, the player, the remote and Watch Party, and the [Help and FAQ](https://bcyayay14.github.io/bluebox/faq.html) page walks through what to do when something goes wrong.
 
 ## iPhone and iPad
 
@@ -44,14 +48,18 @@ Needs macOS 15 or later on an Apple silicon Mac.
 
 ## What it does
 
-- **A Netflix-style home:** Continue Watching, My List, your own lists and smart lists, Top Picks, and what's new.
-- **Plays what you bring:** Stremio add-ons, torrents (streamed while they download), debrid services, Jellyfin, direct links and your own files.
-- **A proper player:** subtitles in your style, audio and subtitle tracks, chapters, skip intro and credits, picture in picture, and speed control.
+- **A Netflix-style home:** Continue Watching, My List, your own lists and smart lists, Top Picks, what's new, your add-ons' own catalogs as rows, and collection pages.
+- **Plays what you bring:** Stremio add-ons, torrents (streamed while they download), debrid services (Real-Debrid, AllDebrid, Debrid-Link and more), Jellyfin, Emby and Plex with progress synced both ways, WebDAV folders, direct links and your own files.
+- **A proper player:** subtitles in your style (and searched online), audio and subtitle tracks, chapters, skip intro and credits, an equaliser, picture in picture, AirPlay, speed control, and detailed stats for nerds with Copy Diagnostics for bug reports. Or open videos in VLC, IINA, mpv, Infuse and others.
+- **Watch Party:** watch in step with friends, with a lobby, chat and reactions. Each person plays their own copy, and friends join with a link or a code.
+- **Your iPhone as a remote** for the whole Mac app: browse with a touch pad or a pointer, open a title, play, skip and pick tracks.
 - **Downloads** for watching offline, with Smart Downloads that keep the next episodes ready and clear the watched ones.
-- **Profiles,** each with its own lists, progress and statistics.
+- **Profiles,** each with its own lists, progress and statistics, and Kids profiles with maturity limits and a PIN.
 - **Optional sync** of lists, progress and settings between your devices, through your own free Supabase project, plus Trakt.
-- **Your iPhone as a remote** for Bluebox on your Mac.
+- **Widgets, Siri and Spotlight** for Continue Watching and Up Next.
+- **Your colour and language:** ten theme colours (the app icon follows), and nine languages.
 - **Privacy & Features:** every feature that could feel invasive has its own switch in Settings.
+- **Coming soon:** an Apple TV app.
 
 ## Building from source
 
