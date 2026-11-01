@@ -218,11 +218,11 @@ public actor TorrentDownloader {
         saveIndex()
     }
 
+    #if canImport(LibTorrentEngine)
     private func finished(_ id: String) {
         jobs[id] = nil
     }
 
-    #if canImport(LibTorrentEngine)
     private func run(id: String, handle: BBTorrentHandle, link: MagnetLink, fileIndex: Int?, episode: EpisodeNumber?,
                      onEvent: @escaping @Sendable (Event) -> Void) async {
         let user = user(id)
