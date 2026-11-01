@@ -22,6 +22,24 @@ Bluebox is a free, open-source movie and TV app for iPhone, iPad and Mac, styled
 
 **New here?** The [documentation](https://bcyayay14.github.io/bluebox/) covers installing, adding sources, the player, the remote and Watch Party, and the [Help and FAQ](https://bcyayay14.github.io/bluebox/faq.html) page walks through what to do when something goes wrong.
 
+## Take a look
+
+[![Plays what you bring: Settings › Sources and Torrents & Debrid on the Mac](docs/images/sources.png)](https://bcyayay14.github.io/bluebox/sources.html)
+
+[![Watch Party: a friend's invitation, with who's ready and their own copy found](docs/images/party.png)](https://bcyayay14.github.io/bluebox/watch-party.html)
+
+[![Your iPhone drives the Mac: the remote with Skip Intro in front of a title page](docs/images/remote.png)](https://bcyayay14.github.io/bluebox/remote.html)
+
+[![Stats for nerds: the live graph, video, buffer and torrent details over a film](docs/images/stats.png)](https://bcyayay14.github.io/bluebox/player.html)
+
+[![Profiles and Kids: Who's Watching, and Settings › Profiles](docs/images/profiles.png)](https://bcyayay14.github.io/bluebox/profiles.html)
+
+[![Your colour, your language: Settings › Appearance and Language](docs/images/colours.png)](https://bcyayay14.github.io/bluebox/)
+
+[![Downloads on the Mac and iPhone](docs/images/downloads.png)](https://bcyayay14.github.io/bluebox/sources.html#downloads)
+
+<sub>Screenshots of Bluebox with Blender Studio's open films (Creative Commons), artwork from TMDB.</sub>
+
 ## iPhone and iPad
 
 **AltStore, SideStore or Feather:** tap **[Add to AltStore](https://bcyayay14.github.io/bluebox/add.html?to=altstore)** on your iPhone. The [add page](https://bcyayay14.github.io/bluebox/add.html) also has SideStore and Feather buttons.
