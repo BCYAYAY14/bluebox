@@ -1,4 +1,5 @@
-// Bluebox docs: the phone menu and the topic search. TOPICS comes from topics.js.
+// Bluebox docs: the phone menu, the search in the top bar, the FAQ filter, and links that open folded sections.
+// TOPICS comes from topics.js.
 document.documentElement.classList.add('js');
 (function () {
   const body = document.body;
@@ -9,54 +10,60 @@ document.documentElement.classList.add('js');
   });
   document.querySelectorAll('.side a').forEach(a => a.addEventListener('click', () => body.classList.remove('nav-open')));
 
-  // FAQ: the "what's going wrong?" picker shows one group of questions.
-  const picker = document.querySelector('.picker');
-  if (picker) {
-    const showing = document.querySelector('.showing');
-    const pick = topic => {
-      picker.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.topic === topic));
-      document.querySelectorAll('.faq-group').forEach(g => { g.hidden = !!topic && g.dataset.topic !== topic; });
-      showing.classList.toggle('on', !!topic);
-      if (topic) {
-        showing.querySelector('span').textContent = picker.querySelector(`[data-topic="${topic}"] b`).textContent;
-        const first = document.querySelector(`.faq-group[data-topic="${topic}"]`);
-        first.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    };
-    picker.addEventListener('click', e => {
-      const b = e.target.closest('button');
-      if (b) pick(b.getAttribute('aria-pressed') === 'true' ? null : b.dataset.topic);
-    });
-    showing.querySelector('button').addEventListener('click', () => pick(null));
+  const fold = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'");
+
+  // A link to a section inside "Technical details" (or to a FAQ answer) opens it.
+  function openHash() {
+    const el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!el) return;
+    const group = el.closest('.faq-group');
+    if (group && (group.hidden || el.hidden)) showAll();
+    for (let d = el.closest('details'); d; d = d.parentElement.closest('details')) d.open = true;
+    if (el.tagName === 'DETAILS') el.open = true;
+    el.scrollIntoView();
   }
 
-  // Step-by-step checkers: one step at a time, "Fixed" or "Next".
-  document.querySelectorAll('.checker').forEach(c => {
-    const steps = [...c.querySelectorAll('.step')], bar = c.querySelector('.bar i');
-    const fixed = c.querySelector('.done.fixed'), stuck = c.querySelector('.done.stuck');
-    const show = i => {
-      steps.forEach((s, j) => s.classList.toggle('on', j === i));
-      fixed.classList.remove('on'); stuck.classList.remove('on');
-      if (i >= steps.length) stuck.classList.add('on');
-      bar.style.width = Math.min(100, (i / steps.length) * 100) + '%';
+  // FAQ: the search box and topic chips filter the questions as you type.
+  const fq = document.getElementById('faq-q');
+  const chips = document.querySelector('.chips');
+  let showAll = () => {};
+  if (fq && chips) {
+    const items = [...document.querySelectorAll('details.qa')];
+    const text = new Map(items.map(d => [d, fold(d.textContent + ' ' + (d.dataset.k || ''))]));
+    const count = document.querySelector('.faq-count'), empty = document.querySelector('.faq-empty');
+    let topic = '';
+    const apply = () => {
+      const words = fold(fq.value).split(/\s+/).filter(Boolean);
+      let n = 0;
+      items.forEach(d => {
+        const g = d.closest('.faq-group');
+        const show = (!topic || g.dataset.topic === topic) && words.every(w => text.get(d).includes(w));
+        d.hidden = !show; if (show) n++;
+      });
+      // A search down to a few questions shows their answers straight away.
+      if (words.length && n <= 3) items.forEach(d => { if (!d.hidden) d.open = true; });
+      document.querySelectorAll('.faq-group').forEach(g => { g.hidden = !g.querySelector('details.qa:not([hidden])'); });
+      count.textContent = words.length || topic ? `${n} question${n === 1 ? '' : 's'}` : '';
+      empty.hidden = n > 0;
     };
-    c.addEventListener('click', e => {
+    chips.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
-      const at = steps.findIndex(s => s.classList.contains('on'));
-      if (b.dataset.do === 'next') show(at + 1);
-      else if (b.dataset.do === 'back') show(Math.max(0, at - 1));
-      else if (b.dataset.do === 'fixed') { steps.forEach(s => s.classList.remove('on')); fixed.classList.add('on'); bar.style.width = '100%'; }
-      else if (b.dataset.do === 'again') show(0);
+      topic = b.dataset.topic || '';
+      chips.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+      apply();
     });
-    show(0);
-  });
+    fq.addEventListener('input', apply);
+    fq.addEventListener('keydown', e => { if (e.key === 'Escape') { fq.value = ''; apply(); } });
+    showAll = () => { fq.value = ''; topic = ''; chips.querySelectorAll('button').forEach((x, i) => x.setAttribute('aria-pressed', i === 0)); apply(); };
+  }
+  window.addEventListener('hashchange', openHash);
+  openHash();
 
+  // The search in the top bar: every page, section, technical detail and FAQ question.
   const input = document.getElementById('q');
   const box = document.getElementById('results');
   if (!input || !box || typeof TOPICS === 'undefined') return;
   let picked = 0, shown = [];
-
-  const fold = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   function score(t, words) {
     const title = fold(t.t), all = title + ' ' + fold(t.p) + ' ' + fold(t.k || '');
     let s = 0;
@@ -75,7 +82,7 @@ document.documentElement.classList.add('js');
     box.textContent = '';
     if (!shown.length) {
       const p = document.createElement('p');
-      p.textContent = 'Nothing matches. Try the FAQ or All topics.';
+      p.textContent = 'Nothing matches. Try the FAQ or the Help page.';
       box.append(p);
     }
     shown.forEach((t, i) => {
@@ -86,6 +93,7 @@ document.documentElement.classList.add('js');
       small.textContent = t.p;
       a.append(small);
       if (i === 0) a.className = 'sel';
+      a.addEventListener('click', () => { box.classList.remove('open'); setTimeout(openHash, 0); });
       box.append(a);
     });
     box.classList.add('open');
@@ -102,7 +110,7 @@ document.documentElement.classList.add('js');
   input.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); select(picked + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); select(picked - 1); }
-    else if (e.key === 'Enter' && shown[picked]) { e.preventDefault(); location.href = shown[picked].u; box.classList.remove('open'); input.blur(); }
+    else if (e.key === 'Enter' && shown[picked]) { e.preventDefault(); location.href = shown[picked].u; box.classList.remove('open'); input.blur(); setTimeout(openHash, 0); }
     else if (e.key === 'Escape') { input.value = ''; box.classList.remove('open'); input.blur(); }
   });
   document.addEventListener('click', e => { if (!e.target.closest('.search')) box.classList.remove('open'); });
@@ -111,15 +119,4 @@ document.documentElement.classList.add('js');
       e.preventDefault(); input.focus();
     }
   });
-
-  // A FAQ link opens its answer.
-  function openHash() {
-    const el = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
-    if (!el) return;
-    const group = el.closest('.faq-group');
-    if (group && group.hidden) document.querySelector('.showing button').click();
-    if (el.tagName === 'DETAILS') el.open = true;
-  }
-  window.addEventListener('hashchange', openHash);
-  openHash();
 })();

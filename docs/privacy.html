@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Privacy and security · Bluebox docs</title>
-<meta name="description" content="What Bluebox sends where, how keys and passwords are stored, torrents and your IP address, update verification, and reporting a vulnerability.">
-<meta name="theme-color" content="#000000">
-<meta property="og:title" content="Privacy and security · Bluebox docs">
-<meta property="og:description" content="What Bluebox sends where, how keys and passwords are stored, torrents and your IP address, update verification, and reporting a vulnerability.">
+<title>Privacy &amp; security · Bluebox help</title>
+<meta name="description" content="Bluebox privacy and security: nothing is collected, who Bluebox talks to, torrents and your IP address, keys, and reporting a vulnerability.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Privacy &amp; security · Bluebox help">
+<meta property="og:description" content="Bluebox privacy and security: nothing is collected, who Bluebox talks to, torrents and your IP address, keys, and reporting a vulnerability.">
 <meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="stylesheet" href="site.css">
@@ -12,46 +13,45 @@
 <body>
 <header class="top"><div class="top-in">
   <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
-  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="topics.html" aria-current="page">Help</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
   <div class="search" role="search">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
-    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <input id="q" type="search" placeholder="Search help" aria-label="Search help" autocomplete="off" aria-controls="results">
     <div class="results" id="results" role="listbox"></div>
   </div>
   <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
 </div></header>
 <div class="wrap">
-<aside class="side" id="side">
-<h4>Start</h4><ul>
-<li><a href="./">Home</a></li>
-<li><a href="install.html">Install</a></li>
-</ul>
-<h4>Using Bluebox</h4><ul>
-<li><a href="sources.html">Sources</a></li>
-<li><a href="player.html">The player</a></li>
-<li><a href="remote.html">iPhone remote</a></li>
-<li><a href="watch-party.html">Watch Party</a></li>
-<li><a href="profiles.html">Profiles &amp; Kids</a></li>
-<li><a href="sync.html">Sync &amp; accounts</a></li>
-</ul>
-<h4>Help</h4><ul>
-<li><a href="privacy.html" aria-current="page">Privacy &amp; security</a></li>
-<li><a href="faq.html">FAQ</a></li>
-<li><a href="topics.html">All topics</a></li>
-</ul>
-<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
-</aside>
+<aside class="side" id="side" aria-label="Help topics">
+<ul>
+<li><a href="install.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Install</a></li>
+<li><a href="sources.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg>Sources</a></li>
+<li><a href="player.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>The player</a></li>
+<li><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote</a></li>
+<li><a href="watch-party.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M15 15c3 0 6 1.3 6 4.5"/></svg>Watch Party</a></li>
+<li><a href="profiles.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Profiles &amp; Kids</a></li>
+<li><a href="sync.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/></svg>Sync &amp; accounts</a></li>
+<li><a href="privacy.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/></svg>Privacy &amp; security</a></li>
+</ul><h4>Help</h4><ul>
+<li><a href="faq.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/></svg>FAQ</a></li>
+<li><a href="topics.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>All help</a></li>
+</ul></aside>
 <main class="doc">
-<p class="eyebrow">Help</p>
-<h1>Privacy and security</h1>
-<p class="lede">Bluebox collects nothing. Here's exactly what leaves your device, where your keys are kept, and how to report a security problem.</p>
-<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#nothing-collected">Nothing is collected</a></li><li><a href="#who-bluebox-talks-to">Who Bluebox talks to</a></li><li><a href="#torrents-ip">Torrents and your IP address</a></li><li><a href="#keys">Keys and passwords</a></li><li><a href="#feature-switches">Feature switches</a></li><li><a href="#account-security">Account safety</a></li><li><a href="#updates-security">Mac updates</a></li><li><a href="#report-vulnerability">Report a security problem</a></li><li><a href="#responsibility">Your responsibility</a></li></ol></nav>
+<p class="crumb"><a href="topics.html">Help</a></p>
+<h1>Privacy &amp; security</h1>
+<p class="lede">Bluebox collects nothing. Here's what leaves your device, where your keys are kept, and how to report a security problem.</p>
+
+<nav aria-label="On this page"><ul class="jump"><li><a href="#nothing-collected">Nothing is collected</a></li><li><a href="#who-bluebox-talks-to">Who Bluebox talks to</a></li><li><a href="#torrents-ip">Torrents and your IP address</a></li><li><a href="#keys">Keys and passwords</a></li><li><a href="#feature-switches">Feature switches</a></li><li><a href="#account-security">Account safety</a></li><li><a href="#updates-security">Mac updates</a></li><li><a href="#report-vulnerability">Report a security problem</a></li><li><a href="#responsibility">Your responsibility</a></li></ul></nav>
 <h2 id="nothing-collected">Nothing is collected<a class="anchor" href="#nothing-collected" aria-label="Link to this section">#</a></h2>
-<p>Bluebox has no analytics, no crash reporting service and no server of its own. Your library and watch progress are stored on your device. If you set up sync, My List, progress, profiles and settings also go to <em>your</em> Supabase project, which only you control.</p>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/></svg><b>No analytics</b>No crash reporting service and no Bluebox server.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><b>On your device</b>Your library and progress stay here.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/></svg><b>Your own server</b>With sync, they also go to <em>your</em> Supabase project, which only you control.</li>
+</ul>
 
 <h2 id="who-bluebox-talks-to">Who Bluebox talks to<a class="anchor" href="#who-bluebox-talks-to" aria-label="Link to this section">#</a></h2>
-<p>Only the services you use, and only for what they're for:</p>
-<div class="tablewrap"><table>
+<p>Only the services you use, for what they're for.</p>
+<details class="tech"><summary>The full list</summary><div><div class="tablewrap"><table>
   <tr><th>Service</th><th>What it gets</th></tr>
   <tr><td>TMDB or Cinemeta</td><td>Which titles you look at, to fetch artwork and details</td></tr>
   <tr><td>Your add-ons</td><td>The IMDb ID of what you're about to play, to find releases</td></tr>
@@ -63,56 +63,61 @@
   <tr><td>OMDb</td><td>The IMDb ID of a title page you open, for ratings</td></tr>
   <tr><td>GitHub</td><td>A daily check for the latest release</td></tr>
   <tr><td>Your Supabase project</td><td>Your library, if you set up sync</td></tr>
-</table></div>
+</table></div></div></details>
 
 <h2 id="torrents-ip">Torrents and your IP address<a class="anchor" href="#torrents-ip" aria-label="Link to this section">#</a></h2>
-<p>Streaming a torrent peer to peer means connecting to other peers, and uploading to them while you watch. Everyone in the swarm can see your IP address. For privacy:</p>
-<ul>
-  <li>Use a <a href="sources.html#debrid">debrid service</a>: it fetches the torrent and streams it to you over HTTPS, so peers never see you.</li>
-  <li>Or use a VPN.</li>
-  <li>To stop uploading: <span class="path">Settings › Torrents &amp; Debrid › Upload Limit › Don't Upload</span>.</li>
+<div class="note warn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg><div>Streaming a torrent connects you to other people sharing it, and they can see your IP address.</div></div>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><b>Use debrid</b>A <a href="sources.html#debrid">debrid service</a> streams to you over HTTPS, so peers never see you.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/></svg><b>Or a VPN</b>Hides your address from peers.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg><b>Stop uploading</b><span class="path">Settings › Torrents &amp; Debrid › Upload Limit › Don't Upload</span>.</li>
 </ul>
-<p>Bluebox's stream server only listens on your own device.</p>
+<details class="tech" id="tech-the-stream-server"><summary>Technical details <small>· The stream server</small></summary><div><p>Bluebox uploads to other peers while you watch, unless you turn that off. Bluebox's stream server only listens on your own device.</p></div></details>
 
 <h2 id="keys">Keys and passwords<a class="anchor" href="#keys" aria-label="Link to this section">#</a></h2>
-<ul>
-  <li>API keys, debrid keys, server tokens, the links of add-ons added by link, and your sign-in are kept in the Keychain, in one Bluebox item. They're never written to preferences or logs.</li>
+<p>Keys, tokens and your sign-in are kept in the Keychain, never in settings files or logs. They don't sync unless you turn on <b>Sync API Keys</b>.</p>
+<details class="tech" id="tech-keys-in-detail"><summary>Technical details <small>· Keys in detail</small></summary><div><ul>
+  <li>API keys, debrid keys, server tokens, the links of add-ons added by link, and your sign-in are kept in one Bluebox Keychain item.</li>
   <li>For media servers and Plex, Bluebox signs in once and keeps only the access token, not your password. WebDAV needs the password itself, which is kept in the Keychain.</li>
-  <li>Keys don't sync unless you turn on <strong>Sync API Keys</strong> (off by default), which warns that Supabase stores them as plain text. <strong>Remove Keys from Server</strong> deletes them again.</li>
+  <li>Sync API Keys (off by default) warns that Supabase stores keys as plain text. <strong>Remove Keys from Server</strong> deletes them again.</li>
   <li>The debrid key goes to Torrentio, and to StremThru and Comet only with Share Key with Community Add-ons on.</li>
   <li>Exported logs leave out tokens and keys.</li>
-</ul>
+</ul></div></details>
 
 <h2 id="feature-switches">Feature switches<a class="anchor" href="#feature-switches" aria-label="Link to this section">#</a></h2>
-<p>Every feature that could feel invasive has its own switch in <span class="path">Settings › Privacy &amp; Features</span>:</p>
-<ul>
+<p>Anything that could feel invasive has its own switch in <span class="path">Settings › Privacy &amp; Features</span>.</p>
+<figure class="shot crop"><img src="images/steps/privacy-settings-privacy-571-200-1371-520.jpg" alt="Settings › Privacy &amp; Features: Statistics, My Bluebox, Spoiler Guard, Rows Based on Your Taste" loading="lazy"></figure>
+<details class="tech" id="tech-every-switch"><summary>Technical details <small>· Every switch</small></summary><div><ul>
   <li><strong>Statistics</strong> (hours watched, Year in Bluebox) and <strong>Rows Based on Your Taste</strong> are worked out on the device.</li>
   <li><strong>Spoiler Guard</strong> blurs pictures and hides synopses of episodes you haven't seen.</li>
   <li><strong>Release Alerts</strong> asks your add-ons, every 12 hours at most, about films on My List that had nothing to play.</li>
   <li><strong>Save Search History</strong> and <strong>Clear Search History</strong>.</li>
   <li><strong>Allow Remote Control of This Device</strong> (off by default) and <strong>Use This Device as a Remote</strong>. These stay on each device: another device can't change what this one allows.</li>
-</ul>
+</ul></div></details>
 
 <h2 id="account-security">Account safety<a class="anchor" href="#account-security" aria-label="Link to this section">#</a></h2>
 <ul>
-  <li>Bluebox never signs in from a link, and a connect link from outside asks before pointing Bluebox at its server.</li>
-  <li>Automatic setup turns off sign-ups on your project once your account exists, so no one else can make an account with the public key in a connect link.</li>
-  <li>Row level security on every table keeps each account to its own rows, and the remote and sync signal use private channels only your account can join. <a href="sync.html#public-realtime">Turn off public Realtime</a> to close the last gap.</li>
-  <li>Signing in to a different account asks what happens to this device's library before anything moves.</li>
+  <li>Bluebox never signs in from a link, and asks before connecting to a server from a link.</li>
+  <li>Only you can make an account on your server: setup turns sign-ups off once yours exists.</li>
+  <li>Signing in to another account asks what happens to this device's library first.</li>
 </ul>
+<details class="tech" id="tech-how-accounts-are-kept-apart"><summary>Technical details <small>· How accounts are kept apart</small></summary><div><p>Automatic setup turns off sign-ups on your project once your account exists, so no one else can make an account with the public key in a connect link. Row level security on every table keeps each account to its own rows, and the remote and sync signal use private channels only your account can join. <a href="sync.html#public-realtime">Turn off public Realtime</a> to close the last gap.</p></div></details>
 
 <h2 id="updates-security">Mac updates<a class="anchor" href="#updates-security" aria-label="Link to this section">#</a></h2>
-<p>The built-in updater installs only a Bluebox signed with the Bluebox Open Source certificate (SHA-1 <code>8DA48EE5DF68786C0B40A9D6689453892A1F75D0</code>), checks the download against GitHub's checksum, and puts the old version back if the new one fails its check. You can <a href="install.html#verify-download">check a download yourself</a>.</p>
+<p>The built-in updater only installs a Bluebox signed by the same certificate as every release, and puts the old version back if anything's wrong.</p>
+<details class="tech" id="tech-certificate-and-checksum"><summary>Technical details <small>· Certificate and checksum</small></summary><div><p>The updater installs only a Bluebox signed with the Bluebox Open Source certificate (SHA-1 <code>8DA48EE5DF68786C0B40A9D6689453892A1F75D0</code>), checks the download against GitHub's checksum, and puts the old version back if the new one fails its check. You can <a href="install.html#verify-download">check a download yourself</a>.</p></div></details>
 
 <h2 id="report-vulnerability">Report a security problem<a class="anchor" href="#report-vulnerability" aria-label="Link to this section">#</a></h2>
-<p>Please report it privately, not in a public issue: on <a href="https://github.com/BCYAYAY14/bluebox">BCYAYAY14/bluebox</a>, open the <strong>Security</strong> tab and choose <strong>Report a vulnerability</strong>. Include the Bluebox version (Settings › About) and platform, what an attacker needs, and steps to reproduce. You should hear back within a week. Only the latest release gets security fixes. Details are in <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+<p>Please report it privately, not in a public issue: on <a href="https://github.com/BCYAYAY14/bluebox">BCYAYAY14/bluebox</a>, open the <b>Security</b> tab and choose <b>Report a vulnerability</b>.</p>
+<details class="tech" id="tech-what-to-include"><summary>Technical details <small>· What to include</small></summary><div><p>The Bluebox version (Settings › About) and platform, what an attacker needs, and steps to reproduce. You should hear back within a week. Only the latest release gets security fixes. Details are in <a href="https://github.com/BCYAYAY14/bluebox/blob/main/SECURITY.md">SECURITY.md</a>.</p></div></details>
 
 <h2 id="responsibility">Your responsibility<a class="anchor" href="#responsibility" aria-label="Link to this section">#</a></h2>
 <p>Bluebox is a player. It doesn't host or index anything; releases come from the add-ons and peers you choose. You're responsible for having the right to watch what you play.</p>
-<nav class="next" aria-label="Pages"><a href="sync.html"><small>Previous</small>Sync & accounts</a><a class="r" href="faq.html"><small>Next</small>FAQ</a></nav>
+<nav class="more" aria-label="More help"><h2>More help</h2><div class="tiles"><a href="install.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Install<small>Mac, iPhone and iPad, the Mac's first-launch step, updates</small></a><a href="sources.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg>Sources<small>Add-ons, debrid, your own server, folders and downloads</small></a><a href="player.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>The player<small>Subtitles, audio, AirPlay, other players, shortcuts</small></a><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote<small>Drive Bluebox on the Mac from your iPhone</small></a></div></nav>
 </main>
 </div>
 <footer><div class="f">
+  <a href="topics.html">All help</a>
   <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
   <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
   <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>

@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Install and first run · Bluebox docs</title>
-<meta name="description" content="Install Bluebox on Mac (DMG, Gatekeeper&#x27;s Open Anyway) and iPhone or iPad (AltStore, SideStore, Feather, FlareStore), then set it up.">
-<meta name="theme-color" content="#000000">
-<meta property="og:title" content="Install and first run · Bluebox docs">
-<meta property="og:description" content="Install Bluebox on Mac (DMG, Gatekeeper&#x27;s Open Anyway) and iPhone or iPad (AltStore, SideStore, Feather, FlareStore), then set it up.">
+<title>Install · Bluebox help</title>
+<meta name="description" content="Install Bluebox on Mac, iPhone and iPad, get past the Mac&#x27;s first-launch warning, and what to set up first.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Install · Bluebox help">
+<meta property="og:description" content="Install Bluebox on Mac, iPhone and iPad, get past the Mac&#x27;s first-launch warning, and what to set up first.">
 <meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="stylesheet" href="site.css">
@@ -12,138 +13,105 @@
 <body>
 <header class="top"><div class="top-in">
   <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
-  <nav aria-label="Main"><a href="install.html" aria-current="page">Install</a><a href="sources.html">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <nav aria-label="Main"><a href="install.html" aria-current="page">Install</a><a href="topics.html">Help</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
   <div class="search" role="search">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
-    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <input id="q" type="search" placeholder="Search help" aria-label="Search help" autocomplete="off" aria-controls="results">
     <div class="results" id="results" role="listbox"></div>
   </div>
   <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
 </div></header>
 <div class="wrap">
-<aside class="side" id="side">
-<h4>Start</h4><ul>
-<li><a href="./">Home</a></li>
-<li><a href="install.html" aria-current="page">Install</a></li>
-</ul>
-<h4>Using Bluebox</h4><ul>
-<li><a href="sources.html">Sources</a></li>
-<li><a href="player.html">The player</a></li>
-<li><a href="remote.html">iPhone remote</a></li>
-<li><a href="watch-party.html">Watch Party</a></li>
-<li><a href="profiles.html">Profiles &amp; Kids</a></li>
-<li><a href="sync.html">Sync &amp; accounts</a></li>
-</ul>
-<h4>Help</h4><ul>
-<li><a href="privacy.html">Privacy &amp; security</a></li>
-<li><a href="faq.html">FAQ</a></li>
-<li><a href="topics.html">All topics</a></li>
-</ul>
-<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
-</aside>
-<main class="doc">
-<p class="eyebrow">Getting started</p>
-<h1>Install and first run</h1>
-<p class="lede">Get Bluebox onto your Mac, iPhone or iPad, past macOS's first-launch warning, and set up the few things that make it useful.</p>
-<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#requirements">What you need</a></li><li><a href="#mac">Mac</a></li><li><a href="#iphone">iPhone and iPad</a></li><li><a href="#first-run">First run: what to set up</a></li><li><a href="#finding-your-way">Finding your way around</a></li><li><a href="#updates">Updates</a></li><li><a href="#build">Build from source</a></li><li><a href="#uninstall">Uninstall</a></li></ol></nav>
-<h2 id="requirements">What you need<a class="anchor" href="#requirements" aria-label="Link to this section">#</a></h2>
+<aside class="side" id="side" aria-label="Help topics">
 <ul>
-  <li><strong>iPhone or iPad:</strong> iOS 18 or later, and a sideloading app (AltStore, SideStore, Feather, FlareStore, ESign or similar). Bluebox isn't on the App Store.</li>
-  <li><strong>Mac:</strong> macOS 15 or later on an Apple silicon Mac (M1 or newer). Intel Macs aren't supported.</li>
-  <li><strong>No account.</strong> Bluebox works on its own. Sync, the iPhone remote and Watch Party need your own free Supabase project, which you can add later (<a href="sync.html">Sync and accounts</a>).</li>
+<li><a href="install.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Install</a></li>
+<li><a href="sources.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg>Sources</a></li>
+<li><a href="player.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>The player</a></li>
+<li><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote</a></li>
+<li><a href="watch-party.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M15 15c3 0 6 1.3 6 4.5"/></svg>Watch Party</a></li>
+<li><a href="profiles.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Profiles &amp; Kids</a></li>
+<li><a href="sync.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/></svg>Sync &amp; accounts</a></li>
+<li><a href="privacy.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/></svg>Privacy &amp; security</a></li>
+</ul><h4>Help</h4><ul>
+<li><a href="faq.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/></svg>FAQ</a></li>
+<li><a href="topics.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>All help</a></li>
+</ul></aside>
+<main class="doc">
+<p class="crumb"><a href="topics.html">Help</a></p>
+<h1>Install</h1>
+<p class="lede">Get Bluebox on your Mac, iPhone or iPad, then set up the few things that make it better.</p>
+
+<nav aria-label="On this page"><ul class="jump"><li><a href="#requirements">What you need</a></li><li><a href="#mac">Mac</a></li><li><a href="#iphone">iPhone and iPad</a></li><li><a href="#first-run">First things to set up</a></li><li><a href="#finding-your-way">Finding your way around</a></li><li><a href="#updates">Updates</a></li><li><a href="#uninstall">Uninstall</a></li></ul></nav>
+<h2 id="requirements">What you need<a class="anchor" href="#requirements" aria-label="Link to this section">#</a></h2>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><b>iPhone or iPad</b>iOS 18 or later, and a sideloading app such as AltStore, SideStore or Feather.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b>Mac</b>macOS 15 or later on an Apple silicon Mac (M1 or newer). Intel Macs aren't supported.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg><b>No account</b>Bluebox works on its own. Sync, the remote and Watch Party can be added later (<a href="sync.html">Sync</a>).</li>
 </ul>
 
 <h2 id="mac">Mac<a class="anchor" href="#mac" aria-label="Link to this section">#</a></h2>
-<ol>
-  <li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg">Download Bluebox for Mac</a> (<code>Bluebox-mac.dmg</code>, always the newest release).</li>
-  <li>Open the DMG. Its window shows an arrow from Bluebox to Applications: drag <strong>Bluebox</strong> onto <strong>Applications</strong>.</li>
-  <li>Eject the disk, then open Bluebox from Applications.</li>
-</ol>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></div><div class="t"><span><a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox-mac.dmg">Download Bluebox for Mac</a>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div><div class="t"><span>Open it and drag <b>Bluebox</b> onto <b>Applications</b>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div><div class="t"><span>Open Bluebox from Applications.</span></div></li></ol>
 
-<h3 id="gatekeeper">The first launch: “Apple could not verify Bluebox”<a class="anchor" href="#gatekeeper" aria-label="Link to this section">#</a></h3>
-<p>Bluebox is signed with its own certificate, not a paid Apple Developer ID, so Apple hasn't notarized it. The first time you open each new version, macOS stops it. This is expected. To open it:</p>
-<ol>
-  <li>Open Bluebox. When macOS says it can't verify it, click <strong>Done</strong> (not Move to Bin).</li>
-  <li>Open <span class="path">System Settings › Privacy &amp; Security</span>.</li>
-  <li>Scroll down to the Security section. Next to the line about Bluebox being blocked, click <strong>Open Anyway</strong>.</li>
-  <li>Enter your Mac password or use Touch ID, then click <strong>Open Anyway</strong> again in the dialog.</li>
-</ol>
-<p>macOS remembers this for that version. Updates installed by Bluebox's own updater are checked by Bluebox (see <a href="#updates">Updates</a>).</p>
-<div class="note"><p>Don't see Open Anyway? It only appears for about an hour after macOS blocked the app. Open Bluebox again, click Done, and go straight back to Privacy &amp; Security.</p></div>
-
-<h3 id="verify-download">Check the download is genuine<a class="anchor" href="#verify-download" aria-label="Link to this section">#</a></h3>
-<p>Every Mac release is signed with the self-signed <strong>Bluebox Open Source</strong> certificate, SHA-1 <code>8DA48EE5DF68786C0B40A9D6689453892A1F75D0</code>. To check it yourself, in Terminal:</p>
+<h3 id="gatekeeper">The first time: “Apple could not verify Bluebox”<a class="anchor" href="#gatekeeper" aria-label="Link to this section">#</a></h3>
+<p>macOS stops each new version once, because Bluebox isn't from the App Store. That's expected.</p>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg></div><div class="t"><span>On the warning, click <b>Done</b> (not Move to Bin).</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></div><div class="t"><span>Open <span class="path">System Settings › Privacy &amp; Security</span> and scroll down.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></div><div class="t"><span>Click <b>Open Anyway</b>, enter your password, then <b>Open Anyway</b> again.</span></div></li></ol>
+<div class="note"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><div>No Open Anyway button? It only shows for about an hour. Open Bluebox again, click Done, and go straight back.</div></div>
+<details class="tech" id="verify-download"><summary>Technical details <small>· Check the download is genuine</small></summary><div><p>Bluebox is signed with its own certificate, not a paid Apple Developer ID, so Apple hasn't notarized it. Every Mac release is signed with the self-signed <strong>Bluebox Open Source</strong> certificate, SHA-1 <code>8DA48EE5DF68786C0B40A9D6689453892A1F75D0</code>. To check it, in Terminal:</p>
 <pre><code>codesign -v --strict --deep -R='identifier "app.bluebox.Bluebox.mac" and certificate leaf = H"8da48ee5df68786c0b40a9d6689453892a1f75d0"' /Applications/Bluebox.app</code></pre>
-<p>No output means the signature matches. Anything else means the app isn't the one released on GitHub: delete it and download it again from the Releases page.</p>
+<p>No output means the signature matches. Anything else means it isn't the app released on GitHub: delete it and download it again from the Releases page.</p></div></details>
 
-<h3 id="keychain">The Keychain prompt<a class="anchor" href="#keychain" aria-label="Link to this section">#</a></h3>
-<p>Bluebox keeps your keys and passwords in one Keychain item. The first time it reads it, macOS may ask for your login password: enter it and click <strong>Always Allow</strong>. Releases are all signed with the same certificate, so the answer lasts across updates.</p>
+<h3 id="keychain">If your Mac asks for your password<a class="anchor" href="#keychain" aria-label="Link to this section">#</a></h3>
+<p>That's macOS asking whether Bluebox may read its saved keys. Type your Mac password and click <b>Always Allow</b>. It lasts across updates.</p>
 
 <h2 id="iphone">iPhone and iPad<a class="anchor" href="#iphone" aria-label="Link to this section">#</a></h2>
-<h3 id="altstore">AltStore, SideStore or Feather<a class="anchor" href="#altstore" aria-label="Link to this section">#</a></h3>
-<ol>
-  <li>On the iPhone or iPad, open <a href="add.html">the add page</a>.</li>
-  <li>Tap <strong>Open in AltStore</strong>, <strong>Open in SideStore</strong> or <strong>Open in Feather</strong>. Your sideloading app opens with Bluebox's source, ready to add.</li>
-  <li>Confirm adding the source, open <strong>Bluebox</strong> in it and tap <strong>Get</strong> (or Install).</li>
-</ol>
-<p>Shortcut: <a href="add.html?to=altstore">add.html?to=altstore</a> opens AltStore straight away (also <code>?to=sidestore</code> and <code>?to=feather</code>).</p>
+<h3 id="altstore">With AltStore, SideStore or Feather<a class="anchor" href="#altstore" aria-label="Link to this section">#</a></h3>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></div><div class="t"><span>On your iPhone, open <a href="add.html">the add page</a>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></div><div class="t"><span>Tap <b>Open in AltStore</b> (or SideStore, or Feather) and confirm.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg></div><div class="t"><span>Open <b>Bluebox</b> in the source and tap <b>Get</b>.</span></div></li></ol>
+<p class="done"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><span>Updates show up in your sideloading app.</span></p>
 
-<h3 id="flarestore">FlareStore, ESign and other apps<a class="anchor" href="#flarestore" aria-label="Link to this section">#</a></h3>
-<ol>
-  <li>Copy the source link (the add page has a Copy button):
-    <pre><code>https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/source.json</code></pre></li>
-  <li>In your sideloading app, go to <strong>Sources</strong>, tap <strong>+</strong> and paste the link.</li>
-  <li>Open <strong>Bluebox</strong> in the source and tap <strong>Get</strong>. New versions show up there as updates.</li>
-</ol>
+<h3 id="flarestore">With FlareStore, ESign or another app<a class="anchor" href="#flarestore" aria-label="Link to this section">#</a></h3>
+<ol class="steps text"><li><div class="t"><span>Copy the source link (the add page has a Copy button): <code>https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/source.json</code></span></div></li><li><div class="t"><span>In your app, open <b>Sources</b>, tap <b>+</b> and paste it.</span></div></li><li><div class="t"><span>Open <b>Bluebox</b> and tap <b>Get</b>.</span></div></li></ol>
 
-<h3 id="ipa">The IPA file<a class="anchor" href="#ipa" aria-label="Link to this section">#</a></h3>
-<p>Prefer to sideload the file yourself? <a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox.ipa">Download the latest IPA</a>. You won't get update notices through a source this way; Bluebox still tells you in Settings › About when a new release is out.</p>
-<div class="note"><p><strong>Free Apple ID?</strong> Apple lets apps signed with a free Apple ID run for 7 days. AltStore and SideStore refresh them for you in the background; if Bluebox stops opening, open your sideloading app and refresh it. This is Apple's limit, not Bluebox's.</p></div>
+<h3 id="ipa">Just the file<a class="anchor" href="#ipa" aria-label="Link to this section">#</a></h3>
+<p><a href="https://github.com/BCYAYAY14/bluebox/releases/latest/download/Bluebox.ipa">Download the latest IPA</a> to sideload it yourself. Settings › About tells you when a new version is out.</p>
+<div class="note"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><div><b>Free Apple ID?</b> Apple lets those apps run for 7 days. AltStore and SideStore refresh Bluebox in the background; if it stops opening, open your sideloading app and refresh it.</div></div>
+<details class="tech" id="tech-opening-a-sideloading-app-directly"><summary>Technical details <small>· Opening a sideloading app directly</small></summary><div><p><a href="add.html?to=altstore">add.html?to=altstore</a> opens AltStore straight away; <code>?to=sidestore</code> and <code>?to=feather</code> work too.</p></div></details>
 
-<h2 id="first-run">First run: what to set up<a class="anchor" href="#first-run" aria-label="Link to this section">#</a></h2>
-<p>Bluebox opens straight to Home. Out of the box it already works: titles come from Cinemeta, and the Torrentio and StremThru add-ons find releases. These make it better, in order of how much they help:</p>
-<ol>
-  <li><strong>A TMDB token</strong> for richer artwork, cast, collections and recommendations. Make a free account at themoviedb.org, request an API key under Settings › API, and copy the long <em>API Read Access Token</em>. In Bluebox: <span class="path">Settings › Catalog &amp; Ratings › TMDB Token</span>, paste, save. Bluebox checks it and keeps it in the Keychain.</li>
-  <li><strong>A debrid service</strong> if you have one, so streams start at once over HTTPS and your IP address isn't shared with torrent peers. See <a href="sources.html#debrid">Debrid</a>.</li>
-  <li><strong>Your own media</strong>: a Jellyfin, Emby or Plex server, a WebDAV folder or a folder of files. See <a href="sources.html">Sources</a>.</li>
-  <li><strong>Ratings</strong>: a free OMDb key in <span class="path">Settings › Catalog &amp; Ratings › OMDb API Key</span> adds IMDb, Rotten Tomatoes and Metacritic scores to title pages.</li>
-  <li><strong>Sync</strong>, if you use more than one device: <a href="sync.html">set up your Supabase project</a>.</li>
-</ol>
-<p>Every setting can be found from the search field at the top of Settings.</p>
+<h2 id="first-run">First things to set up<a class="anchor" href="#first-run" aria-label="Link to this section">#</a></h2>
+<p>Bluebox works straight away. These make it better, most useful first:</p>
+<ol class="steps"><li><div class="pic"><img src="images/steps/install-settings-catalog-571-200-700-350.jpg" alt="Settings › Catalog &amp;amp; Ratings with the TMDB token field" loading="lazy"></div><div class="t"><span><b>Artwork and cast:</b> paste a free TMDB token in <span class="path">Settings › Catalog &amp; Ratings</span>.</span></div></li><li><div class="pic"><img src="images/steps/install-settings-torrents-571-710-600-300.jpg" alt="The debrid Service row in Settings › Torrents &amp;amp; Debrid" loading="lazy"></div><div class="t"><span><b>Faster streams:</b> add your <a href="sources.html#debrid">debrid service</a>, if you have one.</span></div></li><li><div class="pic"><img src="images/steps/install-mac-settings-sources-560-620-700-350.jpg" alt="Add Folder, Add Jellyfin Server and Add Emby Server in Settings › Sources" loading="lazy"></div><div class="t"><span><b>Your own films:</b> add a <a href="sources.html#media-servers">server</a> or a <a href="sources.html#local-files">folder</a>.</span></div></li><li><div class="pic"><img src="images/steps/install-settings-catalog-571-600-700-350.jpg" alt="The OMDb API key field" loading="lazy"></div><div class="t"><span><b>Ratings:</b> a free OMDb key adds IMDb, Rotten Tomatoes and Metacritic scores.</span></div></li><li><div class="pic"><img src="images/steps/install-settings-account-790-440-800-400.jpg" alt="Set Up Sync in Settings › Account &amp;amp; Sync" loading="lazy"></div><div class="t"><span><b>More than one device?</b> <a href="sync.html">Set up sync</a>.</span></div></li></ol>
+<details class="tech"><summary>How to get a TMDB token</summary><div><p>Make a free account at themoviedb.org, request an API key under Settings › API, and copy the long <em>API Read Access Token</em>. Paste it in <span class="path">Settings › Catalog &amp; Ratings › TMDB Token</span> and save. Bluebox checks it and keeps it in the Keychain. Without a token, titles come from Cinemeta, and the Torrentio and StremThru add-ons find releases.</p></div></details>
+<p>Every setting can be found with the search field at the top of Settings.</p>
 
 <h2 id="finding-your-way">Finding your way around<a class="anchor" href="#finding-your-way" aria-label="Link to this section">#</a></h2>
-<ul>
-  <li><strong>Home</strong> has Continue Watching, My List, Top Picks, Because You Watched and what's new. Your add-ons' catalogs can be rows here too (<span class="path">Settings › Torrents &amp; Debrid › Add-on Catalogs on Home</span>).</li>
-  <li><strong>TV Shows</strong>, <strong>Movies</strong>, <strong>New &amp; Hot</strong>, <strong>My List</strong> and <strong>Downloads</strong> are along the top. On the Mac, <kbd>⌘1</kbd> to <kbd>⌘6</kbd> go to each, <kbd>⌘F</kbd> searches and <kbd>⌘[</kbd> goes back.</li>
-  <li><strong>Search</strong> understands years (“dune 2021”) and has filter chips.</li>
-  <li>Right-click a poster on the Mac, or touch and hold on iPhone and iPad, for its menu: My List, Add to List, Download, Start a Party, Not Interested and more.</li>
-  <li><strong>Language:</strong> Bluebox is in English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, Korean and Simplified Chinese (<span class="path">Settings › Language</span>).</li>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><b>Home</b>Continue Watching, My List, Top Picks and what's new. Add-on catalogs can be rows too (<span class="path">Settings › Torrents &amp; Debrid › Add-on Catalogs on Home</span>).</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><b>Along the top</b>TV Shows, Movies, New &amp; Hot, My List and Downloads. On the Mac, <kbd>⌘1</kbd>–<kbd>⌘6</kbd>.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><b>Search</b>Understands years (“dune 2021”) and has filters. <kbd>⌘F</kbd> on the Mac.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5A6.5 6.5 0 0 1 4 15.5V12a1.5 1.5 0 0 1 3 0v1"/></svg><b>A poster's menu</b>Right-click, or touch and hold: My List, Download, Start a Party and more.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg><b>Your language</b>English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, Korean or Simplified Chinese (<span class="path">Settings › Language</span>).</li>
 </ul>
 
 <h2 id="updates">Updates<a class="anchor" href="#updates" aria-label="Link to this section">#</a></h2>
-<ul>
-  <li><strong>Mac:</strong> Bluebox checks GitHub's latest release once a day. A new version shows as a blue dot on the profile button. Open <span class="path">Settings › About</span> to see its size and what's new, and install it there. The updater installs only a Bluebox signed with the release certificate, checks the download against GitHub's checksum, and puts the old version back if the new one fails its check.</li>
-  <li><strong>iPhone and iPad:</strong> updates arrive through the source in your sideloading app. Settings › About also says when one is out.</li>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b>Mac</b>A blue dot on the profile button means a new version. Install it in <span class="path">Settings › About</span>.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><b>iPhone and iPad</b>Updates arrive in your sideloading app. Settings › About also says when one is out.</li>
 </ul>
-<p>What changed in each version is in the <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">changelog</a>.</p>
-
-<h2 id="build">Build from source<a class="anchor" href="#build" aria-label="Link to this section">#</a></h2>
-<p>You need Xcode and <a href="https://github.com/yonaskolb/XcodeGen">XcodeGen</a>. The code is in the <code>Bluebox</code> folder of the repository.</p>
-<pre><code>brew install xcodegen
-cd Bluebox &amp;&amp; xcodegen generate &amp;&amp; open Bluebox.xcodeproj</code></pre>
-<p>Pick the <strong>Bluebox-iOS</strong> or <strong>Bluebox-macOS</strong> scheme and set your own team under Signing &amp; Capabilities (or change <code>DEVELOPMENT_TEAM</code> in <code>project.yml</code>). Nothing needs a key to build. The torrent engine ships prebuilt; <code>scripts/build-libtorrent.sh</code> rebuilds it from source (<code>brew install cmake ninja boost</code> first). Run the tests with <code>cd Bluebox/Packages/BlueboxKit &amp;&amp; swift test</code>.</p>
+<p>What's new in each version: the <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">changelog</a>.</p>
+<details class="tech" id="tech-how-the-mac-updater-checks-a-download"><summary>Technical details <small>· How the Mac updater checks a download</small></summary><div><p>Bluebox checks GitHub's latest release once a day. The updater installs only a Bluebox signed with the release certificate, checks the download against GitHub's checksum, and puts the old version back if the new one fails its check. Releases are all signed with the same certificate, so a Keychain “Always Allow” lasts across updates.</p></div></details>
 
 <h2 id="uninstall">Uninstall<a class="anchor" href="#uninstall" aria-label="Link to this section">#</a></h2>
-<ol>
-  <li>Choose <span class="path">Settings › Storage › Erase All Data</span>. Bluebox signs out and quits.</li>
-  <li>Open Bluebox once more. Before anything loads, it deletes its downloads, caches, library, settings and Keychain item on this device.</li>
-  <li>Delete the app: drag it from Applications to the Bin on the Mac, or touch and hold its icon on iPhone and iPad.</li>
-</ol>
+<ol class="steps"><li><div class="pic"><img src="images/steps/install-settings-storage-571-1460-700-350.jpg" alt="Reset All Settings and Erase All Data in Settings › Storage" loading="lazy"></div><div class="t"><span>Choose <span class="path">Settings › Storage › Erase All Data</span>. Bluebox quits.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></div><div class="t"><span>Open it once more: it deletes its downloads, library, settings and keys on this device.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></div><div class="t"><span>Delete the app: drag it to the Bin, or touch and hold its icon.</span></div></li></ol>
 <p>If you set up sync, your library stays in your Supabase project until you delete the project in Supabase's dashboard.</p>
-<nav class="next" aria-label="Pages"><a href="./"><small>Previous</small>Home</a><a class="r" href="sources.html"><small>Next</small>Sources</a></nav>
+
+<details class="tech" id="build"><summary>Technical details <small>· Build from source</small></summary><div><p>You need Xcode and <a href="https://github.com/yonaskolb/XcodeGen">XcodeGen</a>. The code is in the <code>Bluebox</code> folder of the repository.</p>
+<pre><code>brew install xcodegen
+cd Bluebox &amp;&amp; xcodegen generate &amp;&amp; open Bluebox.xcodeproj</code></pre>
+<p>Pick the <strong>Bluebox-iOS</strong> or <strong>Bluebox-macOS</strong> scheme and set your own team under Signing &amp; Capabilities (or change <code>DEVELOPMENT_TEAM</code> in <code>project.yml</code>). Nothing needs a key to build. The torrent engine ships prebuilt; <code>scripts/build-libtorrent.sh</code> rebuilds it from source (<code>brew install cmake ninja boost</code> first). Run the tests with <code>cd Bluebox/Packages/BlueboxKit &amp;&amp; swift test</code>.</p></div></details>
+<nav class="more" aria-label="More help"><h2>More help</h2><div class="tiles"><a href="sources.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg>Sources<small>Add-ons, debrid, your own server, folders and downloads</small></a><a href="player.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>The player<small>Subtitles, audio, AirPlay, other players, shortcuts</small></a><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote<small>Drive Bluebox on the Mac from your iPhone</small></a><a href="watch-party.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M15 15c3 0 6 1.3 6 4.5"/></svg>Watch Party<small>Watch in step with friends</small></a></div></nav>
 </main>
 </div>
 <footer><div class="f">
+  <a href="topics.html">All help</a>
   <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
   <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
   <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>

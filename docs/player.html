@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The player · Bluebox docs</title>
-<meta name="description" content="Bluebox&#x27;s player: which formats play, subtitles and Sync to the Audio, audio tracks and the equaliser, AirPlay, external players, keyboard shortcuts.">
-<meta name="theme-color" content="#000000">
-<meta property="og:title" content="The player · Bluebox docs">
-<meta property="og:description" content="Bluebox&#x27;s player: which formats play, subtitles and Sync to the Audio, audio tracks and the equaliser, AirPlay, external players, keyboard shortcuts.">
+<title>The player · Bluebox help</title>
+<meta name="description" content="Bluebox&#x27;s player: formats, subtitles and their style and timing, audio, picture tools, skipping, AirPlay, other players and keyboard shortcuts.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="The player · Bluebox help">
+<meta property="og:description" content="Bluebox&#x27;s player: formats, subtitles and their style and timing, audio, picture tools, skipping, AirPlay, other players and keyboard shortcuts.">
 <meta property="og:image" content="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="icon" href="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png">
 <link rel="stylesheet" href="site.css">
@@ -12,118 +13,124 @@
 <body>
 <header class="top"><div class="top-in">
   <a class="brand" href="./"><img src="https://raw.githubusercontent.com/BCYAYAY14/bluebox/main/icon.png" alt=""><span>Bluebox</span></a>
-  <nav aria-label="Main"><a href="install.html">Install</a><a href="sources.html" aria-current="page">Docs</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
+  <nav aria-label="Main"><a href="install.html">Install</a><a href="topics.html" aria-current="page">Help</a><a href="faq.html">FAQ</a><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></nav>
   <div class="search" role="search">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 1a5.5 5.5 0 0 1 4.38 8.82l3.65 3.65-1.06 1.06-3.65-3.65A5.5 5.5 0 1 1 6.5 1zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
-    <input id="q" type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" aria-controls="results">
+    <input id="q" type="search" placeholder="Search help" aria-label="Search help" autocomplete="off" aria-controls="results">
     <div class="results" id="results" role="listbox"></div>
   </div>
   <button class="menu" aria-label="Menu" aria-expanded="false" aria-controls="side"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
 </div></header>
 <div class="wrap">
-<aside class="side" id="side">
-<h4>Start</h4><ul>
-<li><a href="./">Home</a></li>
-<li><a href="install.html">Install</a></li>
-</ul>
-<h4>Using Bluebox</h4><ul>
-<li><a href="sources.html">Sources</a></li>
-<li><a href="player.html" aria-current="page">The player</a></li>
-<li><a href="remote.html">iPhone remote</a></li>
-<li><a href="watch-party.html">Watch Party</a></li>
-<li><a href="profiles.html">Profiles &amp; Kids</a></li>
-<li><a href="sync.html">Sync &amp; accounts</a></li>
-</ul>
-<h4>Help</h4><ul>
-<li><a href="privacy.html">Privacy &amp; security</a></li>
-<li><a href="faq.html">FAQ</a></li>
-<li><a href="topics.html">All topics</a></li>
-</ul>
-<h4>Elsewhere</h4><ul><li><a href="https://github.com/BCYAYAY14/bluebox">GitHub</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Latest release</a></li><li><a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a></li></ul>
-</aside>
-<main class="doc">
-<p class="eyebrow">Using Bluebox</p>
-<h1>The player</h1>
-<p class="lede">Formats, subtitles, audio, picture tools, skipping, AirPlay, opening videos in another app, and every keyboard shortcut.</p>
-<figure class="shot"><img src="images/stats.png" alt="Stats for nerds: a live graph and the video, buffer and torrent details over a film" width="1920" height="1080" loading="lazy"><figcaption>Stats for nerds: in the player, open Tools and turn on Stats. Copy Diagnostics puts a report on the clipboard for bug reports.</figcaption></figure>
-<nav class="toc" aria-label="On this page"><b>On this page</b><ol><li><a href="#formats">Formats and the two engines</a></li><li><a href="#controls">Controls</a></li><li><a href="#skipping">Skip intro, recap and credits</a></li><li><a href="#subtitles">Subtitles</a></li><li><a href="#audio">Audio</a></li><li><a href="#picture">Picture and tools</a></li><li><a href="#airplay">AirPlay and picture in picture</a></li><li><a href="#external-players">Open in another player</a></li><li><a href="#shortcuts">Keyboard shortcuts (Mac)</a></li></ol></nav>
-<h2 id="formats">Formats and the two engines<a class="anchor" href="#formats" aria-label="Link to this section">#</a></h2>
-<p>Bluebox has two video engines and picks one for each video:</p>
-<div class="tablewrap"><table>
-  <tr><th>Engine</th><th>Plays</th><th>Gives you</th></tr>
-  <tr><td><strong>System player</strong> (AVPlayer)</td><td>MP4, M4V, MOV and HLS streams</td><td>Picture in picture, AirPlay, the system's power-efficient decoding</td></tr>
-  <tr><td><strong>VLC</strong> (libVLC)</td><td>MKV, AVI, WebM, TS and most other files, including most torrents</td><td>Nearly any codec, embedded subtitle tracks, styled ASS subtitles</td></tr>
-</table></div>
-<p><span class="path">Settings › Playback › Player</span> chooses how: <strong>Automatic</strong> (the default: the system player when it can open the file, VLC for the rest), <strong>Prefer VLC</strong>, or <strong>AVPlayer Only</strong> (MKV, AVI and WebM won't play).</p>
-<p>The release picker only picks releases this device can play, and shows the file type of each release.</p>
-
-<h2 id="controls">Controls<a class="anchor" href="#controls" aria-label="Link to this section">#</a></h2>
+<aside class="side" id="side" aria-label="Help topics">
 <ul>
-  <li><strong>Mac:</strong> click the video to play or pause, double-click for full screen. The arrow keys skip back and forward (10 seconds by default; <span class="path">Settings › Playback › Skip Back / Skip Forward</span>).</li>
-  <li><strong>iPhone and iPad:</strong> swipe across the picture to seek, up and down on the left for brightness and on the right for volume (<strong>Swipe Gestures</strong>). Touch and hold for 2× speed. Pinch to zoom.</li>
-  <li><strong>Timeline:</strong> chapter marks from the file, and for torrents, how much of the file is downloaded. Hovering or scrubbing shows preview thumbnails.</li>
-  <li><strong>Speed</strong> from 0.25× to 4×, with voices kept at their pitch. Speed carries over between episodes. <strong>Jump to Time</strong> goes to a time you type.</li>
-  <li><strong>Up Next:</strong> at the credits, Next Episode counts down and plays on if the profile's <strong>Autoplay Next Episode</strong> is on. The next episode is found in the background, so it starts quickly.</li>
-  <li><strong>Handoff</strong> offers what's playing to your other Apple devices.</li>
+<li><a href="install.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Install</a></li>
+<li><a href="sources.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg>Sources</a></li>
+<li><a href="player.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>The player</a></li>
+<li><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote</a></li>
+<li><a href="watch-party.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M15 15c3 0 6 1.3 6 4.5"/></svg>Watch Party</a></li>
+<li><a href="profiles.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Profiles &amp; Kids</a></li>
+<li><a href="sync.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/></svg>Sync &amp; accounts</a></li>
+<li><a href="privacy.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/></svg>Privacy &amp; security</a></li>
+</ul><h4>Help</h4><ul>
+<li><a href="faq.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/></svg>FAQ</a></li>
+<li><a href="topics.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>All help</a></li>
+</ul></aside>
+<main class="doc">
+<p class="crumb"><a href="topics.html">Help</a></p>
+<h1>The player</h1>
+<p class="lede">Subtitles your way, any audio track, skip intro, AirPlay, and every keyboard shortcut.</p>
+<figure class="shot"><img src="images/stats.png" alt="Stats for nerds: a live graph and the video, buffer and torrent details over a film" width="1920" height="1080"><figcaption>Stats for nerds: in the player, open Tools and turn on Stats. Copy Diagnostics puts a report on the clipboard for bug reports.</figcaption></figure>
+<nav aria-label="On this page"><ul class="jump"><li><a href="#controls">Controls</a></li><li><a href="#wont-play">If it won&#x27;t play</a></li><li><a href="#skipping">Skip intro, recap and credits</a></li><li><a href="#subtitles">Subtitles</a></li><li><a href="#audio">Audio</a></li><li><a href="#picture">Picture and tools</a></li><li><a href="#airplay">AirPlay and picture in picture</a></li><li><a href="#formats">Will my file play?</a></li><li><a href="#external-players">Open in another player</a></li><li><a href="#shortcuts">Keyboard shortcuts (Mac)</a></li></ul></nav>
+<h2 id="controls">Controls<a class="anchor" href="#controls" aria-label="Link to this section">#</a></h2>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b>Mac</b>Click to pause, double-click for full screen. Arrow keys skip 10 seconds.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5A6.5 6.5 0 0 1 4 15.5V12a1.5 1.5 0 0 1 3 0v1"/></svg><b>iPhone and iPad</b>Swipe to seek, up and down for brightness (left) and volume (right). Hold for 2× speed. Pinch to zoom.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg><b>Up Next</b>At the credits, the next episode counts down and plays on (<b>Autoplay Next Episode</b>).</li>
 </ul>
+<details class="tech" id="tech-more-controls"><summary>Technical details <small>· More controls</small></summary><div><ul>
+  <li>Skip lengths: <span class="path">Settings › Playback › Skip Back / Skip Forward</span>. Swipe Gestures can be turned off.</li>
+  <li><strong>Timeline:</strong> chapter marks from the file and, for torrents, how much is downloaded. Hovering or scrubbing shows preview pictures.</li>
+  <li><strong>Speed</strong> from 0.25× to 4×, with voices kept at their pitch. Speed carries over between episodes. <strong>Jump to Time</strong> goes to a time you type.</li>
+  <li>The next episode is found in the background, so it starts quickly. <strong>Handoff</strong> offers what's playing to your other Apple devices.</li>
+</ul></div></details>
+
+<h2 id="wont-play">If it won't play<a class="anchor" href="#wont-play" aria-label="Link to this section">#</a></h2>
+<p>Try these in order. Most people are watching by step 2.</p>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div><div class="t"><span>Open <b>Releases</b> and pick another, near the top or marked <b>Cached</b>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/></svg></div><div class="t"><span>Try another network or a VPN. Some work, school and hotel Wi-Fi blocks torrents.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/></svg></div><div class="t"><span>Tap <b>Test Add-ons</b> in <span class="path">Settings › Torrents &amp; Debrid</span> and turn off any that fail.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></div><div class="t"><span>On mobile data? Allow streaming in <span class="path">Settings › Mobile Data</span>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div><div class="t"><span>Your own server? <b>Test All Sources</b> in Settings › Sources says which one can't be reached.</span></div></li></ol>
+<p><b>Keeps stopping to buffer?</b> Pick a smaller release (1080p or 720p), or raise <b>Start Playing After</b> in Settings › Torrents &amp; Debrid. A <a href="sources.html#debrid">debrid service</a> fixes most of these.</p>
 
 <h2 id="skipping">Skip intro, recap and credits<a class="anchor" href="#skipping" aria-label="Link to this section">#</a></h2>
-<p>Skip Intro and Skip Recap appear on their own for 8 seconds, then whenever the controls are up. <kbd>Return</kbd> skips. Set each to <strong>Show Button</strong> or <strong>Automatic</strong> in <span class="path">Settings › Playback › Skipping</span>, or choose to always skip for one show (<strong>Always Skipping</strong>).</p>
-<p>Times come from the file's chapters, or from <strong>Community Intro Timestamps</strong> (TheIntroDB and IntroDB) when a file has none. A wrong time can be marked from the player.</p>
+<p><b>Skip Intro</b> and <b>Skip Recap</b> appear by themselves. <kbd>Return</kbd> skips. Make it automatic in <span class="path">Settings › Playback › Skipping</span>, or always skip for one show (<b>Always Skipping</b>).</p>
+<details class="tech" id="tech-where-skip-times-come-from"><summary>Technical details <small>· Where skip times come from</small></summary><div><p>The buttons show for 8 seconds, then whenever the controls are up. Times come from the file's chapters, or from <strong>Community Intro Timestamps</strong> (TheIntroDB and IntroDB) when a file has none. A wrong time can be marked from the player.</p></div></details>
 
 <h2 id="subtitles">Subtitles<a class="anchor" href="#subtitles" aria-label="Link to this section">#</a></h2>
-<p>Open <strong>Audio &amp; Subtitles</strong> in the player (<kbd>V</kbd> cycles tracks, <kbd>C</kbd> turns them off and on). Subtitles are listed by language; a language with several tracks (SDH, Forced, SRT or ASS, files) opens its own list. Your preferred language is picked automatically when a video has it (<span class="path">Settings › Language › Preferred Language</span>).</p>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13h4m2 0h4M7 16h10"/></svg></div><div class="t"><span>Open <b>Audio &amp; Subtitles</b> in the player (<kbd>V</kbd> next track, <kbd>C</kbd> off and on).</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg></div><div class="t"><span>Pick a language. One with several tracks opens its own list.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></div><div class="t"><span>Nothing in your language? Tap <b>Search Online</b>.</span></div></li></ol>
 <ul>
-  <li><strong>Second language:</strong> show two tracks at once, one under the other, for learning a language.</li>
-  <li><strong>Subtitle files in torrents</strong> are listed under their language, tagged Torrent.</li>
-  <li><strong>Search Online</strong> looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match for the release first. OpenSubtitles and Subdl need a free API key in <span class="path">Settings › Subtitles</span>, where each site can also be turned off. Signing in to OpenSubtitles raises its daily limit.</li>
-  <li><strong>Lines</strong> lists every line with its time. Search it, or click a line to play from there. <kbd>⇧←</kbd> and <kbd>⇧→</kbd> go to the previous or next line.</li>
-  <li><strong>Hide Sound Cues</strong> leaves out [door slams], ♪ lyrics and “NAME:” labels.</li>
+  <li><b>Your language, automatically:</b> <span class="path">Settings › Language › Preferred Language</span>.</li>
+  <li><b>Second language:</b> show two tracks at once, for learning.</li>
+  <li><b>Lines</b> lists every line. Click one to play from there.</li>
+  <li><b>Hide Sound Cues</b> leaves out [door slams], ♪ lyrics and “NAME:” labels.</li>
 </ul>
+<details class="tech" id="tech-subtitle-sources"><summary>Technical details <small>· Subtitle sources</small></summary><div><p>Search Online looks on OpenSubtitles, Subdl, Podnapisi and your Jellyfin server at once, best match for the release first. OpenSubtitles and Subdl need a free API key in <span class="path">Settings › Subtitles</span> (make one at opensubtitles.com, under Profile › API consumers), where each site can also be turned off. Signing in to OpenSubtitles raises its daily limit. Subtitle files inside torrents are listed under their language, tagged Torrent. <kbd>⇧←</kbd> and <kbd>⇧→</kbd> go to the previous or next line.</p></div></details>
+
 <h3 id="subtitle-style">Subtitle style<a class="anchor" href="#subtitle-style" aria-label="Link to this section">#</a></h3>
-<p><strong>Subtitle Style</strong> opens as a panel beside the video, so every change shows on the real picture. Start from a preset (Standard, Cinema, Boxed, Bold Outline, Large Print), then change the font (Atkinson Hyperlegible and Inter are included), weight, size, colour, background and outline. <strong>Save Current</strong> keeps your own look as a preset, synced with your profile.</p>
-<p>Drag subtitles on the video to move them; they snap to Top, Middle or Bottom. With a letterboxed picture you can drop them into the black bar. While the controls show, subtitles move up just enough to clear them (<strong>Move Up for Player Controls</strong>).</p>
-<div class="note"><p>Bluebox draws subtitle files and plain text tracks inside MKV and WebM itself, so they follow your style everywhere, including picture in picture and AirPlay. Styled ASS subtitles (signs, karaoke) and picture subtitles from Blu-rays and DVDs are still drawn by VLC, in their own style, and can't be restyled or moved off the picture.</p></div>
-<h3 id="subtitle-timing">Subtitle timing<a class="anchor" href="#subtitle-timing" aria-label="Link to this section">#</a></h3>
-<p>Subtitles early or late? Open <strong>Timing</strong> in the subtitle card:</p>
-<ol>
-  <li><strong>Sync to the Audio</strong> (at the top) listens to the speech on your device and sets the delay and drift for you. It asks for speech recognition the first time. It keeps working if you close the card, and tells you when it's done, with Undo.</li>
-  <li>Or tap the line you just heard to sync to it, and tap another a few minutes later to also fix subtitles that drift.</li>
-  <li>Or nudge the delay with <kbd>{</kbd> and <kbd>}</kbd> (0.1 s), or convert between frame rates (23.976, 24, 25, 29.97, 30 fps).</li>
-</ol>
-<p>These tools work on subtitle files. Tracks inside the video always follow the video. <strong>Default Delay</strong> in Settings › Subtitles applies to every file.</p>
+<p><b>Subtitle Style</b> opens beside the video, so you see each change on the real picture. Start from a preset (Standard, Cinema, Boxed, Bold Outline, Large Print), then change font, size, colour, background and outline. <b>Save Current</b> keeps your look.</p>
+<p>Drag subtitles to move them. They snap to Top, Middle or Bottom, and move up to clear the controls.</p>
+<details class="tech" id="tech-subtitles-that-keep-their-own-look"><summary>Technical details <small>· Subtitles that keep their own look</small></summary><div><p>Bluebox draws subtitle files and plain text tracks inside MKV and WebM itself, so they follow your style everywhere, including picture in picture and AirPlay. Styled ASS subtitles (signs, karaoke) and picture subtitles from Blu-rays and DVDs are still drawn by VLC, in their own style, and can't be restyled or moved off the picture: pick a plain track in the same language (often labelled SRT), or one from Search Online. Atkinson Hyperlegible and Inter are included; saved presets sync with your profile. With a letterboxed picture you can drop subtitles into the black bar (<strong>Move Up for Player Controls</strong> sets the lift).</p></div></details>
+
+<h3 id="subtitle-timing">Subtitles early or late<a class="anchor" href="#subtitle-timing" aria-label="Link to this section">#</a></h3>
+<ol class="steps"><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13h4m2 0h4M7 16h10"/></svg></div><div class="t"><span>Open the subtitle card and tap <b>Timing</b>.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></div><div class="t"><span>Tap <b>Sync to the Audio</b>. Bluebox listens and fixes it, with Undo.</span></div></li><li><div class="pic ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5A6.5 6.5 0 0 1 4 15.5V12a1.5 1.5 0 0 1 3 0v1"/></svg></div><div class="t"><span>Not quite? Tap the line you just heard.</span></div></li></ol>
+<p><b>Way off?</b> The subtitles were made for another version. Use <b>Search Online</b> for ones that match.</p>
+<details class="tech" id="tech-drift-frame-rates-and-default-delay"><summary>Technical details <small>· Drift, frame rates and default delay</small></summary><div><p>Sync to the Audio listens to the speech on your device and sets the delay and drift. It asks for speech recognition the first time, and keeps working if you close the card. Tap a second line a few minutes later to also fix subtitles that drift. Nudge the delay with <kbd>{</kbd> and <kbd>}</kbd> (0.1 s), or convert between frame rates (23.976, 24, 25, 29.97, 30 fps). These tools work on subtitle files; tracks inside the video always follow the video. <strong>Default Delay</strong> in Settings › Subtitles applies to every file.</p></div></details>
 
 <h2 id="audio">Audio<a class="anchor" href="#audio" aria-label="Link to this section">#</a></h2>
-<ul>
-  <li><strong>Audio tracks:</strong> in Audio &amp; Subtitles, or <kbd>B</kbd> for the next one. Each profile's preferred audio language is picked automatically (<span class="path">Settings › Language › Audio Language</span>).</li>
-  <li><strong>Audio delay:</strong> on the same dial as subtitle timing, for sound that's ahead of or behind the picture.</li>
-  <li><strong>Dialogue Boost</strong> lifts speech; <strong>Night Mode</strong> evens out loud and quiet scenes. Both are in the player's <span class="path">Tools › Sound</span> and in Settings › Playback.</li>
-  <li><strong>Equaliser:</strong> ten bands, presets (Voice, Bass Boost, Treble, Cinema, Music, Headphones) and Preamp, in Tools › Sound. It's your profile's and syncs. HLS streams play without it.</li>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg><b>Audio tracks</b>In Audio &amp; Subtitles, or <kbd>B</kbd>. Your language is picked automatically (<span class="path">Settings › Language › Audio Language</span>).</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><b>Hear voices better</b><b>Dialogue Boost</b> lifts speech; <b>Night Mode</b> evens out loud and quiet scenes. In <span class="path">Tools › Sound</span>.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><b>Equaliser</b>Ten bands and presets, in Tools › Sound.</li>
 </ul>
+<details class="tech" id="tech-audio-delay-and-the-equaliser"><summary>Technical details <small>· Audio delay and the equaliser</small></summary><div><p>Audio delay is on the same dial as subtitle timing, for sound ahead of or behind the picture. Dialogue Boost and Night Mode are also in Settings › Playback. The equaliser has Voice, Bass Boost, Treble, Cinema, Music and Headphones presets and a Preamp; it's your profile's and syncs. HLS streams play without it.</p></div></details>
 
 <h2 id="picture">Picture and tools<a class="anchor" href="#picture" aria-label="Link to this section">#</a></h2>
-<p><strong>Tools</strong> (<kbd>T</kbd>) opens beside the video:</p>
-<ul>
-  <li><strong>Frame:</strong> aspect ratio override, crop to a ratio (16:9, 1.85, 2.35, 2.39, 4:3, 21:9 and more) or by each edge, fit, fill or stretch, zoom up to 4× with panning, rotate and flip.</li>
-  <li><strong>Colour:</strong> brightness, contrast, saturation, hue, gamma and sharpness. Starting values for every video are in <span class="path">Settings › Picture</span>. They don't apply to HLS streams.</li>
-  <li><strong>Playback:</strong> frame-by-frame stepping, A–B repeat, a sleep timer (after a time or at the end of the video), and Save Frame (to Photos on iPhone and iPad, Pictures › Bluebox on the Mac).</li>
+<p><b>Tools</b> (<kbd>T</kbd>) opens beside the video:</p>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 8"/></svg><b>Frame</b>Aspect ratio, crop, fill, zoom up to 4×, rotate and flip.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.8 1.5-1.5 0-1.5-1.5-1.7-1.5-3s1-2 2.5-2H17a4 4 0 0 0 4-4c0-4-4-7.5-9-7.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg><b>Colour</b>Brightness, contrast, saturation, hue, gamma and sharpness.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg><b>Playback</b>Frame by frame, A–B repeat, a sleep timer and Save Frame.</li>
 </ul>
+<details class="tech" id="tech-tools-in-detail"><summary>Technical details <small>· Tools in detail</small></summary><div><p>Crop to a ratio (16:9, 1.85, 2.35, 2.39, 4:3, 21:9 and more) or by each edge; fit, fill or stretch; pan when zoomed. Starting colour values for every video are in <span class="path">Settings › Picture</span>; they don't apply to HLS streams. The sleep timer stops after a time or at the end of the video. Save Frame saves to Photos on iPhone and iPad, and to Pictures › Bluebox on the Mac.</p></div></details>
 
 <h2 id="airplay">AirPlay and picture in picture<a class="anchor" href="#airplay" aria-label="Link to this section">#</a></h2>
-<p>AirPlay and picture in picture work with videos the system player opens: MP4, M4V, MOV and HLS. Your subtitles go with them, in your style.</p>
-<p>A video playing in VLC (MKV, AVI, WebM) can't be sent over AirPlay, and Bluebox doesn't convert it on the fly. The AirPlay button is greyed out; tap it and Bluebox explains why and offers a release of the same title that AirPlay can play. To find one yourself, open Releases and choose an MP4 release, or one from your debrid service or media server in MP4.</p>
+<p>Both work with <b>MP4 and MOV</b> videos (and HLS streams), with your subtitles in your style.</p>
+<p>For MKV and other files the AirPlay button is greyed out. <b>Tap it</b>: Bluebox offers a version of the same film that works. Or open <b>Releases</b> and pick an MP4.</p>
+<details class="tech" id="tech-the-two-video-engines"><summary>Technical details <small>· The two video engines</small></summary><div><p>Bluebox has two engines and picks one for each video. The <strong>system player</strong> (AVPlayer) plays MP4, M4V, MOV and HLS, and gives picture in picture, AirPlay and power-efficient decoding. <strong>VLC</strong> (libVLC) plays MKV, AVI, WebM, TS and most other files, including most torrents, with nearly any codec and embedded subtitle tracks. A video playing in VLC can't be sent over AirPlay, and Bluebox doesn't convert it on the fly.</p></div></details>
+
+<h2 id="formats">Will my file play?<a class="anchor" href="#formats" aria-label="Link to this section">#</a></h2>
+<p>Almost certainly: MP4, MOV, MKV, AVI, WebM, TS and most other video files play. Only AirPlay and picture in picture need MP4 or MOV (<a href="#airplay">above</a>).</p>
+<details class="tech" id="tech-choosing-the-engine"><summary>Technical details <small>· Choosing the engine</small></summary><div><p><span class="path">Settings › Playback › Player</span>: <strong>Automatic</strong> (the default: the system player when it can open the file, VLC for the rest), <strong>Prefer VLC</strong>, or <strong>AVPlayer Only</strong> (MKV, AVI and WebM won't play). The release picker only picks releases this device can play, and shows each release's file type.</p></div></details>
 
 <h2 id="external-players">Open in another player<a class="anchor" href="#external-players" aria-label="Link to this section">#</a></h2>
-<p><span class="path">Settings › Playback › Open Videos In</span> sends videos to another app instead of Bluebox's player, for this device only:</p>
-<ul>
-  <li><strong>Mac:</strong> VLC, IINA, mpv or Infuse.</li>
-  <li><strong>iPhone and iPad:</strong> Infuse, VLC, nPlayer or VidHub, or <strong>Other App…</strong> for any other player through the share sheet.</li>
+<p><span class="path">Settings › Playback › Open Videos In</span> sends videos to another app on this device:</p>
+<ul class="facts">
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b>Mac</b>VLC, IINA, mpv or Infuse.</li>
+  <li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><b>iPhone and iPad</b>Infuse, VLC, nPlayer or VidHub, or <b>Other App…</b> through the share sheet.</li>
 </ul>
-<p>You can also send one video: right-click (or touch and hold) a release or a finished download and choose from <strong>Open In</strong>. Only players that are installed are listed. Torrent streams (and, on iPhone, downloaded files) are served to the other app by Bluebox, which keeps running in the background while it does. The other app doesn't tell Bluebox how far you got, so progress isn't recorded.</p>
+<p>For just one video, right-click (or touch and hold) a release or download and choose <b>Open In</b>.</p>
+<details class="tech" id="tech-how-it-works"><summary>Technical details <small>· How it works</small></summary><div><p>Only installed players are listed. Torrent streams (and, on iPhone, downloaded files) are served to the other app by Bluebox, which keeps running in the background while it does. The other app doesn't tell Bluebox how far you got, so progress isn't recorded.</p></div></details>
 
 <h2 id="shortcuts">Keyboard shortcuts (Mac)<a class="anchor" href="#shortcuts" aria-label="Link to this section">#</a></h2>
-<h3 id="shortcuts-player">In the player<a class="anchor" href="#shortcuts-player" aria-label="Link to this section">#</a></h3>
 <div class="tablewrap"><table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>Space</kbd></td><td>Play or pause</td></tr>
+  <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Back or forward</td></tr>
+  <tr><td><kbd>F</kbd></td><td>Full screen</td></tr>
+  <tr><td><kbd>V</kbd> / <kbd>C</kbd> / <kbd>B</kbd></td><td>Next subtitle track / subtitles off and on / next audio track</td></tr>
+  <tr><td><kbd>Return</kbd></td><td>Skip intro or recap</td></tr>
+  <tr><td><kbd>T</kbd></td><td>Tools</td></tr>
+  <tr><td><kbd>⌘W</kbd></td><td>Close the player</td></tr>
+</table></div>
+<details class="tech" id="shortcuts-player"><summary>Technical details <small>· Every player shortcut</small></summary><div><div class="tablewrap"><table>
   <tr><th>Key</th><th>Action</th></tr>
   <tr><td><kbd>Space</kbd></td><td>Play or pause</td></tr>
   <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Back or forward (10 s by default)</td></tr>
@@ -147,9 +154,8 @@
   <tr><td><kbd>⌘W</kbd></td><td>Close the player</td></tr>
   <tr><td><kbd>⌘/</kbd></td><td>Open or close the Watch Party chat</td></tr>
   <tr><td><kbd>⌥1</kbd>–<kbd>⌥6</kbd></td><td>Watch Party reactions</td></tr>
-</table></div>
-<h3 id="shortcuts-app">Around the app<a class="anchor" href="#shortcuts-app" aria-label="Link to this section">#</a></h3>
-<div class="tablewrap"><table>
+</table></div></div></details>
+<details class="tech" id="shortcuts-app"><summary>Technical details <small>· Shortcuts around the app</small></summary><div><div class="tablewrap"><table>
   <tr><th>Key</th><th>Action</th></tr>
   <tr><td><kbd>⌘1</kbd>–<kbd>⌘6</kbd></td><td>Home, TV Shows, Movies, New &amp; Hot, My List, Downloads</td></tr>
   <tr><td><kbd>⌘F</kbd></td><td>Search</td></tr>
@@ -159,11 +165,12 @@
   <tr><td><kbd>⌘O</kbd></td><td>Open files</td></tr>
   <tr><td><kbd>⇧⌘J</kbd></td><td>Join a Party…</td></tr>
   <tr><td><kbd>⌘0</kbd></td><td>Bring back the main window</td></tr>
-</table></div>
-<nav class="next" aria-label="Pages"><a href="sources.html"><small>Previous</small>Sources</a><a class="r" href="remote.html"><small>Next</small>iPhone remote</a></nav>
+</table></div></div></details>
+<nav class="more" aria-label="More help"><h2>More help</h2><div class="tiles"><a href="remote.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="9" r="2.5"/><path d="M12 15v2"/></svg>iPhone remote<small>Drive Bluebox on the Mac from your iPhone</small></a><a href="watch-party.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M15 15c3 0 6 1.3 6 4.5"/></svg>Watch Party<small>Watch in step with friends</small></a><a href="profiles.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Profiles &amp; Kids<small>Everyone's own lists, limits and PIN locks</small></a><a href="sync.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/></svg>Sync &amp; accounts<small>Your library on all your devices</small></a></div></nav>
 </main>
 </div>
 <footer><div class="f">
+  <a href="topics.html">All help</a>
   <a href="https://github.com/BCYAYAY14/bluebox">Source on GitHub</a>
   <a href="https://github.com/BCYAYAY14/bluebox/releases/latest">Releases</a>
   <a href="https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md">Changelog</a>
