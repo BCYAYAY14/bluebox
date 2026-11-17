@@ -2,6 +2,43 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.7 (17 November 2026)
+
+### Smoother
+- The player only redraws its clock and timeline as a film plays, not the whole screen four times a second.
+- Going back to Home, a title page, My Library or a list no longer reloads the page when nothing has changed.
+- Backdrops load at a sensible size instead of the full original, so heroes appear sooner and posters stay in memory.
+- Scrolling on the Mac does less work for every poster, and long My Sources lists only build the rows on screen.
+- Films played through VLC use far less power while paused or with subtitles off.
+- The subtitle Lines page no longer searches every line again several times a second.
+- Pausing, resuming or deleting many downloads at once saves once instead of once per download.
+
+### Player
+- Fixed subtitles inside some high-bitrate MKV files going missing for most of the film.
+- Sync to the Audio listens with the system's newer on-device speech recognition where it's available, with no permission to ask for and more languages.
+- Subtitle files can be picked from anywhere in Files, and a file that isn't subtitles is turned away instead of switching your subtitles off.
+- A subtitle line being dragged stays put if its time runs out, and the guides no longer get left on screen.
+- Fixed Picture in Picture becoming unavailable after switching between files in one sitting.
+
+### Profiles
+- A PIN-locked profile now asks for its PIN at the launch "Who's watching?" screen, in Manage Profiles from there, and when a Handoff arrives for it.
+- Right-click or long press a profile for Delete Profile.
+
+### Watch Party
+- Nobody is dropped from the room, and the host stays host, while their copy of the film takes a while to open.
+- Fixed a seek followed quickly by a pause starting everyone playing again.
+
+### Sources and sync
+- Add-ons are no longer all skipped after a spell of bad signal, and Play always asks them again.
+- A season page asks each server or folder for its library once, not once per episode.
+- Trakt only fetches what changed since the last sync, and coming back to the app no longer syncs everything twice.
+- Changes to your lists on another device arrive straight away, and a dropped live connection is noticed within a minute.
+- Deleting a finished torrent download no longer starts the torrent engine.
+- Data Used This Month no longer counts the part of a stream you skipped over.
+
+### Remote control
+- A Mac with Allow Remote Control on rests when no iPhone is connected, and no longer reads the whole window every ten seconds during a film.
+
 ## 1.2.6 (31 October 2026)
 
 ### Remote control

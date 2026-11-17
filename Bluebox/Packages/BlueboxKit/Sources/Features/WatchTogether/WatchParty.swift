@@ -131,8 +131,18 @@ public final class WatchParty {
     func finding(_ what: String) { phase = .finding(what) }
 
     func failed(_ reason: String) {
+        // No player opened, so the last title's (closed) one no longer speaks for this device.
+        playback?.detach(); playback = nil
         copyProblem = reason
         phase = .watching
+    }
+
+    /// How this device is doing while no player is joined: still finding and
+    /// opening its copy, or it couldn't (so nobody waits for it).
+    private var statusWithoutPlayer: TogetherParticipant.Status {
+        if case .finding = phase { return .loading }
+        if let copyProblem { return .unavailable(copyProblem) }
+        return .loading
     }
 
     // MARK: Chat
@@ -207,12 +217,17 @@ public final class WatchParty {
 
     private func tick() async {
         let now = Date()
-        room.tick()
-        floats.removeAll { now.timeIntervalSince($0.born) > Self.floatLife }
+        // Here whether or not a player is: keeps you in the room while a title is found and opened.
+        room.keepAlive(status: playback == nil ? statusWithoutPlayer : nil)
+        // Written only when something changes: every write redraws the overlay, four times a second.
+        if floats.contains(where: { now.timeIntervalSince($0.born) > Self.floatLife }) {
+            floats.removeAll { now.timeIntervalSince($0.born) > Self.floatLife }
+        }
         if let first = bubbles.first, now.timeIntervalSince(first.sentAt) > Self.bubbleLife || chatOpen {
             bubbles.removeFirst()
         }
-        upNextRemaining = room.upNextEndsAt.map { max(0, Int($0.timeIntervalSince(now).rounded(.up))) }
+        let remaining = room.upNextEndsAt.map { max(0, Int($0.timeIntervalSince(now).rounded(.up))) }
+        if remaining != upNextRemaining { upNextRemaining = remaining }
 
         guard let playback else { return }
         let session = playback.session

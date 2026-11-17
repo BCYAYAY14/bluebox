@@ -100,6 +100,10 @@ public final class AppModel {
     public var profileSwitchRequest: ProfileSwitchRequest?
     /// Bumped to open "Who's watching?" (Profiles › Who's Watching? in the Mac menu bar).
     public var profilePickerRequest = 0
+    /// The launch "Who's watching?" is up: the profile restored from last time
+    /// hasn't been chosen by whoever is here, so its PIN is still owed
+    /// (`ProfileLock`). Set and cleared by `ProfilePickerView`.
+    var profileGateOpen = false
     @ObservationIgnored public let registry: MediaSourceRegistry
     @ObservationIgnored let secrets: any SecretStore
     @ObservationIgnored let prefs: PreferencesStore
@@ -347,6 +351,14 @@ public final class AppModel {
         configureDownloads()
         refreshDownloadSummary()
         startMobileData()
+        // Back online or onto another network: add-ons skipped after timeouts
+        // on the old one are asked again (after Mobile Data's own handler).
+        let mobileDataHandler = settings.onNetworkChange
+        settings.onNetworkChange = { [weak self] old, new in
+            mobileDataHandler?(old, new)
+            guard new.isOnline, let addons = self?.addons else { return }
+            Task { await addons.networkChanged() }
+        }
     }
 
     /// Registers configured sources. Call once at launch; later calls do

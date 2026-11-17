@@ -207,7 +207,8 @@ public struct RootView: View {
         .environment(\.profileSwitchFlight, flight)
         .environment(\.isDownloaded, DownloadedLookup(revision: app.completedDownloadKeys.hashValue) { [app] key in app.hasFinishedDownload(key) })
         .environment(\.showProfilePicker, ProfilePickerAction {
-            profilePickerIsGate = false
+            // Asked for again while it's still the launch gate, it stays the gate.
+            if !app.profileGateOpen { profilePickerIsGate = false }
             pickerPIN = nil
             withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
         })
@@ -236,7 +237,7 @@ public struct RootView: View {
         }
         .overlay { ProfileFlightLayer(flight: flight).zIndex(3) }
         .onChange(of: app.profilePickerRequest) {
-            profilePickerIsGate = false
+            if !app.profileGateOpen { profilePickerIsGate = false }
             pickerPIN = nil
             withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
         }
@@ -246,7 +247,7 @@ public struct RootView: View {
             guard let request else { return }
             app.profileSwitchRequest = nil
             if app.isLocked(request.profileID) {
-                profilePickerIsGate = false
+                if !app.profileGateOpen { profilePickerIsGate = false }
                 pickerPIN = request.profileID
                 withAnimation(Motion.standard(reduceMotion)) { showsProfilePicker = true }
             } else {
@@ -685,7 +686,8 @@ public struct RootView: View {
     /// Screenshots: `-open-tab <tab>` (downloads, home…) and `-open-title <media key>`
     /// (e.g. tmdb:tv:9100001) land on a page at launch. Debug builds only.
     private func openForReview() async {
-        let args = ProcessInfo.processInfo.arguments
+        // BLUEBOX_DEBUG_ARGS too, so the promo snapshot tests can open a page.
+        let args = ProcessInfo.processInfo.arguments + AppModel.environmentDebugArguments
         func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } }
         try? await Task.sleep(for: .milliseconds(300))
         if let t = value("-open-tab").flatMap(AppTab.init(memoryValue:)) { tab = t }

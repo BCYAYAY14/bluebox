@@ -191,6 +191,25 @@ import Testing
         #expect(h.successRate == 0.2)
     }
 
+    /// Back online: skips end at once, Settings still shows the timeouts, and it
+    /// takes three new ones to skip again.
+    @Test func aNetworkChangeEndsSkips() async {
+        let clock = Clock()
+        let monitor = AddonHealthMonitor(now: { clock.now })
+        for _ in 0..<3 { await monitor.recordFailure("slow", error: AddonError.timedOut, latency: 10) }
+        #expect(!(await monitor.shouldAsk("slow")))
+        await monitor.networkChanged()
+        #expect(await monitor.shouldAsk("slow"))
+        let h = await monitor.health("slow")
+        #expect(h.state(at: clock.now) == .failing && h.timeouts == 3)
+        for _ in 0..<2 { await monitor.recordFailure("slow", error: AddonError.timedOut, latency: 10) }
+        #expect(await monitor.shouldAsk("slow"))
+        await monitor.recordFailure("slow", error: AddonError.timedOut, latency: 10)
+        #expect(!(await monitor.shouldAsk("slow")))
+        clock.advance(5 * 60 + 1)                                          // the backoff started again at 5 minutes
+        #expect(await monitor.shouldAsk("slow"))
+    }
+
     @Test func httpErrorsDontSkip() async {
         let monitor = AddonHealthMonitor()
         for _ in 0..<5 { await monitor.recordFailure("err", error: AddonError.badStatus(500), latency: 0.2) }

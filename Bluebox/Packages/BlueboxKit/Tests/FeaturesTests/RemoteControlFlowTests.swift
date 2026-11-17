@@ -336,6 +336,55 @@ import Testing
         #expect(!p.player.isScrubbing)
     }
 
+    // MARK: Idling
+
+    /// A Mac nobody is using ticks slowly, but a phone that opens Bluebox still
+    /// finds it at once: its arrival is answered, not left for the next announce.
+    @Test func aPhoneFindsAnIdleMacAtOnce() async {
+        final class Clock { var date = Date() }
+        let clock = Clock()
+        var timing = Self.fast
+        timing.idleTick = .seconds(60)  // no announce of its own during the test
+        let hub = FakeRemoteHub()
+        let mac = RemoteControl(defaults: Self.defaults(), now: { clock.date }, timing: timing)
+        mac.handler = FakeAppHandler()
+        mac.update(wanted: true, controllable: true, player: nil, makeChannel: hub.link("mac").make)
+        #expect(await until { mac.channelState == .joined })
+        try? await Task.sleep(for: .milliseconds(100))  // its join-time announce went out to nobody
+        #expect(mac.isIdle(at: clock.date))
+
+        let phone = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
+        phone.update(wanted: true, player: nil, makeChannel: hub.link("phone").make)
+        #expect(await until(.seconds(1)) { phone.devices.map(\.id) == [mac.deviceID] })
+        // Its hello wakes the Mac up for `remoteLinger`, then it idles again.
+        #expect(await until { !mac.isIdle(at: clock.date) })
+        clock.date += RemoteControl.remoteLinger + 1
+        #expect(mac.isIdle(at: clock.date))
+    }
+
+    /// The screen (on the Mac, a walk of the window's accessibility tree) is
+    /// worked out only once a remote has said hello: not on joining, and not
+    /// on the player's clock with no phone about.
+    @Test func theScreenWaitsForARemote() async throws {
+        let hub = FakeRemoteHub()
+        let handler = FakeAppHandler()
+        let player = PlayerSession(engine: RemoteTestEngine(), progress: try LibraryStore.make(inMemory: true))
+        await player.start(NowPlayingItem(key: .movie(tmdbID: 3), title: "Dune"), resource: Self.resource)
+        let mac = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
+        mac.handler = handler
+        mac.update(wanted: true, controllable: true, player: player, makeChannel: hub.link("mac").make)
+        #expect(await until { mac.channelState == .joined })
+        try await Task.sleep(for: .milliseconds(300))  // several ticks
+        #expect(handler.screensWorkedOut == 0)
+        #expect(!hub.sent.contains { if case .screen = $0 { true } else { false } })
+        #expect(hub.sent.contains { if case .state = $0 { true } else { false } })  // what's playing still goes out
+
+        let phone = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
+        phone.update(wanted: true, player: nil, makeChannel: hub.link("phone").make)
+        #expect(await until { hub.sent.contains { if case .screen = $0 { true } else { false } } })
+        #expect(handler.screensWorkedOut > 0)
+    }
+
     // MARK: Helpers
 
     static let resource = PlaybackResource(
@@ -388,8 +437,11 @@ final class FakeAppHandler: RemoteAppHandler {
         default: log.append("\(action)")
         }
     }
+    /// How many times the screen was worked out (on the Mac, a walk of the window).
+    var screensWorkedOut = 0
     func remoteScreen() -> RemoteScreen {
-        RemoteScreen(deviceID: "", title: "Severance", focusedID: focused?.id, focusedLabel: focused?.label)
+        screensWorkedOut += 1
+        return RemoteScreen(deviceID: "", title: "Severance", focusedID: focused?.id, focusedLabel: focused?.label)
     }
 }
 

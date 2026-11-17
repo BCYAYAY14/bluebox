@@ -39,11 +39,13 @@ public enum SoundCues {
         s.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
     }
 
+    /// Compiled once (NSRegularExpression is safe to share between threads).
+    private nonisolated(unsafe) static let speaker = try? NSRegularExpression(pattern: #"^(\s*[-–—]?\s*)([A-Z][A-Z0-9 .'#&-]{0,30}):\s*"#)
+
     /// "DEB: Where were you?" and "- MAN #2: Run!" lose the name; a time
     /// ("At 10:30") or a lower-case word before the colon isn't a speaker.
     private static func removeSpeaker(_ s: String) -> String {
-        let pattern = #"^(\s*[-–—]?\s*)([A-Z][A-Z0-9 .'#&-]{0,30}):\s*"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = speaker,
               let m = regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
               let name = Range(m.range(at: 2), in: s),
               s[name].contains(where: \.isLetter), s[name] == s[name].uppercased(),

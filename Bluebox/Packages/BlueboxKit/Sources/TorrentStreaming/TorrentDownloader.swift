@@ -163,7 +163,7 @@ public actor TorrentDownloader {
         if let handle = job?.handle {
             let removed = TorrentEngine.shared.release(handle, user: user(id), deleteFiles: true)
             if removed { removeFolderIfUnused(record.key) }
-        } else if TorrentEngine.shared.session?.torrent(withInfoHash: record.key) != nil {
+        } else if TorrentEngine.shared.isRunning, TorrentEngine.shared.session?.torrent(withInfoHash: record.key) != nil {
             // A stream is reading this torrent: delete once it's done.
             pendingDeletes[id] = record
         } else {

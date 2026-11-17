@@ -226,7 +226,8 @@ public enum TogetherMessage: Hashable, Sendable {
     /// `.presence`; whoever is playing also answers with `.title` and `.state`,
     /// the host with `.settings`, and the longest-present with `.history`.
     case hello(TogetherParticipant)
-    /// Presence, answered to a hello and repeated with each heartbeat's status changes.
+    /// Presence, answered to a hello and repeated with each heartbeat's status
+    /// changes, and as the keep-alive when nothing else has gone out for a few seconds.
     case presence(TogetherParticipant)
     /// What's playing: sent on starting a title and to each newcomer.
     case title(TogetherTitle, from: String, seq: Int)

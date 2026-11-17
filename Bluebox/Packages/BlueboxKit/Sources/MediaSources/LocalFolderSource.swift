@@ -50,6 +50,7 @@ public actor LocalFolderSource: MediaSource {
     public nonisolated let refreshedBookmark: Data?
     private var scanned: [MediaVariant]?
     private var scannedAt: Date?
+    private var loading: Task<[MediaVariant], Error>?
     private var fileByVariant: [String: URL] = [:]
     /// Catalog matches found so far, kept across rescans so only new or
     /// unmatched files are looked up again.
@@ -127,6 +128,7 @@ public actor LocalFolderSource: MediaSource {
 
     public func rescan() async throws -> [MediaVariant] {
         scanned = nil
+        loading?.cancel(); loading = nil  // a scan under way would answer with the old matches
         matches = [:]  // match everything again (e.g. after adding a TMDB token)
         return try await catalog()
     }
@@ -136,6 +138,16 @@ public actor LocalFolderSource: MediaSource {
             let allMatched = matcher == nil || !scanned.contains { $0.mediaKey == nil }
             if allMatched || now().timeIntervalSince(scannedAt) < Self.unmatchedRetryInterval { return applyingOverrides(scanned) }
         }
+        // One scan at a time: a season page asks about every episode at once, and
+        // each ask used to start its own scan of the folder.
+        if let loading { return applyingOverrides(try await loading.value) }
+        let task = Task { try await self.scan() }
+        loading = task
+        defer { if loading == task { loading = nil } }
+        return applyingOverrides(try await task.value)
+    }
+
+    private func scan() async throws -> [MediaVariant] {
         let files = try withAccess { try Self.videoFiles(in: folderURL, name: displayName) }
         var out: [MediaVariant] = []
         var byVariant: [String: URL] = [:]
@@ -162,7 +174,7 @@ public actor LocalFolderSource: MediaSource {
         fileByVariant = byVariant
         scanned = out
         scannedAt = now()
-        return applyingOverrides(out)
+        return out
     }
 
     /// The automatic match for a film or show, shared by every file of it in one scan.

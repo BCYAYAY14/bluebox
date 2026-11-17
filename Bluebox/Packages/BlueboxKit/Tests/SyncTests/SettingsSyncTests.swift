@@ -230,8 +230,21 @@ import Testing
         #expect((payload["config"] as? [String: Any])?["private"] as? Bool == true)
         let changes = try #require((payload["config"] as? [String: Any])?["postgres_changes"] as? [[String: String]])
         #expect(changes.map { $0["table"] } == RealtimeListener.tables)
+        // Custom lists arrive live too.
+        #expect(changes.contains { $0["table"] == "lists" } && changes.contains { $0["table"] == "list_entries" })
         // It must serialise as JSON.
         _ = try JSONSerialization.data(withJSONObject: join)
+    }
+
+    @Test func joinWithoutListTablesForOlderProjects() throws {
+        let join = RealtimeListener.joinMessage(topic: "t", token: "jwt", ref: "1", tables: RealtimeListener.tablesBeforeLists)
+        let config = try #require((join["payload"] as? [String: Any])?["config"] as? [String: Any])
+        let changes = try #require(config["postgres_changes"] as? [[String: String]])
+        #expect(changes.map { $0["table"] } == ["watch_progress", "watchlist_entries", "profiles", "account_settings"])
+        // A refusal about the tables falls back; one about the sign-in doesn't.
+        #expect(!RealtimeListener.isAuthProblem("Unable to subscribe to changes with given parameters: [table: lists]"))
+        #expect(RealtimeListener.isAuthProblem("Invalid token"))
+        #expect(RealtimeListener.isAuthProblem("You do not have permissions to read from this Channel topic"))
     }
 
     @Test func classifiesMessages() {
@@ -239,9 +252,55 @@ import Testing
         #expect(c(#"{"topic":"realtime:bluebox-sync","event":"phx_reply","ref":"1","payload":{"status":"ok","response":{"postgres_changes":[{"id":1}]}}}"#) == .joined)
         #expect(c(#"{"topic":"phoenix","event":"phx_reply","ref":"2","payload":{"status":"ok","response":{}}}"#) == .other)
         #expect(c(#"{"topic":"realtime:bluebox-sync","event":"postgres_changes","payload":{"data":{"table":"watch_progress"}}}"#) == .change)
-        #expect(c(#"{"topic":"realtime:bluebox-sync","event":"phx_reply","payload":{"status":"error","response":{"reason":"Invalid token"}}}"#) == .closed("Invalid token"))
-        #expect(c(#"{"topic":"realtime:bluebox-sync","event":"system","payload":{"status":"error","message":"no publication"}}"#) == .closed("no publication"))
+        #expect(c(#"{"topic":"realtime:bluebox-sync","event":"phx_reply","payload":{"status":"error","response":{"reason":"Invalid token"}}}"#) == .refused("Invalid token"))
+        #expect(c(#"{"topic":"realtime:bluebox-sync","event":"system","payload":{"status":"error","message":"no publication"}}"#) == .refused("no publication"))
         #expect(c(#"{"topic":"realtime:bluebox-sync","event":"system","payload":{"status":"ok"}}"#) == .other)
+        #expect(c(#"{"topic":"realtime:bluebox-sync","event":"phx_close","payload":{}}"#) == .closed("phx_close"))
         #expect(c("not json") == .other)
+    }
+}
+
+@Suite struct RealtimeEchoFilterTests {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func theJoinRightAfterAPassIsSkipped() {
+        var f = RealtimeEchoFilter(window: 5)
+        do { let answer = f.shouldSync(.joined, at: t0); #expect(answer) }  // nothing ran yet
+        f.passStarted()
+        do { let answer = f.shouldSync(.joined, at: t0); #expect(!answer) }  // the running pass reads everything
+        do { let answer = f.passFinished(at: t0, pushed: false); #expect(!answer) }
+        do { let answer = f.shouldSync(.joined, at: t0.addingTimeInterval(2)); #expect(!answer) }
+        do { let answer = f.shouldSync(.joined, at: t0.addingTimeInterval(6)); #expect(answer) }
+    }
+
+    @Test func ourOwnPushEchoIsIgnored() {
+        var f = RealtimeEchoFilter(window: 5)
+        f.passStarted()
+        do { let answer = f.shouldSync(.change, at: t0); #expect(!answer) }  // decided when the pass ends
+        do { let answer = f.passFinished(at: t0, pushed: true); #expect(!answer) }  // it pushed: that was our echo
+        do { let answer = f.shouldSync(.change, at: t0.addingTimeInterval(1)); #expect(!answer) }  // a late echo
+        do { let answer = f.shouldSync(.change, at: t0.addingTimeInterval(6)); #expect(answer) }  // later: another device
+    }
+
+    @Test func aChangeDuringAPassThatPushedNothingIsFollowed() {
+        var f = RealtimeEchoFilter(window: 5)
+        f.passStarted()
+        do { let answer = f.shouldSync(.change, at: t0); #expect(!answer) }
+        do { let answer = f.passFinished(at: t0, pushed: false); #expect(answer) }
+        // And right after a pass that pushed nothing, a change can't be our echo.
+        do { let answer = f.shouldSync(.change, at: t0.addingTimeInterval(1)); #expect(answer) }
+    }
+
+    @Test func overlappingPassesDecideTogetherAndFailuresDecideNothing() {
+        var f = RealtimeEchoFilter(window: 5)
+        f.passStarted(); f.passStarted()
+        do { let answer = f.shouldSync(.change, at: t0); #expect(!answer) }
+        do { let answer = f.passFinished(at: t0, pushed: false); #expect(!answer) }  // the other is still running
+        do { let answer = f.passFinished(at: t0, pushed: true); #expect(!answer) }
+        f.passStarted()
+        do { let answer = f.shouldSync(.change, at: t0.addingTimeInterval(10)); #expect(!answer) }
+        do { let answer = f.passFinished(at: t0.addingTimeInterval(10), pushed: nil); #expect(!answer) }
+        // A failed pass doesn't count as a fresh read: the join after it syncs.
+        do { let answer = f.shouldSync(.joined, at: t0.addingTimeInterval(11)); #expect(answer) }
     }
 }

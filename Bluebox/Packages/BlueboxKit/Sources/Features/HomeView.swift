@@ -59,7 +59,7 @@ enum HomeCategory: String, Hashable, CaseIterable {
     func includes(_ t: Title) -> Bool { kind.map { t.kind == $0 } ?? true }
 }
 
-struct HomeRow: Identifiable {
+struct HomeRow: Identifiable, Equatable {
     enum Style { case poster, landscape, topTen }
     let id: String
     let title: String
@@ -70,6 +70,14 @@ struct HomeRow: Identifiable {
     var addonCatalog: ResolvedCatalog?
     /// Top Picks: why each title is there, shown on its card.
     var reasons: [MediaKey: String] = [:]
+
+    /// Written out because `genre` is a tuple. Lets a reload that brings back
+    /// the same rows skip the write, and the redraw of every shelf with it.
+    static func == (a: HomeRow, b: HomeRow) -> Bool {
+        a.id == b.id && a.title == b.title && a.titles == b.titles && a.style == b.style
+            && a.genre?.0 == b.genre?.0 && a.genre?.1 == b.genre?.1
+            && a.addonCatalog == b.addonCatalog && a.reasons == b.reasons
+    }
 }
 
 @Observable
@@ -97,6 +105,23 @@ final class HomeModel {
     /// The library revision the library rows were last read at, so a full
     /// load doesn't also run the library-only reload after it.
     @ObservationIgnored private var libraryRevision: Int?
+    /// Counts full loads, so one that was overtaken (pull to refresh, then
+    /// the Movies chip) can't write its rows over the newer one's.
+    @ObservationIgnored private var generation = 0
+    /// What the last full load that worked was built from, so coming back
+    /// from a title page doesn't load the whole page again.
+    @ObservationIgnored private var loaded = PageLoadMemory<LoadKey>()
+
+    /// Everything a full load depends on but the library (that has its own,
+    /// lighter reload) and Not Interested (applied without a load).
+    struct LoadKey: Hashable, Sendable {
+        let category: HomeCategory
+        let profileID: String
+        let sourcesRevision: Int
+        let live: Bool
+        let tasteRows: Bool
+        let contentFilter: ContentFilter?
+    }
 
     /// What the personal rows are built from, read once per load (all local).
     struct Plan: Sendable {
@@ -111,25 +136,52 @@ final class HomeModel {
         var needsRebuild: Bool { fresh == nil && enoughHistory }
     }
 
-    func load(_ app: AppModel, category: HomeCategory) async {
+    /// The whole page. `force` (pull to refresh, Try Again, back online) loads
+    /// even when nothing it's built from has changed; without it, coming back
+    /// to Home within `PageLoadMemory.maxAge` keeps the page as it is.
+    func load(_ app: AppModel, category: HomeCategory, force: Bool = false) async {
+        let key = LoadKey(category: category, profileID: app.currentProfileID, sourcesRevision: app.sourcesRevision,
+                          live: app.catalogMode == .live, tasteRows: app.featureSwitches.tasteRows,
+                          contentFilter: app.currentProfile.contentFilter)
+        if !force, loaded.isCurrent(key) { return }
+        loaded.forget()
+        generation += 1
+        let gen = generation
         if category != self.category { rows = []; addonRows = []; hero = nil; topPicks = []; because = []; isLoading = true }
+        // A first load cancelled on the way to a title page left nothing: the skeleton shows again.
+        if rows.isEmpty { isLoading = true }
         self.category = category
         catalogError = nil
-        hidden = app.hiddenKeys()
+        update(\.hidden, app.hiddenKeys())
         let started = ContinuousClock.now
         let profileID = app.currentProfileID
         libraryRevision = app.libraryRevision
         snapshot = await app.personalHome.load(profileID: profileID) ?? PersonalHomeSnapshot()
         let plan = Task { await self.makePlan(app, category: category) }
-        async let library: Void = loadLibrary(app, plan: plan)
-        async let available: Void = loadAvailable(app)
-        async let catalog: Void = loadCatalog(app, plan: plan)
-        async let personal: Void = loadBecauseYouWatched(app, plan: plan)
-        async let addon: Void = loadAddonRows(app)
+        async let library: Void = loadLibrary(app, plan: plan, generation: gen)
+        async let available: Void = loadAvailable(app, generation: gen)
+        async let catalog: Void = loadCatalog(app, plan: plan, generation: gen)
+        async let personal: Void = loadBecauseYouWatched(app, plan: plan, generation: gen)
+        async let addon: Void = loadAddonRows(app, generation: gen)
         _ = await (library, available, catalog, personal, addon)
+        guard isCurrent(gen) else { return }
         await savePersonalRows(app, plan: await plan.value, profileID: profileID)
+        guard isCurrent(gen) else { return }
         isLoading = false
+        if catalogError == nil { loaded.remember(key) }
         Log.metadata.info("Home loaded (\(String(describing: category), privacy: .public)) in \(String(describing: ContinuousClock.now - started), privacy: .public)")
+    }
+
+    /// Whether a load's results may still be shown: no newer full load has
+    /// started, and its task wasn't cancelled (leaving for a title page, or
+    /// the category changing). A cancelled load's requests fail, and writing
+    /// their empty results would blank rows that were fine.
+    private func isCurrent(_ gen: Int) -> Bool { gen == generation && !Task.isCancelled }
+
+    /// Writes only a changed value: every write to an observed property
+    /// redraws the page and all its shelves, even when it's the same.
+    private func update<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<HomeModel, T>, _ value: T) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
 
     /// After a library change (watching, My List, a download): only the rows
@@ -138,14 +190,19 @@ final class HomeModel {
     /// profile change, or pull to refresh).
     func reloadLibraryRows(_ app: AppModel) async {
         // nil: the first full load hasn't started, and it reads these rows itself.
-        guard let loaded = libraryRevision, loaded != app.libraryRevision else { return }
+        guard let seen = libraryRevision, seen != app.libraryRevision else { return }
         libraryRevision = app.libraryRevision
+        // Not a new generation: it mustn't stop a full load's catalogue
+        // landing, but a full load started after it supersedes its rows.
+        let gen = generation
         let store = app.store
         let ratings = app.ratingEntries()
         let history = Task { HomeHistory(records: (try? await store.recent(limit: 400)) ?? [], ratings: ratings) }
-        async let library: Void = loadLibrary(app, history: history)
-        async let available: Void = loadAvailable(app)
+        async let library: Void = loadLibrary(app, history: history, generation: gen)
+        async let available: Void = loadAvailable(app, generation: gen)
         _ = await (library, available)
+        // Cancelled on the way to another page, so nothing was written: read again on the way back.
+        if Task.isCancelled, gen == generation { libraryRevision = seen }
     }
 
     /// Reads history and ratings, and the profile's file; works out taste only
@@ -178,11 +235,11 @@ final class HomeModel {
     /// List. Each entry's title is looked up side by side (a cache miss is a
     /// catalogue request each). A row whose read fails keeps what it showed
     /// rather than vanishing (it's the local library, so that's rare).
-    func loadLibrary(_ app: AppModel, plan: Task<Plan, Never>) async {
-        await loadLibrary(app, history: Task { await plan.value.history })
+    func loadLibrary(_ app: AppModel, plan: Task<Plan, Never>, generation gen: Int) async {
+        await loadLibrary(app, history: Task { await plan.value.history }, generation: gen)
     }
 
-    private func loadLibrary(_ app: AppModel, history: Task<HomeHistory, Never>) async {
+    private func loadLibrary(_ app: AppModel, history: Task<HomeHistory, Never>, generation gen: Int) async {
         let progressRead = try? await app.store.continueWatching(limit: 20)
         if let progress = progressRead {
             let records = await history.value.records
@@ -196,16 +253,18 @@ final class HomeModel {
             let entries = ContinueWatchingRules.build(inProgress: progress, recent: records, shows: info,
                                                       announced: app.features.tracker.notified, now: now)
             let titles = await app.titles(for: entries.map { $0.progress.key.seriesKey ?? $0.progress.key })
-            continueWatching = zip(entries, titles).compactMap { e, t in
+            guard isCurrent(gen) else { return }
+            let shown: [WatchEntry] = zip(entries, titles).compactMap { e, t in
                 t.flatMap { category.includes($0) ? WatchEntry(progress: e.progress, title: $0, next: e.next) : nil }
             }
+            update(\.continueWatching, shown)
         }
-        if let list = try? await app.store.watchlist() { myList = list.filter(category.includes) }
+        if let list = try? await app.store.watchlist(), isCurrent(gen) { update(\.myList, list.filter(category.includes)) }
     }
 
     /// Ready to Play, from your sources. A source that can't be reached
     /// (a media server while offline) keeps its titles from the last load.
-    func loadAvailable(_ app: AppModel) async {
+    func loadAvailable(_ app: AppModel, generation gen: Int) async {
         var keys: [MediaKey] = []
         var seen = Set<MediaKey>()
         var anyFailed = false
@@ -219,16 +278,17 @@ final class HomeModel {
             }
         }
         let titles = await app.titles(for: keys).compactMap { $0 }.filter(category.includes)
+        guard isCurrent(gen) else { return }
         if anyFailed {
             // Keep what was there and add anything new.
             let kept = availableNow.filter(category.includes)
-            availableNow = kept + titles.filter { t in !kept.contains { $0.key == t.key } }
+            update(\.availableNow, kept + titles.filter { t in !kept.contains { $0.key == t.key } })
         } else {
-            availableNow = titles
+            update(\.availableNow, titles)
         }
     }
 
-    func loadCatalog(_ app: AppModel, plan planTask: Task<Plan, Never>) async {
+    func loadCatalog(_ app: AppModel, plan planTask: Task<Plan, Never>, generation gen: Int) async {
         let m = app.metadata
         let category = category
         do {
@@ -244,6 +304,7 @@ final class HomeModel {
                 throw firstError
             }
             let plan = await planTask.value
+            guard isCurrent(gen) else { return }
             // Discovery rows leave out what you've watched or rated Not for Me (Top 10s keep their ranks).
             let seen = plan.history.discoveryExcluded
             let fresh = { (items: [Title]) in items.filter { !seen.contains($0.key) } }
@@ -254,9 +315,10 @@ final class HomeModel {
             let trendingHere = t.items.filter(category.includes)
             // The hero stays editorial: trending, skipping what you've watched.
             let heroPool = fresh(trendingHere).isEmpty ? trendingHere : fresh(trendingHere)
-            heroCandidates = heroPool.filter { $0.backdrop != nil } + heroPool.filter { $0.backdrop == nil }
-            if heroCandidates.isEmpty { heroCandidates = Array((category == .movies ? mv.items : sr.items).prefix(1)) }
-            hero = heroCandidates.first { !hidden.contains($0.key) } ?? heroCandidates.first
+            var candidates = heroPool.filter { $0.backdrop != nil } + heroPool.filter { $0.backdrop == nil }
+            if candidates.isEmpty { candidates = Array((category == .movies ? mv.items : sr.items).prefix(1)) }
+            update(\.heroCandidates, candidates)
+            update(\.hero, candidates.first { !hidden.contains($0.key) } ?? candidates.first)
 
             let topShows = HomeRow(id: "top-series", title: "Top 10 TV Shows Today", titles: Array(sr.items.prefix(10)), style: .topTen)
             let topMovies = HomeRow(id: "top-movies", title: "Top 10 Movies Today", titles: Array(mv.items.prefix(10)), style: .topTen)
@@ -287,7 +349,10 @@ final class HomeModel {
                 ]
             }
             built.removeAll { $0.titles.isEmpty }
-            rows = Self.withoutRepeats(built)
+            // The first time, these show while the genre rows load. Rows already
+            // on screen stay until the full set replaces them, so a reload doesn't
+            // take the genre rows away and bring them back.
+            if rows.isEmpty { rows = Self.withoutRepeats(built) }
 
             // A few genre rows, fetched concurrently and dropped if empty: your
             // strongest genres first, then the usual ones (as many as before).
@@ -311,7 +376,8 @@ final class HomeModel {
                 r.titles = fresh(row.titles)
                 return r.titles.isEmpty ? nil : r
             }
-            rows = Self.withoutRepeats(built + unseenGenreRows)
+            guard isCurrent(gen) else { return }
+            update(\.rows, Self.withoutRepeats(built + unseenGenreRows))
 
             // Top Picks: the ~140 titles just loaded, scored by your taste (well under a millisecond).
             if plan.needsRebuild {
@@ -320,12 +386,15 @@ final class HomeModel {
                 let names = Dictionary(g.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
                 let scored = TopPicks.picks(candidates: candidates.filter(category.includes), affinity: plan.affinity,
                                             excluded: seen.union(started).union(hidden), genreNames: names, now: .now)
-                topPicks = scored.count >= TopPicks.minimumPicks ? scored : []
+                update(\.topPicks, scored.count >= TopPicks.minimumPicks ? scored : [])
             } else if !plan.enoughHistory {
-                topPicks = []
+                update(\.topPicks, [])
             }
             try? await app.store.store(t.items + mv.items + sr.items)
         } catch {
+            // Every list failing because the load was cancelled (or overtaken)
+            // isn't a catalogue problem: no error card, and the next load decides.
+            guard isCurrent(gen), !(error is CancellationError) else { return }
             catalogError = error
             if hero == nil { hero = availableNow.first }
         }
@@ -334,10 +403,13 @@ final class HomeModel {
     /// Your add-ons' catalogs, each on its own: one that fails or comes back
     /// empty (for this category) costs only its row. Their titles are saved
     /// like the editorial rows', so a TMDB-keyed one opens with Cinemeta too.
-    func loadAddonRows(_ app: AppModel) async {
+    func loadAddonRows(_ app: AppModel, generation gen: Int) async {
         await app.readMissingAddonCatalogs()
         let catalogs = app.homeCatalogs().filter { c in category.kind.map { ($0 == .movie) == c.catalog.isMovie } ?? true }
-        guard !catalogs.isEmpty else { addonRows = []; return }
+        guard !catalogs.isEmpty else {
+            if isCurrent(gen) { update(\.addonRows, []) }
+            return
+        }
         let reader = app.addonCatalogs
         let category = category
         let pages = await concurrentMap(catalogs, limit: 4) { c in
@@ -347,20 +419,23 @@ final class HomeModel {
             guard let titles, !titles.isEmpty else { return nil }
             return HomeRow(id: "addon-\(c.id)", title: c.catalog.name, titles: titles, addonCatalog: c)
         }
-        addonRows = built
+        // Cancelled, every page comes back nil: keep the rows rather than blank them.
+        guard isCurrent(gen) else { return }
+        update(\.addonRows, built)
         try? await app.store.store(built.flatMap(\.titles))
     }
 
     /// "Because You Watched" your two most recent titles: TMDB's
     /// recommendations, which come with a title's detail (so usually from
     /// memory or the profile's file), minus what you've watched or hidden.
-    func loadBecauseYouWatched(_ app: AppModel, plan planTask: Task<Plan, Never>) async {
+    func loadBecauseYouWatched(_ app: AppModel, plan planTask: Task<Plan, Never>, generation gen: Int) async {
         let plan = await planTask.value
-        guard plan.enoughHistory else { topPicks = []; because = []; return }
+        guard isCurrent(gen) else { return }
+        guard plan.enoughHistory else { update(\.topPicks, []); update(\.because, []); return }
         // The file's rows at once; new ones replace them below if they're stale.
         if let rows = plan.fresh ?? plan.stale {
-            if topPicks.isEmpty || plan.fresh != nil { topPicks = rows.topPicks }
-            because = rows.because
+            if topPicks.isEmpty || plan.fresh != nil { update(\.topPicks, rows.topPicks) }
+            update(\.because, rows.because)
         }
         guard plan.needsRebuild else { return }
         let now = Date()
@@ -383,7 +458,8 @@ final class HomeModel {
             shown.formUnion(titles.map(\.key))
             built.append(BecauseRow(seed: seedTitle, titles: titles))
         }
-        because = built
+        guard isCurrent(gen) else { return }
+        update(\.because, built)
     }
 
     /// Keeps freshly built rows in the profile's file. Not after a failed
@@ -512,13 +588,13 @@ struct HomeView: View {
                         if model.rows.isEmpty {
                             StateMessage(.failed, systemImage: "wifi.exclamationmark", title: "Couldn't load the catalog",
                                          message: catalogErrorMessage(error), actionTitle: "Try Again") {
-                                Task { await model.load(app, category: category) }
+                                Task { await model.load(app, category: category, force: true) }
                             }
                             // With no hero above it, keep clear of the logo and category chips.
                             .padding(.top, model.hero == nil && compact ? geo.safeAreaInsets.top : 0)
                         } else {
                             // The rows from before stay; say they're not fresh.
-                            StaleNotice(offline: false) { Task { await model.load(app, category: category) } }
+                            StaleNotice(offline: false) { Task { await model.load(app, category: category, force: true) } }
                                 .padding(.horizontal, inset)
                         }
                     }
@@ -615,8 +691,9 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .navigationTitle(category.title)
-        // The whole page: when what it's built from changes.
-        .task(id: "\(app.sourcesRevision)-\(app.catalogMode == .live)-\(category)-\(app.currentProfileID)-\(app.featureSwitches.tasteRows)") {
+        // The whole page: when what it's built from changes. The task also restarts
+        // on the way back from a title page; the model keeps the page then (`PageLoadMemory`).
+        .task(id:"\(app.sourcesRevision)-\(app.catalogMode == .live)-\(category)-\(app.currentProfileID)-\(app.featureSwitches.tasteRows)") {
             await model.load(app, category: category)
         }
         // Watching, My List or a download: only the rows read from the library.
@@ -625,10 +702,10 @@ struct HomeView: View {
         .refreshShortcut { await refresh() }
         // A failed catalogue loads again by itself once the network or the app comes back.
         .onChange(of: app.settings.network.isOnline) { _, online in
-            if online, model.catalogError != nil { Task { await model.load(app, category: category) } }
+            if online, model.catalogError != nil { Task { await model.load(app, category: category, force: true) } }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, model.catalogError != nil { Task { await model.load(app, category: category) } }
+            if phase == .active, model.catalogError != nil { Task { await model.load(app, category: category, force: true) } }
         }
         // Not Interested (or Undo): the title folds out of its row at once, no reload.
         .onChange(of: app.hiddenRevision) { model.hidden = app.hiddenKeys() }
@@ -654,7 +731,7 @@ struct HomeView: View {
     /// Pull to refresh (⌘R on Mac): skips the catalogue cache.
     private func refresh() async {
         await app.refreshCatalog()
-        await model.load(app, category: category)
+        await model.load(app, category: category, force: true)
     }
 
     private func subtitle(for t: Title) -> String? {

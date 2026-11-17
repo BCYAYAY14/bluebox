@@ -1,4 +1,5 @@
 import DesignSystem
+import Observation
 import Playback
 import Subtitles
 import SwiftUI
@@ -19,7 +20,7 @@ struct SecondLinePage: View {
     /// Embedded tracks that can be a second line: drawn by Bluebox, and not the first line.
     private var embeddedCandidates: [MediaTrack] {
         let primary: String? = if case .embedded(let id) = session.subtitleSelection { id } else { nil }
-        return session.snapshot.embeddedSubtitles.filter { $0.drawnByBluebox && $0.id != primary }
+        return session.slowSnapshot.embeddedSubtitles.filter { $0.drawnByBluebox && $0.id != primary }
     }
 
     var body: some View {
@@ -27,7 +28,7 @@ struct SecondLinePage: View {
             PlayerPageHeader("Second Line", onBack: onBack)
             let candidates = session.externalSubtitles + embeddedCandidates
             if candidates.isEmpty {
-                Text(session.snapshot.embeddedSubtitles.isEmpty
+                Text(session.slowSnapshot.embeddedSubtitles.isEmpty
                      ? "Add or download a subtitle file to show a second language under the first."
                      : "A second line comes from a subtitle file, or a plain text track in an MKV. Add or download a file in another language.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
@@ -67,12 +68,16 @@ struct SubtitleLinesPage: View {
     let onBack: () -> Void
     @State private var query = ""
     @FocusState private var searching: Bool
+    /// The line on screen, followed apart from the list (see `SubtitleLinesFollower`).
+    @State private var follower = SubtitleLinesFollower()
+    @State private var search = SubtitleLineSearch()
 
     var body: some View {
+        // A track in the video lists lines as they're read: look again when there are more.
+        let _ = follower.cueCount
         let cues = session.subtitleCues
         let offset = session.subtitleOffset
-        let shown = SubtitleLines.search(cues, query: query)
-        let current = SubtitleLines.currentIndex(cues, at: session.snapshot.position, offset: offset)
+        let shown = search.indices(cues, query: query)
         VStack(alignment: .leading, spacing: 8) {
             PlayerPageHeader("Lines", onBack: onBack)
             if session.subtitleSelection == .off {
@@ -98,18 +103,14 @@ struct SubtitleLinesPage: View {
                     ScrollView {
                         LazyVStack(spacing: 1) {
                             ForEach(shown, id: \.self) { i in
-                                lineRow(cues[i], time: offset.playerTime(forCueTime: cues[i].start), current: i == current)
+                                SubtitleLineRow(session: session, cue: cues[i], index: i,
+                                                time: offset.playerTime(forCueTime: cues[i].start), follower: follower)
                                     .id(i)
                             }
                         }
                     }
                     .frame(height: PanelMetrics.dense ? 180 : 300)
-                    .onAppear { if let current { proxy.scrollTo(current, anchor: .center) } }
-                    // Follows the playhead, unless a search is narrowing the list.
-                    .onChange(of: current) { _, new in
-                        guard query.isEmpty, let new else { return }
-                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(new, anchor: .center) }
-                    }
+                    .background { SubtitleLinesScroller(follower: follower, proxy: proxy, follows: query.isEmpty) }
                 }
                 if shown.isEmpty { note("No line has “\(query)”.") }
                 if !session.knowsAllSubtitleCues {
@@ -118,13 +119,96 @@ struct SubtitleLinesPage: View {
                 }
             }
         }
+        .background { SubtitleLinesTracker(session: session, follower: follower) }
     }
 
     private func note(_ text: String) -> some View {
         Text(text).font(.footnote).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
     }
+}
 
-    private func lineRow(_ cue: SubtitleCue, time: TimeInterval, current: Bool) -> some View {
+/// The Lines page's line on screen and how many lines there are, kept apart
+/// from the list: the playhead moves several times a second, and the list
+/// (every line, searched) shouldn't be worked out again each time. Only the
+/// rows that light up or go out redraw when the line changes.
+@Observable
+@MainActor
+final class SubtitleLinesFollower {
+    /// The line on screen, or the last one before it.
+    private(set) var current: Int?
+    /// How many lines the track has so far (a track in the video grows as it's read).
+    private(set) var cueCount = 0
+
+    func update(current: Int?, cueCount: Int) {
+        if current != self.current { self.current = current }
+        if cueCount != self.cueCount { self.cueCount = cueCount }
+    }
+}
+
+/// The Lines page's search, kept until the query or the lines change: the
+/// page can redraw without the case- and accent-blind search over every line.
+@MainActor
+final class SubtitleLineSearch {
+    private struct Key: Equatable {
+        let query: String; let count: Int; let first: SubtitleCue?; let last: SubtitleCue?
+    }
+    private var cached: (key: Key, indices: [Int])?
+
+    func indices(_ cues: [SubtitleCue], query: String) -> [Int] {
+        let key = Key(query: query, count: cues.count, first: cues.first, last: cues.last)
+        if let cached, cached.key == key { return cached.indices }
+        let found = SubtitleLines.search(cues, query: query)
+        cached = (key, found)
+        return found
+    }
+}
+
+/// Follows the playhead for the Lines page, from a view that draws nothing.
+private struct SubtitleLinesTracker: View {
+    let session: PlayerSession
+    let follower: SubtitleLinesFollower
+
+    var body: some View {
+        let cues = session.subtitleCues
+        let current = SubtitleLines.currentIndex(cues, at: session.position, offset: session.subtitleOffset)
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: current, initial: true) { follower.update(current: current, cueCount: cues.count) }
+            .onChange(of: cues.count, initial: true) { follower.update(current: current, cueCount: cues.count) }
+    }
+}
+
+/// Keeps the line on screen in view, unless a search is narrowing the list.
+private struct SubtitleLinesScroller: View {
+    let follower: SubtitleLinesFollower
+    let proxy: ScrollViewProxy
+    let follows: Bool
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onAppear { if let current = follower.current { proxy.scrollTo(current, anchor: .center) } }
+            .onChange(of: follower.current) { old, new in
+                guard follows, let new else { return }
+                // The first answer, as the page opens, goes straight there.
+                if old == nil { proxy.scrollTo(new, anchor: .center); return }
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(new, anchor: .center) }
+            }
+    }
+}
+
+/// One line of the Lines page, with its time: lit while it's the line on screen.
+private struct SubtitleLineRow: View {
+    let session: PlayerSession
+    let cue: SubtitleCue
+    let index: Int
+    let time: TimeInterval
+    let follower: SubtitleLinesFollower
+
+    var body: some View {
+        let current = follower.current == index
         Button { Task { await session.jump(to: cue) } } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Formatters.duration(max(0, time)))
@@ -271,26 +355,9 @@ struct SubtitleTimingPage: View {
                  : "Done. If they slip again later, tap another line then and Bluebox fixes the drift as well.")
                 .font(.caption).foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            let cues = Array(nearby.prefix(5))
-            if cues.isEmpty {
-                Text("No lines near this point.").font(.caption).foregroundStyle(Palette.textTertiary)
-            } else {
-                VStack(spacing: 2) {
-                    ForEach(cues, id: \.self) { cue in
-                        PanelPickRow(title: cue.text.replacingOccurrences(of: "\n", with: " "),
-                                     detail: Formatters.duration(cue.start), selected: false) { session.syncCue(cue) }
-                    }
-                }
-            }
+            // The lines follow the playhead in a view of their own, so the rest of the page holds still.
+            NearbyLinePicker(session: session)
         }
-    }
-
-    /// The lines just before now, most recent first.
-    private var nearby: [SubtitleCue] {
-        let now = session.snapshot.position
-        let all = session.nearbyCues
-        let before = all.filter { session.subtitleOffset.playerTime(forCueTime: $0.start) <= now + 1 }
-        return (before.isEmpty ? all : before).reversed()
     }
 
     @ViewBuilder private var drift: some View {
@@ -321,6 +388,32 @@ struct SubtitleTimingPage: View {
             }
         }
         .tint(Palette.textSecondary)
+    }
+}
+
+/// Match a Line's choices: the lines just before now, most recent first.
+private struct NearbyLinePicker: View {
+    let session: PlayerSession
+
+    var body: some View {
+        let cues = Array(nearby.prefix(5))
+        if cues.isEmpty {
+            Text("No lines near this point.").font(.caption).foregroundStyle(Palette.textTertiary)
+        } else {
+            VStack(spacing: 2) {
+                ForEach(cues, id: \.self) { cue in
+                    PanelPickRow(title: cue.text.replacingOccurrences(of: "\n", with: " "),
+                                 detail: Formatters.duration(cue.start), selected: false) { session.syncCue(cue) }
+                }
+            }
+        }
+    }
+
+    private var nearby: [SubtitleCue] {
+        let now = session.position
+        let all = session.nearbyCues
+        let before = all.filter { session.subtitleOffset.playerTime(forCueTime: $0.start) <= now + 1 }
+        return (before.isEmpty ? all : before).reversed()
     }
 }
 
@@ -476,9 +569,9 @@ enum SubtitleStyleNote {
     @MainActor
     static func current(_ session: PlayerSession) -> String? {
         guard case .embedded(let id) = session.subtitleSelection,
-              let track = session.snapshot.embeddedSubtitles.first(where: { $0.id == id }) else { return nil }
+              let track = session.slowSnapshot.embeddedSubtitles.first(where: { $0.id == id }) else { return nil }
         if track.isBitmap { return "This track is pictures (\(track.format ?? "PGS")), so it keeps its own look." }
-        if session.snapshot.drawsEmbeddedSubtitles, track.keepsOwnStyle { return "This ASS track keeps its own look. Size still applies." }
+        if session.slowSnapshot.drawsEmbeddedSubtitles, track.keepsOwnStyle { return "This ASS track keeps its own look. Size still applies." }
         return nil
     }
 }

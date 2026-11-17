@@ -164,9 +164,25 @@ import TestingSupport
     @Test func imageURLBuckets() {
         let s = TMDBService(credential: nil)
         #expect(s.imageURL(for: Artwork(.poster, path: "/a.jpg"), width: 300)?.absoluteString == "https://image.tmdb.org/t/p/w342/a.jpg")
-        #expect(s.imageURL(for: Artwork(.backdrop, path: "/b.jpg"), width: 2000)?.absoluteString == "https://image.tmdb.org/t/p/original/b.jpg")
+        // A wide page's hero (1440 pt × 2) caps at w1280, never original.
+        #expect(s.imageURL(for: Artwork(.backdrop, path: "/b.jpg"), width: 2880)?.absoluteString == "https://image.tmdb.org/t/p/w1280/b.jpg")
         #expect(s.imageURL(for: Artwork(.still, path: "/c.jpg"), width: 1000)?.absoluteString == "https://image.tmdb.org/t/p/w300/c.jpg")
         #expect(s.imageURL(for: Artwork(.poster, path: "https://x.example/p.png"), width: 10)?.host() == "x.example")
+    }
+
+    @Test func sizeBucketsNeverAskForOriginal() {
+        #expect(TMDBService.sizeBucket(for: .backdrop, width: 1281) == "w1280")
+        #expect(TMDBService.sizeBucket(for: .backdrop, width: 1280) == "w1280")
+        #expect(TMDBService.sizeBucket(for: .backdrop, width: 781) == "w1280")
+        #expect(TMDBService.sizeBucket(for: .backdrop, width: 500) == "w780")
+        #expect(TMDBService.sizeBucket(for: .poster, width: 781) == "w780")
+        #expect(TMDBService.sizeBucket(for: .poster, width: 5000) == "w780")
+        #expect(TMDBService.sizeBucket(for: .poster, width: 500) == "w500")
+        #expect(TMDBService.sizeBucket(for: .logo, width: 9000) == "w500")
+        #expect(TMDBService.sizeBucket(for: .profile, width: 400) == "w185")
+        for kind in [Artwork.Kind.poster, .backdrop, .logo, .still, .profile] {
+            #expect(TMDBService.sizeBucket(for: kind, width: 100_000) != "original")
+        }
     }
 }
 

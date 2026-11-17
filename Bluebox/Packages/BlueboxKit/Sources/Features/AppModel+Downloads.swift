@@ -79,6 +79,11 @@ extension AppModel {
             await self?.sweepWatchedFilms()
             await self?.dailyUpgradeCheck()
         }
+        // Once a launch: titles not seen for months leave the title cache,
+        // except downloaded ones, whose rows and pages read it offline.
+        let downloaded = Set(downloads.all().compactMap(\.mediaKey))
+        let store = store
+        Task { _ = try? await store.pruneTitleCache(keeping: downloaded) }
         DownloadPowerMonitor.shared.start(manager: downloads)
         downloadLifecycle.isPlaying = { [weak self] in self?.activePlayer?.snapshot.status.isActive == true }  // buffering too
         downloadLifecycle.isPlayerOpen = { [weak self] in self?.activePlayer != nil }
@@ -346,10 +351,11 @@ extension AppModel {
     /// The queue screen's drag to reorder.
     func reorderDownloads(_ ids: [String]) { downloads.reorder(ids) }
 
-    public func pauseAllDownloads() { downloads.queue().filter(\.isActive).forEach { downloads.pause($0.id) } }
+    /// One index write and one queue pass for the lot, not one per download.
+    public func pauseAllDownloads() { downloads.pause(downloads.queue().filter(\.isActive).map(\.id)) }
 
     public func resumeAllDownloads() {
-        downloads.queue().filter { $0.state == .paused || $0.isFailed }.forEach { downloads.resume($0.id) }
+        downloads.resume(downloads.queue().filter { $0.state == .paused || $0.isFailed }.map(\.id))
     }
 
     /// Finished downloads you've watched to the end.

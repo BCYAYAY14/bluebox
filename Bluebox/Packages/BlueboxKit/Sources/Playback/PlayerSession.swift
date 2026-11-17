@@ -44,7 +44,33 @@ public final class PlayerSession {
         public var secondsRemaining: Int
     }
 
-    public private(set) var snapshot = PlaybackSnapshot()
+    /// Everything the engine last reported, as one value. Reading it inside a
+    /// view's body makes that view follow the playhead too (it changes several
+    /// times a second while playing): views that don't show the time read
+    /// `slowSnapshot`, and the ones that do read `position` in a small view of
+    /// their own.
+    public var snapshot: PlaybackSnapshot {
+        var s = slowSnapshot
+        s.position = position
+        s.bufferedUntil = bufferedUntil
+        s.embeddedSubtitleText = embeddedSubtitleText
+        s.secondaryEmbeddedSubtitleText = secondaryEmbeddedSubtitleText
+        return s
+    }
+    /// The engine's state without the parts that move while it plays: the
+    /// position and buffered point are left at 0 and the embedded lines at nil
+    /// (read `position`, `bufferedUntil` and `subtitleText`). It's only
+    /// replaced when something in it changes, so a view that reads it isn't
+    /// redrawn on every tick.
+    public private(set) var slowSnapshot = PlaybackSnapshot()
+    /// The engine's playhead (`snapshot.position`), observed on its own.
+    public private(set) var position: TimeInterval = 0
+    /// How far the engine has buffered (`snapshot.bufferedUntil`), observed on its own.
+    public private(set) var bufferedUntil: TimeInterval = 0
+    /// The engine's embedded lines, apart from the slow state: each new line
+    /// would otherwise count as a change to it. Views read `subtitleText`.
+    private var embeddedSubtitleText: String?
+    private var secondaryEmbeddedSubtitleText: String?
     public private(set) var item: NowPlayingItem?
     public private(set) var externalSubtitles: [MediaTrack] = []
     public private(set) var subtitleSelection: SubtitleSelection = .off
@@ -104,7 +130,7 @@ public final class PlayerSession {
     public var autoplayNext = true
 
     public var error: PlaybackError? {
-        if case .failed(let e) = snapshot.status { return e }
+        if case .failed(let e) = slowSnapshot.status { return e }
         return nil
     }
 
@@ -330,7 +356,7 @@ public final class PlayerSession {
     }
 
     /// The position to show: where a seek is going, or where playback is.
-    public var displayPosition: TimeInterval { seekTarget ?? snapshot.position }
+    public var displayPosition: TimeInterval { seekTarget ?? position }
 
     /// True while the user drags the timeline. Playback pauses underneath and
     /// resumes on release if it was playing.
@@ -340,7 +366,7 @@ public final class PlayerSession {
 
     /// What the play/pause button should show: during a scrub, the state the
     /// player returns to, so the glyph doesn't flicker.
-    public var appearsPlaying: Bool { isScrubbing ? resumesAfterScrub : (optimisticPlaying ?? snapshot.status.isActive) }
+    public var appearsPlaying: Bool { isScrubbing ? resumesAfterScrub : (optimisticPlaying ?? slowSnapshot.status.isActive) }
 
     /// Live preview while dragging the timeline: fast, approximate seeks.
     public func scrub(to seconds: TimeInterval) {
@@ -448,7 +474,8 @@ public final class PlayerSession {
     public func clearLoop() { loopStart = nil; loopEnd = nil }
 
     public var currentChapterIndex: Int? {
-        snapshot.chapters.lastIndex { $0.start <= snapshot.position + 0.5 }
+        let now = position
+        return slowSnapshot.chapters.lastIndex { $0.start <= now + 0.5 }
     }
 
     public func jumpToChapter(offset: Int) async {
@@ -476,7 +503,7 @@ public final class PlayerSession {
 
     // MARK: Subtitles
 
-    public var allSubtitleTracks: [MediaTrack] { snapshot.embeddedSubtitles + externalSubtitles }
+    public var allSubtitleTracks: [MediaTrack] { slowSnapshot.embeddedSubtitles + externalSubtitles }
 
     /// C: subtitles off, and back on to the track that was on.
     /// Returns the selection now in force.
@@ -603,6 +630,18 @@ public final class PlayerSession {
         updateSubtitleText()
     }
 
+    /// The last lines Hide Sound Cues cleaned: this runs on every engine tick,
+    /// and the line on screen is the same one for seconds at a time.
+    @ObservationIgnored private var strippedLines: [(raw: String, clean: String?)] = []
+
+    private func strippingSoundCues(_ text: String) -> String? {
+        if let hit = strippedLines.first(where: { $0.raw == text }) { return hit.clean }
+        let clean = SoundCues.strip(text)
+        // Two are kept: the main line and the second subtitles' line.
+        strippedLines = [(text, clean)] + strippedLines.prefix(1)
+        return clean
+    }
+
     /// "Movie.2019.en" reads as "English - Movie.2019", so it sorts and groups with English.
     nonisolated static func importLabel(_ name: String) -> String {
         guard let code = languageCode(inFileName: name),
@@ -623,6 +662,13 @@ public final class PlayerSession {
     /// Adds a user-imported subtitle file and selects it.
     public func importSubtitle(_ url: URL) {
         let ext = url.pathExtension.lowercased()
+        // The picker offers every file, so one that isn't subtitles is turned away
+        // here, before it joins the track list and switches off what's showing.
+        guard SubtitleFormat(fileExtension: ext) != nil else {
+            subtitleError = SubtitleError.unsupportedFormat(ext).errorDescription
+            events.record("Subtitles failed", detail: subtitleError, kind: .error, position: snapshot.position, at: now())
+            return
+        }
         // The whole path: two downloads can share a file name in different folders.
         let sub = ExternalSubtitle(id: "import-\(url.standardizedFileURL.path)", url: url,
                                    languageCode: Self.languageCode(inFileName: url.deletingPathExtension().lastPathComponent),
@@ -644,7 +690,7 @@ public final class PlayerSession {
         switch subtitleSelection {
         case .external: true
         // VLC delays the tracks it draws itself (spu-delay) and the text it hands over.
-        case .embedded: snapshot.drawsEmbeddedSubtitles || snapshot.delaysEmbeddedSubtitles
+        case .embedded: slowSnapshot.drawsEmbeddedSubtitles || slowSnapshot.delaysEmbeddedSubtitles
         case .off: false
         }
     }
@@ -688,7 +734,7 @@ public final class PlayerSession {
 
     /// Lines around now, for "sync this line".
     public var nearbyCues: [SubtitleCue] {
-        timeline?.cues(near: snapshot.position, offset: subtitleOffset) ?? []
+        timeline?.cues(near: position, offset: subtitleOffset) ?? []
     }
 
     /// The user just heard `cue`: shift timing so it starts now. Calling this
@@ -793,19 +839,20 @@ public final class PlayerSession {
     }
 
     private func updateSubtitleText() {
-        let playing = snapshot.status == .playing
-        let t = subtitleClock.time(position: snapshot.position, playing: playing, rate: snapshot.rate)
+        // Runs on every engine tick: the stored parts, not an assembled `snapshot`.
+        let playing = slowSnapshot.status == .playing
+        let t = subtitleClock.time(position: position, playing: playing, rate: slowSnapshot.rate)
         var text: String?
         var files: [SubtitleTimeline] = []
-        if case .embedded = subtitleSelection { text = snapshot.embeddedSubtitleText }
+        if case .embedded = subtitleSelection { text = embeddedSubtitleText }
         else { text = timeline?.text(at: t, offset: subtitleOffset); files += [timeline].compactMap { $0 } }
-        var second = secondaryIsEmbedded ? snapshot.secondaryEmbeddedSubtitleText
+        var second = secondaryIsEmbedded ? secondaryEmbeddedSubtitleText
             : secondaryTimeline?.text(at: t, offset: subtitleOffset)
         if !secondaryIsEmbedded, let secondaryTimeline { files.append(secondaryTimeline) }
         scheduleCueWake(files, after: t, playing: playing)
         if subtitleStyle.hidesSoundCues {
-            text = text.flatMap(SoundCues.strip)
-            second = second.flatMap(SoundCues.strip)
+            text = text.flatMap(strippingSoundCues)
+            second = second.flatMap(strippingSoundCues)
         }
         if text != subtitleText { subtitleText = text }
         if second != secondarySubtitleText { secondarySubtitleText = second }
@@ -818,7 +865,7 @@ public final class PlayerSession {
     private func scheduleCueWake(_ files: [SubtitleTimeline], after t: TimeInterval, playing: Bool) {
         cueWake?.cancel(); cueWake = nil
         guard playing, let next = files.compactMap({ $0.nextChange(after: t, offset: subtitleOffset) }).min() else { return }
-        let wait = (next - t) / Double(max(snapshot.rate, 0.01))
+        let wait = (next - t) / Double(max(slowSnapshot.rate, 0.01))
         guard wait < 2 else { return }  // the engine reports again long before
         cueWake = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(wait, 0) + 0.002))
@@ -832,10 +879,11 @@ public final class PlayerSession {
     /// itself (styled ASS, pictures) are already in the picture.
     private func pushBurnIn() {
         var burnIn: SubtitleBurnIn?
-        if drawsSubtitlesInPicture || snapshot.isExternalPlaybackActive {
+        let s = slowSnapshot
+        if drawsSubtitlesInPicture || s.isExternalPlaybackActive {
             var primary = subtitleText
-            if case .embedded(let id) = subtitleSelection, snapshot.drawsEmbeddedSubtitles,
-               snapshot.embeddedSubtitles.first(where: { $0.id == id })?.drawnByBluebox != true { primary = nil }
+            if case .embedded(let id) = subtitleSelection, s.drawsEmbeddedSubtitles,
+               s.embeddedSubtitles.first(where: { $0.id == id })?.drawnByBluebox != true { primary = nil }
             burnIn = SubtitleBurnIn(primary: primary, secondary: secondarySubtitleText, style: subtitleStyle)
         }
         guard burnIn != lastBurnIn else { return }
@@ -921,8 +969,9 @@ public final class PlayerSession {
 
     private func engineChanged(_ s: PlaybackSnapshot) {
         let old = snapshot
-        snapshot = s
-        if item != nil { events.statusChanged(from: old.status, to: s.status, position: s.position, at: now()) }
+        store(s)
+        // Only on a change: calling into `events` counts as changing it, every tick.
+        if item != nil, old.status != s.status { events.statusChanged(from: old.status, to: s.status, position: s.position, at: now()) }
         if let o = optimisticPlaying, s.status.isActive == o || s.status == .ended || s.status.isFailure
             || (!o && s.status == .paused) { setOptimistic(nil) }
         updateSubtitleText()
@@ -950,6 +999,22 @@ public final class PlayerSession {
             looping = true
             Task { [weak self] in await self?.engine.seek(to: a); self?.looping = false }
         }
+    }
+
+    /// Splits what the engine reported into the parts views follow separately,
+    /// setting each only when it changed: an assignment tells every view that
+    /// reads it, even with the same value.
+    private func store(_ s: PlaybackSnapshot) {
+        var slow = s
+        slow.position = 0
+        slow.bufferedUntil = 0
+        slow.embeddedSubtitleText = nil
+        slow.secondaryEmbeddedSubtitleText = nil
+        if slow != slowSnapshot { slowSnapshot = slow }
+        if s.position != position { position = s.position }
+        if s.bufferedUntil != bufferedUntil { bufferedUntil = s.bufferedUntil }
+        if s.embeddedSubtitleText != embeddedSubtitleText { embeddedSubtitleText = s.embeddedSubtitleText }
+        if s.secondaryEmbeddedSubtitleText != secondaryEmbeddedSubtitleText { secondaryEmbeddedSubtitleText = s.secondaryEmbeddedSubtitleText }
     }
 
     private func scheduleSave() {

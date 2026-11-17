@@ -45,6 +45,25 @@ import Testing
         #expect(t.cues(near: 125, offset: o).count == 1)
         #expect(SubtitleOffset(scale: 0.5).scale == 0.8)  // out-of-range speeds are clamped
     }
+
+    @Test func linesNearNowMatchAPlainScan() {
+        // Unsorted on the way in, with two lines starting together and one long sign.
+        let input = [SubtitleCue(start: 30, end: 32, text: "c"), SubtitleCue(start: 10, end: 12, text: "a"),
+                     SubtitleCue(start: 20, end: 90, text: "sign"), SubtitleCue(start: 20, end: 22, text: "b"),
+                     SubtitleCue(start: 40, end: 42, text: "d"), SubtitleCue(start: 50, end: 52, text: "e")]
+        let t = SubtitleTimeline(cues: input)
+        let o = SubtitleOffset(seconds: 1.5)
+        for now in [0, 5, 10, 11.5, 20, 21.5, 25, 31.5, 45, 51.5, 60, 500] as [TimeInterval] {
+            for (before, after) in [(6, 6), (1, 1), (0, 2), (3, 0)] {
+                // What the lookup did before it was a binary search.
+                let ct = o.cueTime(forPlayerTime: now)
+                let idx = t.cues.firstIndex { $0.start > ct } ?? t.cues.count
+                let expected = Array(t.cues[max(0, idx - before)..<min(t.cues.count, idx + after)])
+                #expect(t.cues(near: now, offset: o, before: before, after: after) == expected, "at \(now), \(before)/\(after)")
+            }
+        }
+        #expect(SubtitleTimeline(cues: []).cues(near: 10, offset: o).isEmpty)
+    }
 }
 
 @Suite struct SubtitleStyleTests {

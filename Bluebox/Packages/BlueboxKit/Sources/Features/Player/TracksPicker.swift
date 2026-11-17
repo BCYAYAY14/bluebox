@@ -64,7 +64,7 @@ enum TrackRows {
     private static var groupCache: ([TrackRow], [TrackLanguageGroup])?
 
     static func audio(_ session: PlayerSession) -> [TrackRow] {
-        let key = AudioKey(tracks: session.snapshot.audioTracks, selected: session.snapshot.selectedAudioID)
+        let key = AudioKey(tracks: session.slowSnapshot.audioTracks, selected: session.slowSnapshot.selectedAudioID)
         if let (k, rows) = audioCache, k == key { return rows }
         let tracks = key.tracks
         let labels = TrackLabel.labels(for: tracks)
@@ -78,7 +78,7 @@ enum TrackRows {
     }
 
     static func subtitles(_ session: PlayerSession, preferred: [String]) -> [TrackRow] {
-        let key = SubtitleKey(embedded: session.snapshot.embeddedSubtitles, external: session.externalSubtitles,
+        let key = SubtitleKey(embedded: session.slowSnapshot.embeddedSubtitles, external: session.externalSubtitles,
                               selection: session.subtitleSelection, preferred: preferred)
         if let (k, rows) = subtitleCache, k == key { return rows }
         let rows = makeSubtitles(key)

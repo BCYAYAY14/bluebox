@@ -15,6 +15,16 @@
       "category": "entertainment",
       "versions": [
         {
+          "version": "1.2.7",
+          "buildVersion": "27",
+          "date": "2026-11-17T07:49:37Z",
+          "localizedDescription": "Smoother\n• The player only redraws its clock and timeline as a film plays, not the whole screen four times a second.\n• Going back to Home, a title page, My Library or a list no longer reloads the page when nothing has changed.\n• Backdrops load at a sensible size instead of the full original, so heroes appear sooner and posters stay in memory.\n• Scrolling on the Mac does less work for every poster, and long My Sources lists only build the rows on screen.\n• Films played through VLC use far less power while paused or with subtitles off.\n• The subtitle Lines page no longer searches every line again several times a second.\n• Pausing, resuming or deleting many downloads at once saves once instead of once per download.\n\nPlayer\n• Fixed subtitles inside some high-bitrate MKV files going missing for most of the film.\n• Sync to the Audio listens with the system's newer on-device speech recognition where it's available, with no permission to ask for and more languages.\n• Subtitle files can be picked from anywhere in Files, and a file that isn't subtitles is turned away instead of switching your subtitles off.\n• A subtitle line being dragged stays put if its time runs out, and the guides no longer get left on screen.\n• Fixed Picture in Picture becoming unavailable after switching between files in one sitting.\n\nProfiles\n• A PIN-locked profile now asks for its PIN at the launch \"Who's watching?\"\n• Right-click or long press a profile for Delete Profile.\n\nWatch Party\n• Nobody is dropped from the room, and the host stays host, while their copy of the film takes a while to open.\n• Fixed a seek followed quickly by a pause starting everyone playing again.\n\nSources and sync\n• Add-ons are no longer all skipped after a spell of bad signal, and Play always asks them again.\n• A season page asks each server or folder for its library once, not once per episode.\n• Trakt only fetches what changed since the last sync, and coming back to the app no longer syncs everything twice.\n• Changes to your lists on another device arrive straight away, and a dropped live connection is noticed within a minute.\n• Deleting a finished torrent download no longer starts the torrent engine.\n• Data Used This Month no longer counts the part of a stream you skipped over.\n\nRemote control\n• A Mac with Allow Remote Control on rests when no iPhone is connected, and no longer reads the whole window every ten seconds during a film.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+          "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.7/Bluebox-1.2.7.ipa",
+          "size": 38350780,
+          "sha256": "310f80e94e2803f3f9300c6a5d5e26484ccce4d28cbc5fc0886f0fce4d11b037",
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "1.2.6",
           "buildVersion": "26",
           "date": "2026-10-31T10:07:43Z",
@@ -193,11 +203,11 @@
           "NSSpeechRecognitionUsageDescription": "Bluebox listens to the film's soundtrack on this device to line subtitles up with the speech (Sync to the Audio)."
         }
       },
-      "version": "1.2.6",
-      "versionDate": "2026-10-31T10:07:43Z",
-      "versionDescription": "Remote control\n• The Mac's window scrolls to follow the highlight, so moving down a list or a page keeps what's highlighted on screen.\n\nPlayer\n• Fixed the Picture in Picture window on iPhone and iPad flashing grey and darkening every few seconds while a film played.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
-      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.6/Bluebox-1.2.6.ipa",
-      "size": 38178198
+      "version": "1.2.7",
+      "versionDate": "2026-11-17T07:49:37Z",
+      "versionDescription": "Smoother\n• The player only redraws its clock and timeline as a film plays, not the whole screen four times a second.\n• Going back to Home, a title page, My Library or a list no longer reloads the page when nothing has changed.\n• Backdrops load at a sensible size instead of the full original, so heroes appear sooner and posters stay in memory.\n• Scrolling on the Mac does less work for every poster, and long My Sources lists only build the rows on screen.\n• Films played through VLC use far less power while paused or with subtitles off.\n• The subtitle Lines page no longer searches every line again several times a second.\n• Pausing, resuming or deleting many downloads at once saves once instead of once per download.\n\nPlayer\n• Fixed subtitles inside some high-bitrate MKV files going missing for most of the film.\n• Sync to the Audio listens with the system's newer on-device speech recognition where it's available, with no permission to ask for and more languages.\n• Subtitle files can be picked from anywhere in Files, and a file that isn't subtitles is turned away instead of switching your subtitles off.\n• A subtitle line being dragged stays put if its time runs out, and the guides no longer get left on screen.\n• Fixed Picture in Picture becoming unavailable after switching between files in one sitting.\n\nProfiles\n• A PIN-locked profile now asks for its PIN at the launch \"Who's watching?\"\n• Right-click or long press a profile for Delete Profile.\n\nWatch Party\n• Nobody is dropped from the room, and the host stays host, while their copy of the film takes a while to open.\n• Fixed a seek followed quickly by a pause starting everyone playing again.\n\nSources and sync\n• Add-ons are no longer all skipped after a spell of bad signal, and Play always asks them again.\n• A season page asks each server or folder for its library once, not once per episode.\n• Trakt only fetches what changed since the last sync, and coming back to the app no longer syncs everything twice.\n• Changes to your lists on another device arrive straight away, and a dropped live connection is noticed within a minute.\n• Deleting a finished torrent download no longer starts the torrent engine.\n• Data Used This Month no longer counts the part of a stream you skipped over.\n\nRemote control\n• A Mac with Allow Remote Control on rests when no iPhone is connected, and no longer reads the whole window every ten seconds during a film.\n\nEverything that changed: https://github.com/BCYAYAY14/bluebox/blob/main/CHANGELOG.md",
+      "downloadURL": "https://github.com/BCYAYAY14/bluebox/releases/download/ipa-1.2.7/Bluebox-1.2.7.ipa",
+      "size": 38350780
     }
   ],
   "news": []

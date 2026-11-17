@@ -314,23 +314,112 @@ public actor LibraryStore: LibraryRepository, ProgressRepository, TitleCache {
 
     // MARK: Title cache
 
-    public func store(_ titles: [Title]) throws {
-        for t in titles {
-            let raw = t.key.rawValue
-            let data = try Self.encoder.encode(t)
-            if let existing = try modelContext.fetch(FetchDescriptor<CachedTitleRecord>(predicate: #Predicate { $0.key == raw })).first {
-                existing.titleData = data; existing.cachedAt = .now
-            } else {
-                modelContext.insert(CachedTitleRecord(key: raw, titleData: data, cachedAt: .now))
+    /// `cachedAt` is when a title was last stored or read. It only moves on
+    /// once it's this old, so a Home load of unchanged titles writes nothing.
+    static let titleSeenInterval: TimeInterval = 86_400
+    /// Cached titles nothing has stored or read for this long go, unless the library refers to them.
+    public static let titleCacheLifetime: TimeInterval = 90 * 86_400
+    /// Keys per `contains` predicate, well under SQLite's limit on bound variables.
+    static let predicateChunk = 500
+
+    /// `keys` in slices a `contains` predicate can take.
+    static func chunked(_ keys: [String]) -> [[String]] {
+        stride(from: 0, to: keys.count, by: predicateChunk).map { Array(keys[$0..<min($0 + predicateChunk, keys.count)]) }
+    }
+
+    /// Home stores every row's titles on each load, so this reads the batch's
+    /// rows in one fetch and writes only titles that are new or changed (or
+    /// whose `cachedAt` is a day old).
+    public func store(_ titles: [Title]) throws { try storeTitles(titles) }
+
+    /// `store`, saying whether it saved (tests).
+    @discardableResult
+    func storeTitles(_ titles: [Title]) throws -> Bool {
+        guard !titles.isEmpty else { return false }
+        let now = Date.now
+        // The last copy of a title wins, as when each was written in turn.
+        var incoming: [String: Title] = [:]
+        for t in titles { incoming[t.key.rawValue] = t }
+        var existing: [String: CachedTitleRecord] = [:]
+        for chunk in Self.chunked(Array(incoming.keys)) {
+            for r in try modelContext.fetch(FetchDescriptor<CachedTitleRecord>(predicate: #Predicate { chunk.contains($0.key) })) {
+                existing[r.key] = r
             }
         }
+        var dirty = false
+        for (raw, t) in incoming {
+            guard let r = existing[raw] else {
+                modelContext.insert(CachedTitleRecord(key: raw, titleData: try Self.encoder.encode(t), cachedAt: now))
+                dirty = true
+                continue
+            }
+            // Compared decoded, not as bytes: JSON key order isn't promised to stay the same.
+            if (try? Self.decoder.decode(Title.self, from: r.titleData)) != t {
+                r.titleData = try Self.encoder.encode(t)
+                r.cachedAt = now
+                dirty = true
+            } else if now.timeIntervalSince(r.cachedAt) > Self.titleSeenInterval {
+                r.cachedAt = now
+                dirty = true
+            }
+        }
+        // hasChanges: reads leave `cachedAt` moved on for the next write (title(for:)).
+        guard dirty || modelContext.hasChanges else { return false }
         try modelContext.save()
+        return true
     }
 
     public func title(for key: MediaKey) throws -> Title? {
         let raw = key.rawValue
         guard let r = try modelContext.fetch(FetchDescriptor<CachedTitleRecord>(predicate: #Predicate { $0.key == raw })).first
         else { return nil }
+        // A read counts as seen, so pruning keeps titles that screens (reminders, Always
+        // Skipping, statistics) still look up. Saved with the next write rather than now:
+        // statistics read thousands in a row.
+        if Date.now.timeIntervalSince(r.cachedAt) > Self.titleSeenInterval { r.cachedAt = .now }
         return try? Self.decoder.decode(Title.self, from: r.titleData)
+    }
+
+    /// Deletes cached titles nothing has stored or read for `lifetime`, except
+    /// ones the library refers to: My List, your lists, watch history and
+    /// progress, title facts, and `keeping` (downloads, which this store
+    /// can't see). Those screens draw names and artwork from this cache
+    /// offline. Returns how many went.
+    @discardableResult
+    public func pruneTitleCache(keeping: Set<MediaKey> = [], olderThan lifetime: TimeInterval = LibraryStore.titleCacheLifetime,
+                                now: Date = .now) throws -> Int {
+        let cutoff = now.addingTimeInterval(-lifetime)
+        let stale = try modelContext.fetch(FetchDescriptor<CachedTitleRecord>(predicate: #Predicate { $0.cachedAt < cutoff }))
+        // Most launches stop here, before reading the library.
+        guard !stale.isEmpty else { return 0 }
+        var keep = Set<String>()
+        // A key and, for an episode, its series (whose cached title its rows show).
+        func referred(_ raw: String) -> [String] {
+            [raw] + (MediaKey(rawValue: raw).seriesKey.map { [$0.rawValue] } ?? [])
+        }
+        for key in keeping { keep.formUnion(referred(key.rawValue)) }
+        var progress = FetchDescriptor<ProgressRecord>()
+        progress.propertiesToFetch = [\.key, \.seriesKey]
+        for r in try modelContext.fetch(progress) {
+            keep.insert(r.key)
+            if let s = r.seriesKey { keep.insert(s) }
+        }
+        // Removed entries too: a tombstone can come back from another device without its title.
+        var watchlist = FetchDescriptor<WatchlistEntryRecord>()
+        watchlist.propertiesToFetch = [\.key]
+        for r in try modelContext.fetch(watchlist) { keep.formUnion(referred(r.key)) }
+        var entries = FetchDescriptor<ListEntryRecord>()
+        entries.propertiesToFetch = [\.mediaKey]
+        for r in try modelContext.fetch(entries) { keep.formUnion(referred(r.mediaKey)) }
+        var facts = FetchDescriptor<TitleFactsRecord>()
+        facts.propertiesToFetch = [\.key]
+        for r in try modelContext.fetch(facts) { keep.formUnion(referred(r.key)) }
+        var removed = 0
+        for r in stale where !keep.contains(r.key) {
+            modelContext.delete(r)
+            removed += 1
+        }
+        if removed > 0 { try modelContext.save() }
+        return removed
     }
 }

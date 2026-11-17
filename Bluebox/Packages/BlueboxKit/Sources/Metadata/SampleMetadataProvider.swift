@@ -94,7 +94,16 @@ public struct SampleMetadataProvider: MetadataProvider {
         Genre(id: 878, name: "Science Fiction"), Genre(id: 53, name: "Thriller"), Genre(id: 99, name: "Documentary"),
     ]
 
-    public static let titles: [Title] = [
+    /// The catalog: the standard sample titles, or the showcase's (see `showcase`).
+    public static var titles: [Title] { showcase ? showcaseTitles : standardTitles }
+
+    /// Screenshots for the README and the docs site: the open movies carry their
+    /// TMDB artwork, Blender Studio's other Creative Commons films join them, and
+    /// the fictional titles (which have no artwork) step aside. Off everywhere
+    /// else; set by the promo snapshot tests and the `-showcase` launch argument.
+    nonisolated(unsafe) public static var showcase = false
+
+    static let standardTitles: [Title] = [
         Title(key: .movie(tmdbID: 133701), kind: .movie, name: "Tears of Steel",
               overview: "In a future Amsterdam, a group of warriors and scientists gather at the Oude Kerk to stage a desperate attempt to save the world from destructive robots.",
               releaseDate: date(2012, 9, 26), genreIDs: [878, 28]),
@@ -136,6 +145,53 @@ public struct SampleMetadataProvider: MetadataProvider {
               releaseDate: date(2024, 3, 1), genreIDs: [35, 18], voteAverage: 7.7),
     ]
 
+    /// TMDB's poster and backdrop for each open movie, as the app would show them with a TMDB key.
+    static let showcaseArtwork: [Int: (poster: String, backdrop: String)] = [
+        133701: ("/8qy3jRmaHR7f8VZh3iXCqCWfFsH.jpg", "/fOy6SL5Zs2PFcNXwqEPIDPrLB1q.jpg"),
+        45745: ("/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg", "/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg"),
+        10378: ("/i9jJzvoXET4D9pOkoEwncSdNNER.jpg", "/xtdybjRRZ15mCrPOvEld305myys.jpg"),
+        9761: ("/9zROtU9TkpZQrOuEaMAp68FOWLK.jpg", "/9bJDwuhza19HQcYA99FeslLYmUm.jpg"),
+        358332: ("/5ZXi0oitpEgAdoJglFTc5SZF9nt.jpg", "/f2wABsgj2lIR2dkDEfBZX8p4Iyk.jpg"),
+        457784: ("/tSIMZK9XZSIb1dL3iQeTESEZvHw.jpg", "/aupI9kV5CawUp02XWnI2l7Ym9SH.jpg"),
+        891761: ("/AjWJQOogG4Irpff6K49tzrUTb1s.jpg", "/aCMT1okuiKFnyKHdCOez66rJKyT.jpg"),
+        406956: ("/753kJbZ5iS7DUomTKX9qF5Cs5NY.jpg", "/tIX2BIhkhoFq1iwtHYzTSbHbe82.jpg"),
+        717986: ("/tFaE5KZOzTTTaNAEDD8CY1ZBjei.jpg", "/pUHJzzq6fUowt8NrfDL5JAfjbqR.jpg"),
+        1177628: ("/kVRGAgqUC2u75pLsXgDj14tOsRJ.jpg", "/o2G1kW9pCcRo7NmiZhJBm5LcVpH.jpg"),
+    ]
+
+    static let showcaseTitles: [Title] = {
+        let more: [Title] = [
+            Title(key: .movie(tmdbID: 358332), kind: .movie, name: "Cosmos Laundromat",
+                  overview: "On a desolate island, a suicidal sheep named Franck meets a mysterious salesman who offers him the gift of a lifetime.",
+                  releaseDate: date(2015, 8, 10), genreIDs: [16, 14, 878]),
+            Title(key: .movie(tmdbID: 457784), kind: .movie, name: "Agent 327: Operation Barbershop",
+                  overview: "Agent 327 goes undercover in a barbershop that hides far more than haircuts.",
+                  releaseDate: date(2017, 5, 15), genreIDs: [16, 28, 35]),
+            Title(key: .movie(tmdbID: 891761), kind: .movie, name: "Sprite Fright",
+                  overview: "A group of rowdy teenagers on a woodland trip find out the hard way that the forest's tiny inhabitants don't like litter.",
+                  releaseDate: date(2021, 10, 29), genreIDs: [16, 35]),
+            Title(key: .movie(tmdbID: 406956), kind: .movie, name: "Caminandes: Llamigos",
+                  overview: "Koro the llama and a hungry penguin compete for the last berries of winter in Patagonia.",
+                  releaseDate: date(2016, 1, 30), genreIDs: [16, 35]),
+            Title(key: .movie(tmdbID: 717986), kind: .movie, name: "Coffee Run",
+                  overview: "Fueled by caffeine, a young woman runs through the bittersweet memories of her past relationship.",
+                  releaseDate: date(2020, 5, 29), genreIDs: [16, 18]),
+            Title(key: .movie(tmdbID: 1177628), kind: .movie, name: "Wing It!",
+                  overview: "A rooster and a dog try to build a rocket out of farmyard junk, with predictable results.",
+                  releaseDate: date(2023, 12, 7), genreIDs: [16, 35]),
+        ]
+        // Sintel first: Home's hero is the first trending title not yet started.
+        let sintel = MediaKey.movie(tmdbID: 45745)
+        let open = standardTitles.filter { $0.key == sintel } + standardTitles.filter { !isFictional($0) && $0.key != sintel }
+        return (open + more).map { t in
+            guard let id = t.key.tmdbID, let art = showcaseArtwork[id] else { return t }
+            return Title(key: t.key, kind: t.kind, name: t.name, overview: t.overview, releaseDate: t.releaseDate,
+                         genreIDs: t.genreIDs, voteAverage: t.voteAverage,
+                         poster: Artwork(.poster, path: "https://image.tmdb.org/t/p/w500" + art.poster),
+                         backdrop: Artwork(.backdrop, path: "https://image.tmdb.org/t/p/w1280" + art.backdrop))
+        }
+    }()
+
     static let taglines: [MediaKey: String] = [
         .movie(tmdbID: 9_000_001): "Some tides take forty years to turn.",
         .series(tmdbID: 9_100_001): "Every ship leaves a wake.",
@@ -143,11 +199,16 @@ public struct SampleMetadataProvider: MetadataProvider {
 
     static let runtimes: [MediaKey: Int] = [
         .movie(tmdbID: 133701): 12, .movie(tmdbID: 9761): 11, .movie(tmdbID: 45745): 15, .movie(tmdbID: 10378): 10,
+        .movie(tmdbID: 358332): 12, .movie(tmdbID: 457784): 4, .movie(tmdbID: 891761): 10, .movie(tmdbID: 406956): 3,
+        .movie(tmdbID: 717986): 3, .movie(tmdbID: 1177628): 4,
     ]
 
     static let directors: [MediaKey: String] = [
         .movie(tmdbID: 133701): "Ian Hubert", .movie(tmdbID: 9761): "Bassam Kurdali",
         .movie(tmdbID: 45745): "Colin Levy", .movie(tmdbID: 10378): "Sacha Goedegebure",
+        .movie(tmdbID: 358332): "Mathieu Auvray", .movie(tmdbID: 457784): "Colin Levy",
+        .movie(tmdbID: 891761): "Matthew Luhn", .movie(tmdbID: 406956): "Pablo Vazquez",
+        .movie(tmdbID: 717986): "Hjalti Hjálmarsson", .movie(tmdbID: 1177628): "Rik Schutte",
     ]
 
     static let episodeNames: [MediaKey: [String]] = [

@@ -115,6 +115,8 @@ public final class AccountModel {
     /// Signals another device's changes while the app is in front.
     @ObservationIgnored private var realtime: RealtimeListener?
     public private(set) var realtimeState: RealtimeListener.State = .stopped
+    /// Drops the echo of this device's own pushes and the join signal right after a pass.
+    @ObservationIgnored var echoFilter = RealtimeEchoFilter()
     @ObservationIgnored private var inForeground = false
     /// Off in tests that drive sync by hand.
     @ObservationIgnored var usesRealtime = true
@@ -403,14 +405,21 @@ public final class AccountModel {
         await run()
     }
 
+    /// Counts `scheduleSync` calls, so a finished one only clears its own `pending`.
+    @ObservationIgnored private var scheduled = 0
+
     /// Syncs shortly after a local change, coalescing bursts of edits.
     public func scheduleSync(after delay: Duration = .seconds(2)) {
         guard engine != nil, isSignedIn else { return }
         pending?.cancel()
+        scheduled += 1
+        let mine = scheduled
         pending = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self?.run()
+            // Done: the foreground poll (which stands back while a change waits) runs again.
+            if let self, self.scheduled == mine { self.pending = nil }
         }
     }
 
@@ -443,8 +452,8 @@ public final class AccountModel {
 
     private func startRealtime() {
         guard usesRealtime, realtime == nil, let auth, let config, isSignedIn else { return }
-        let listener = RealtimeListener(config: config, auth: auth, onChange: { [weak self] in
-            Task { @MainActor in self?.scheduleSync(after: .seconds(1)) }
+        let listener = RealtimeListener(config: config, auth: auth, onChange: { [weak self] signal in
+            Task { @MainActor in self?.realtimeSignal(signal) }
         }, onState: { [weak self] state in
             Task { @MainActor in
                 guard let self, self.realtime != nil || state == .stopped else { return }
@@ -453,6 +462,13 @@ public final class AccountModel {
         })
         realtime = listener
         Task { await listener.start() }
+    }
+
+    /// Another device's change (or the channel joining): sync soon, unless
+    /// it's the echo of our own push or a pass just read everything anyway.
+    func realtimeSignal(_ signal: RealtimeListener.Signal) {
+        guard echoFilter.shouldSync(signal, at: now()) else { return }
+        scheduleSync(after: .seconds(1))
     }
 
     /// The remote-control channel on this account (RemoteControl.swift); nil while signed out.
@@ -487,31 +503,41 @@ public final class AccountModel {
 
     private func run() async {
         guard let engine, let auth, let config, await auth.currentSession != nil else { return }
+        echoFilter.passStarted()
+        let report = await pass(engine: engine, auth: auth, config: config)
+        // A change signalled during a pass that pushed nothing wasn't our echo: follow it.
+        if echoFilter.passFinished(at: now(), pushed: report.map { $0.uploaded > 0 }) { scheduleSync(after: .seconds(1)) }
+    }
+
+    /// One sync pass and its status; the report, or nil if it failed.
+    private func pass(engine: SyncEngine, auth: SupabaseAuth, config: SupabaseConfig) async -> SyncEngine.Report? {
         status = .syncing
         do {
             let report = try await engine.sync()
             if !report.settingsChanged.isEmpty { onSettingsChanged(report.settingsChanged) }
             if report.applied > 0 { onRemoteChanges() }
-            guard self.auth === auth else { return }  // switched projects meanwhile
+            guard self.auth === auth else { return report }  // switched projects meanwhile
             rememberAccountName()
             let date = now()
             status = .synced(date)
             lastSynced = date
             prefs.set(date, for: Self.lastSyncedKey(config))
+            return report
         } catch SyncError.accountChanged(let previous) {
-            guard self.auth === auth else { return }
+            guard self.auth === auth else { return nil }
             status = .idle
             let change = await makeAccountChange(previous: previous)
             if accountChange != change { accountChange = change }
         } catch SyncError.signedOut {
-            guard self.auth === auth else { return }
+            guard self.auth === auth else { return nil }
             // Signing out on purpose while a sync was running isn't an error.
             status = signedOutOnPurpose ? .idle : .failed(SyncError.signedOut.localizedDescription)
             email = nil
         } catch {
-            guard self.auth === auth else { return }
+            guard self.auth === auth else { return nil }
             status = .failed(Self.describe(error))
         }
+        return nil
     }
 
     static func lastSyncedKey(_ config: SupabaseConfig) -> String {

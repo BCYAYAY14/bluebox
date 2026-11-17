@@ -11,6 +11,13 @@ import Sync
 /// Echo: a command applied from the room goes through the same `PlayerSession`
 /// calls you'd use, which report it on `onTransport`; `applying` keeps those
 /// from being sent straight back.
+///
+/// Overlap: each command moves the player in its own task, and a seek on a
+/// stream can take a second or more, so a pause can arrive (and be applied)
+/// while the seek before it is still going. `applying` counts the moves in
+/// flight, so the first to finish can't let the other's play/pause echo; and
+/// a move that's no longer the newest once its seek lands leaves play/pause
+/// to the newer one rather than undoing it.
 @MainActor
 public final class TogetherPlayback {
     public let room: TogetherRoom
@@ -25,7 +32,12 @@ public final class TogetherPlayback {
     /// correction closes anyway).
     static let seekThreshold: TimeInterval = 0.75
 
-    private var applying = false
+    /// Changes being applied from the room (or just on this device) right now:
+    /// while above zero, what the player reports isn't sent to the room.
+    private var applying = 0
+    /// Bumped by every move and local change: a move that waited on a seek
+    /// checks it's still the newest before touching play/pause.
+    private var moveGeneration = 0
     private var beat: Task<Void, Never>?
     private let now: @MainActor () -> Date
 
@@ -71,7 +83,7 @@ public final class TogetherPlayback {
     // MARK: You → the room
 
     func local(_ event: PlayerTransportEvent) {
-        guard !applying else { return }
+        guard applying == 0 else { return }
         let rate = session.chosenRate ?? 1
         let t = now()
         let sent: TogetherCommand?
@@ -107,8 +119,10 @@ public final class TogetherPlayback {
 
     /// Changes this player without telling the room (Step Away, the lobby's 3-2-1, Catch Up).
     func applyLocally(_ change: () -> Void) {
-        applying = true
-        defer { applying = false }
+        // A decision made now: a room move still seeking mustn't flip it back afterwards.
+        moveGeneration &+= 1
+        applying += 1
+        defer { applying -= 1 }
         change()
     }
 
@@ -121,11 +135,17 @@ public final class TogetherPlayback {
 
     /// Puts the player where `target` says, through the session (as if tapped), unechoed.
     func move(to target: TogetherPlayhead, setRate: Bool) async {
-        applying = true
-        defer { applying = false }
+        moveGeneration &+= 1
+        let mine = moveGeneration
+        applying += 1
+        defer { applying -= 1 }
         if setRate || target.rate != (session.chosenRate ?? 1) { session.setRate(target.rate) }
         let position = target.position(at: now())
-        if abs(session.displayPosition - position) > Self.seekThreshold { await session.seek(to: position) }
+        if abs(session.displayPosition - position) > Self.seekThreshold {
+            await session.seek(to: position)
+            // A newer command came in during the seek and has set play/pause (or will): it wins.
+            guard moveGeneration == mine else { return }
+        }
         if session.appearsPlaying == target.paused { session.togglePlayPause() }
     }
 
@@ -141,8 +161,8 @@ public final class TogetherPlayback {
             // The engine only: the session's chosen speed (and the room's) stays as it was.
             session.engine.setRate(rate)
         case .drift(.seek(let to)):
-            applying = true
-            defer { applying = false }
+            applying += 1
+            defer { applying -= 1 }
             await session.seek(to: to)
         case .drift(.none): break
         }

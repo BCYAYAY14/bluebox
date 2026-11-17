@@ -210,7 +210,7 @@ struct PicturePage: View {
                 if tab == .frame ? !session.videoFraming.isDefault : !session.videoAdjustments.isDefault {
                     Button("Reset") {
                         if tab == .frame { session.videoFraming = VideoFraming() }
-                        else if session.snapshot.supportsVideoAdjustments { session.setVideoAdjustments(VideoAdjustments()) }
+                        else if session.slowSnapshot.supportsVideoAdjustments { session.setVideoAdjustments(VideoAdjustments()) }
                     }
                     .font(.caption.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
                     .help(tab == .frame ? "Back to the video's own shape and size" : "Back to the video's own colours")
@@ -296,7 +296,7 @@ struct PicturePage: View {
     @ViewBuilder private var adjustments: some View {
         let a = session.videoAdjustments
         PanelSection("Colour") {
-            if session.snapshot.supportsVideoAdjustments {
+            if session.slowSnapshot.supportsVideoAdjustments {
                 PanelSlider(title: "Brightness", value: adj(\.brightness), range: -1...1, defaultValue: 0, format: { String(format: "%+.0f", $0 * 100) })
                 PanelSlider(title: "Contrast", value: adj(\.contrast), range: 0...2, defaultValue: 1, format: pct)
                 PanelSlider(title: "Saturation", value: adj(\.saturation), range: 0...2, defaultValue: 1, format: pct)
@@ -334,7 +334,7 @@ struct SoundPage: View {
 
     var body: some View {
         let fx = session.audioEffects
-        let supported = session.snapshot.supportsAudioEffects
+        let supported = session.slowSnapshot.supportsAudioEffects
         VStack(alignment: .leading, spacing: 10) {
             PlayerPageHeader("Sound", onBack: onBack) {
                 if fx.dialogueBoost || fx.nightMode || fx.equalizer != EqualizerSettings() {

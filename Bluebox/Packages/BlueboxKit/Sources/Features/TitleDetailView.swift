@@ -52,6 +52,34 @@ final class TitleDetailModel {
 
     var display: Title { detail?.title ?? title }
 
+    /// What the page was last loaded in full for. Its `.task` restarts on the
+    /// way back from a pushed page (a related title, a person); then only
+    /// what can have changed while away is read again.
+    @ObservationIgnored private var loaded = PageLoadMemory<LoadKey>()
+
+    struct LoadKey: Hashable, Sendable {
+        let sourcesRevision: Int
+        let profileID: String
+        let live: Bool
+    }
+
+    /// The page as the task sees it. Within `PageLoadMemory.maxAge` and with
+    /// the same sources, profile and catalogue: My List and progress only
+    /// (watching on the player or another page), not the detail, ratings,
+    /// extras and every episode's availability again.
+    func appear(_ app: AppModel) async {
+        let key = LoadKey(sourcesRevision: app.sourcesRevision, profileID: app.currentProfileID, live: app.catalogMode == .live)
+        if loaded.isCurrent(key) {
+            let on = (try? await app.store.isOnWatchlist(title.key)) ?? false
+            if on != onList { onList = on }
+            await refreshProgress(app)
+            return
+        }
+        await load(app)
+        // A failed detail, or a load cut short by leaving, loads in full next time.
+        if error == nil, seasonError == nil, detail != nil, !Task.isCancelled { loaded.remember(key) }
+    }
+
     func load(_ app: AppModel) async {
         onList = (try? await app.store.isOnWatchlist(title.key)) ?? false
         do {
@@ -103,15 +131,23 @@ final class TitleDetailModel {
         return date > Calendar.current.startOfDay(for: .now)
     }
 
+    /// Progress, and whether the film (or the episode you're up to) plays.
+    /// Unchanged values aren't written back: each write redraws the page.
     func refreshProgress(_ app: AppModel) async {
         if title.kind == .movie {
-            movieProgress = try? await app.store.progress(for: title.key)
-            movieAvailability = await app.availability(for: title.key)
+            let progress = try? await app.store.progress(for: title.key)
+            if progress != movieProgress { movieProgress = progress }
+            let availability = await app.availability(for: title.key)
+            if availability != movieAvailability { movieAvailability = availability }
         } else if title.key.isSeries {
             let all = (try? await app.store.progress(forSeries: title.key)) ?? []
-            seriesProgress = Dictionary(all.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
-            target = SeriesCursor.target(series: title.key, progress: all, seasons: detail?.seasons ?? [])
-            if let t = target { targetAvailability = await app.availability(for: t.key) } else { targetAvailability = Availability.none }
+            let byKey = Dictionary(all.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+            if byKey != seriesProgress { seriesProgress = byKey }
+            let next = SeriesCursor.target(series: title.key, progress: all, seasons: detail?.seasons ?? [])
+            if next != target { target = next }
+            var availability = Availability.none
+            if let t = next { availability = await app.availability(for: t.key) }
+            if availability != targetAvailability { targetAvailability = availability }
         }
     }
 
@@ -266,7 +302,8 @@ struct TitleDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // The bar's background (clear over the art, solid once scrolled) comes from RootView's `PageChrome`.
         #endif
-        .task(id: app.sourcesRevision) { await model.load(app) }
+        // In full when the sources change; on the way back from a pushed page, progress only.
+        .task(id: app.sourcesRevision) { await model.appear(app) }
         .reloadsWhenBackOnline(model.error != nil && model.detail == nil) { await model.load(app) }
         .onChange(of: app.libraryRevision) { Task { await model.refreshProgress(app) } }
         .sheet(item: $releaseItem) { request in ReleasePickerSheet(item: request.item, canOpenSettings: true).remoteModal() }

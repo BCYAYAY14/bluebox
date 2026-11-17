@@ -151,11 +151,7 @@ public struct SubtitleTimeline: Sendable, Hashable {
     public func cues(at playerTime: TimeInterval, offset: SubtitleOffset = .init()) -> [SubtitleCue] {
         let t = offset.cueTime(forPlayerTime: playerTime)
         // Binary search for the first cue starting after t; walk back over candidates.
-        var lo = 0, hi = cues.count
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if cues[mid].start <= t { lo = mid + 1 } else { hi = mid }
-        }
+        let lo = firstIndex(startingAfter: t)
         var result: [SubtitleCue] = []
         var i = lo - 1
         // Walk back while some earlier cue could still be on screen.
@@ -169,7 +165,7 @@ public struct SubtitleTimeline: Sendable, Hashable {
     /// Cues around the current moment, for picking the line you just heard.
     public func cues(near playerTime: TimeInterval, offset: SubtitleOffset, before: Int = 6, after: Int = 6) -> [SubtitleCue] {
         let t = offset.cueTime(forPlayerTime: playerTime)
-        let idx = cues.firstIndex { $0.start > t } ?? cues.count
+        let idx = firstIndex(startingAfter: t)
         return Array(cues[max(0, idx - before)..<min(cues.count, idx + after)])
     }
 
@@ -177,11 +173,7 @@ public struct SubtitleTimeline: Sendable, Hashable {
     public func nextChange(after playerTime: TimeInterval, offset: SubtitleOffset = .init()) -> TimeInterval? {
         let t = offset.cueTime(forPlayerTime: playerTime)
         // The next start after t, and the earliest end after t among lines already started.
-        var lo = 0, hi = cues.count
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if cues[mid].start <= t { lo = mid + 1 } else { hi = mid }
-        }
+        let lo = firstIndex(startingAfter: t)
         var next = lo < cues.count ? cues[lo].start : TimeInterval.infinity
         var i = lo - 1
         while i >= 0, latestEnd[i] > t {
@@ -189,6 +181,18 @@ public struct SubtitleTimeline: Sendable, Hashable {
             i -= 1
         }
         return next.isFinite ? offset.playerTime(forCueTime: next) : nil
+    }
+
+    /// The index of the first cue starting after `t` (cue time), or `cues.count`:
+    /// a binary search, since the cues are sorted by start and this runs on
+    /// every tick of the playhead.
+    private func firstIndex(startingAfter t: TimeInterval) -> Int {
+        var lo = 0, hi = cues.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if cues[mid].start <= t { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
     }
 
     public func text(at playerTime: TimeInterval, offset: SubtitleOffset = .init()) -> String? {

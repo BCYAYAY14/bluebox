@@ -229,8 +229,11 @@ extension LibraryStore {
         let wanted = Set(keys.map(\.rawValue))
         guard !wanted.isEmpty else { return [:] }
         var out: [MediaKey: TitleFacts] = [:]
-        for r in try modelContext.fetch(FetchDescriptor<TitleFactsRecord>()) where wanted.contains(r.key) {
-            out[MediaKey(rawValue: r.key)] = TitleFacts(runtimeMinutes: r.runtimeMinutes, has4K: r.has4K)
+        // Only the wanted rows, rather than the whole table filtered here.
+        for chunk in Self.chunked(Array(wanted)) {
+            for r in try modelContext.fetch(FetchDescriptor<TitleFactsRecord>(predicate: #Predicate { chunk.contains($0.key) })) {
+                out[MediaKey(rawValue: r.key)] = TitleFacts(runtimeMinutes: r.runtimeMinutes, has4K: r.has4K)
+            }
         }
         return out
     }

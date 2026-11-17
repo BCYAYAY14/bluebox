@@ -26,6 +26,7 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
     }
 
     func entries(_ prefix: String) -> [String] { lock.withLock { log.filter { $0.hasPrefix(prefix) } } }
+    func clearLog() { lock.withLock { log.removeAll() } }
 
     private func json(_ obj: Any) -> Data { try! JSONSerialization.data(withJSONObject: obj) }
 
@@ -58,6 +59,10 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
         switch (method, path) {
         case ("GET", "/users/settings"):
             return (200, json(["user": ["username": "cinephile"]]))
+        case ("GET", "/sync/last_activities"):
+            // Unset: answers like a Trakt that can't say, so every part syncs.
+            guard let lastActivities else { return (404, Data()) }
+            return (200, json(lastActivities))
         case ("GET", "/sync/watchlist/movies"), ("GET", "/sync/watchlist/shows"):
             let type = path.hasSuffix("movies") ? "movie" : "show"
             return (200, json(watchlist.filter { $0.type == type }.map {
@@ -147,6 +152,31 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
     var failScrobbles = false
     var customLists: [(id: Int, name: String, items: [(type: String, tmdb: Int, title: String)])] = []
     private(set) var listBodies: [[String: Any]] = []
+    /// `sync/last_activities`; nil answers 404.
+    var lastActivities: [String: Any]?
+
+    /// A `sync/last_activities` reply with every time at `at`.
+    static func activities(_ at: String = "2026-11-01T00:00:00.000Z") -> [String: Any] {
+        [
+            "all": at,
+            "movies": ["watched_at": at, "collected_at": at, "rated_at": at, "watchlisted_at": at, "paused_at": at],
+            "episodes": ["watched_at": at, "collected_at": at, "rated_at": at, "watchlisted_at": at, "paused_at": at],
+            "shows": ["rated_at": at, "watchlisted_at": at, "hidden_at": at],
+            "seasons": ["rated_at": at, "watchlisted_at": at],
+            "lists": ["liked_at": at, "updated_at": at, "commented_at": at],
+            "watchlist": ["updated_at": at],
+            "account": ["settings_at": at],
+        ]
+    }
+
+    /// Moves one time, as Trakt does when that part changes.
+    func touch(_ group: String, _ field: String, _ at: String = "2026-11-02T00:00:00.000Z") {
+        lock.withLock {
+            var g = lastActivities?[group] as? [String: Any] ?? [:]
+            g[field] = at
+            lastActivities?[group] = g
+        }
+    }
 }
 
 @Suite struct WatchlistReconcileTests {
@@ -172,12 +202,13 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
 }
 
 @Suite struct TraktTests {
-    static func make(_ server: FakeTrakt, secrets: MemorySecretStore = MemorySecretStore())
+    /// No minimum interval by default: these tests sync back to back and expect each pass to run.
+    static func make(_ server: FakeTrakt, secrets: MemorySecretStore = MemorySecretStore(), minimumInterval: TimeInterval = 0)
         throws -> (TraktClient, TraktSync, LibraryStore, PreferencesStore) {
         let client = TraktClient(config: FakeTrakt.config, http: server, secrets: secrets, sleep: { _ in })
         let store = try LibraryStore.make(inMemory: true)
         let prefs = PreferencesStore(defaults: UserDefaults(suiteName: "trakt.\(UUID().uuidString)")!)
-        return (client, TraktSync(client: client, store: store, prefs: prefs), store, prefs)
+        return (client, TraktSync(client: client, store: store, prefs: prefs, minimumInterval: minimumInterval), store, prefs)
     }
 
     static func connect(_ client: TraktClient) async throws {
@@ -354,5 +385,131 @@ final class FakeTrakt: HTTPClient, @unchecked Sendable {
         #expect(body.shows[0].seasons.map(\.number) == [1, 2])
         #expect(body.shows[0].seasons[1].episodes.map(\.number) == [1, 2])
         #expect(body.movies[0].watched_at == "2026-09-21T14:13:20.000Z")
+    }
+}
+
+/// `sync/last_activities`: only the parts that changed on either side are read.
+@Suite struct TraktLastActivitiesTests {
+    /// Reads of a part of the account (everything under sync/ but last_activities itself).
+    static func sectionReads(_ server: FakeTrakt) -> [String] {
+        server.entries("GET /sync/").filter { !$0.hasSuffix("/last_activities") }
+    }
+
+    static let everything = 7  // watchlist ×2, watched ×2, ratings ×3
+
+    @Test func unchangedActivitiesReadNothing() async throws {
+        let server = FakeTrakt()
+        server.lastActivities = FakeTrakt.activities()
+        server.watchlist = [("movie", 10, "Remote Movie")]
+        let (client, sync, store, _) = try TraktTests.make(server)
+        try await TraktTests.connect(client)
+        try await sync.sync()  // the first pass reads everything
+        #expect(Self.sectionReads(server).count == Self.everything)
+        #expect(try await store.watchlist().map(\.key) == [.movie(tmdbID: 10)])
+
+        server.clearLog()
+        try await sync.sync()
+        #expect(server.entries("GET /sync/last_activities").count == 1)
+        #expect(Self.sectionReads(server).isEmpty)
+        #expect(server.entries("POST").isEmpty)
+    }
+
+    @Test func onlyTheChangedPartIsRead() async throws {
+        let server = FakeTrakt()
+        server.lastActivities = FakeTrakt.activities()
+        let (client, sync, store, _) = try TraktTests.make(server)
+        try await TraktTests.connect(client)
+        try await sync.sync()
+
+        // An episode watched on Trakt.
+        server.clearLog()
+        server.watchedEpisodes = [20: [(1, 1, "2026-11-02T00:00:00.000Z")]]
+        server.touch("episodes", "watched_at")
+        try await sync.sync()
+        #expect(Self.sectionReads(server) == ["GET /sync/watched/shows"])
+        #expect(try await store.progress(for: .episode(seriesID: 20, season: 1, episode: 1))?.isCompleted == true)
+
+        // Settled: the imported play isn't something to send back.
+        server.clearLog()
+        try await sync.sync()
+        #expect(Self.sectionReads(server).isEmpty)
+
+        // A movie added to the watchlist on Trakt.
+        server.watchlist = [("movie", 11, "Remote Movie")]
+        server.touch("movies", "watchlisted_at")
+        try await sync.sync()
+        #expect(Self.sectionReads(server) == ["GET /sync/watchlist/movies", "GET /sync/watchlist/shows"])
+        #expect(try await store.watchlist().map(\.key) == [.movie(tmdbID: 11)])
+    }
+
+    @Test func withoutLastActivitiesEverythingIsRead() async throws {
+        let server = FakeTrakt()
+        server.lastActivities = FakeTrakt.activities()
+        let (client, sync, _, _) = try TraktTests.make(server)
+        try await TraktTests.connect(client)
+        try await sync.sync()
+
+        server.clearLog()
+        server.lastActivities = nil  // Trakt can't say (an error, an outage)
+        try await sync.sync()
+        #expect(Self.sectionReads(server).count == Self.everything)
+
+        // A reply missing a part's time counts as that part changed.
+        server.clearLog()
+        var partial = FakeTrakt.activities()
+        partial["episodes"] = nil
+        server.lastActivities = partial
+        try await sync.sync()
+        #expect(Self.sectionReads(server) == ["GET /sync/watched/shows", "GET /sync/ratings/episodes"])
+    }
+
+    @Test func changesHereGoUpWithinTheMinimumIntervalAndSyncNowGetsThrough() async throws {
+        let server = FakeTrakt()
+        server.lastActivities = FakeTrakt.activities()
+        let (client, sync, store, _) = try TraktTests.make(server, minimumInterval: 3600)
+        try await TraktTests.connect(client)
+        try await sync.sync()
+
+        // Nothing waits here: too soon after the last pass to ask Trakt at all.
+        server.clearLog()
+        try await sync.sync()
+        #expect(server.entries("GET").isEmpty)
+
+        // Added to My List here: it goes up now, and only the watchlist is read.
+        try await store.setWatchlisted(Title(key: .movie(tmdbID: 30), kind: .movie, name: "Local"), true)
+        try await sync.sync()
+        #expect(Self.sectionReads(server) == ["GET /sync/watchlist/movies", "GET /sync/watchlist/shows"])
+        #expect(server.watchlist.map(\.tmdb) == [30])
+
+        // A rating here, and a play finished on another device that reached this one only now.
+        server.clearLog()
+        await sync.setRating(8, for: .movie(tmdbID: 40))
+        try await store.applyRemote([WatchProgress(key: .episode(seriesID: 5, season: 1, episode: 1), position: 100, duration: 100,
+                                                   isCompleted: true, updatedAt: Date().addingTimeInterval(-86_400))])
+        try await sync.sync()
+        #expect(Set(Self.sectionReads(server)) == ["GET /sync/ratings/movies", "GET /sync/watched/shows"])
+        #expect(server.movieRatings[40]?.rating == 8)
+        #expect(server.historyBodies.count == 1)
+
+        // Sync Now: past the minimum interval, and still only what changed is read.
+        server.clearLog()
+        try await sync.sync()
+        #expect(server.entries("GET").isEmpty)
+        try await sync.sync(force: true)
+        #expect(server.entries("GET /sync/last_activities").count == 1)
+        #expect(Self.sectionReads(server).isEmpty)
+    }
+
+    @Test func anotherAccountStartsWithAFullPass() async throws {
+        let server = FakeTrakt()
+        server.lastActivities = FakeTrakt.activities()
+        let (client, sync, _, _) = try TraktTests.make(server, minimumInterval: 3600)
+        try await TraktTests.connect(client)
+        try await sync.sync()
+
+        server.clearLog()
+        await sync.resetState()  // what connecting or disconnecting does
+        try await sync.sync()
+        #expect(Self.sectionReads(server).count == Self.everything)
     }
 }

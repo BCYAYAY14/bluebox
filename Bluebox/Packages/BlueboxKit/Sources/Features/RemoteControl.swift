@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Metadata
 import Observation
 import Playback
 import Sync
@@ -41,6 +42,10 @@ public extension RemoteAppHandler {
 /// 45 s, every 15 s otherwise, and at once when play/pause, tracks, volume or
 /// the item change. Player commands go through `PlayerSession`'s public
 /// controls; app commands through `RemoteAppHandler`. One at a time, in order.
+/// What's on its screen goes out only while a remote is about (a hello or
+/// command in the last 45 s). With nothing playing and no remote about, it
+/// lets App Nap have it and ticks every 10 s, enough to keep announcing
+/// itself; a device joining is answered at once, so a phone still finds it.
 ///
 /// The phone (with Use as Remote on) joins while Bluebox isn't in the
 /// background, says hello so the Mac publishes straight away (again every few
@@ -111,6 +116,9 @@ public final class RemoteControl {
         var helloUntilHeardFor: TimeInterval = 30
         /// Live scrubbing: at most one position this often.
         var scrubInterval: TimeInterval = 0.12
+        /// The Mac's clock while it's idle (`isIdle`): often enough to announce
+        /// itself every 20 to 30 s, well inside `RemoteDevice.goneAfter`.
+        var idleTick: Duration = .seconds(10)
     }
 
     @ObservationIgnored private var channel: (any RemoteTransport)?
@@ -118,6 +126,8 @@ public final class RemoteControl {
     @ObservationIgnored private var outboxTask: Task<Void, Never>?
     @ObservationIgnored private var reconciler = RemoteReconciler()
     @ObservationIgnored private var ticker: Task<Void, Never>?
+    /// The ticker is in its idle wait (`timing.idleTick`): a remote speaking, or a player opening, cuts it short.
+    @ObservationIgnored private var tickingIdle = false
     @ObservationIgnored private var lastHello: Date?
     @ObservationIgnored private var joinedAt: Date?
     @ObservationIgnored private var lastAnnounced: Date?
@@ -151,7 +161,9 @@ public final class RemoteControl {
     @ObservationIgnored private var seededForReview = false
     #endif
     #if os(macOS)
-    /// Keeps App Nap from slowing the channel while the Mac waits for the remote.
+    /// Keeps App Nap from slowing the channel while a remote is being used:
+    /// held for `remoteLinger` after its last hello or command, not for as long
+    /// as the switch is on (`holdActivity`).
     @ObservationIgnored private var activity: (any NSObjectProtocol)?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
     #endif
@@ -230,14 +242,10 @@ public final class RemoteControl {
             publishScreen(force: true)
         }
         #if os(macOS)
-        if controllable, activity == nil {
-            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
-                                                             reason: "Answering Bluebox's remote")
-        } else if !controllable, let a = activity {
-            ProcessInfo.processInfo.endActivity(a)
-            activity = nil
-        }
+        // Held only while a remote is being used (`heardRemote`); one that stops taking commands lets go now.
+        if !controllable { holdActivity(false) }
         #endif
+        // Also brings the clock out of its idle wait when a player opens.
         startTicker()
     }
 
@@ -256,6 +264,7 @@ public final class RemoteControl {
 
     private func disconnect() {
         ticker?.cancel(); ticker = nil
+        tickingIdle = false
         for (_, u) in unacked { u.retry.cancel() }
         unacked.removeAll()
         if let channel {
@@ -270,8 +279,7 @@ public final class RemoteControl {
             }
         }
         #if os(macOS)
-        if let activity { ProcessInfo.processInfo.endActivity(activity) }
-        activity = nil
+        holdActivity(false)
         #endif
         channelState = .stopped
         joinedAt = nil
@@ -296,12 +304,17 @@ public final class RemoteControl {
 
     private func enqueue(_ message: RemoteMessage) { outbox?.yield(message) }
 
-    /// Once a second: the phone runs its clock forward; the Mac publishes when due.
+    /// Once a second: the phone runs its clock forward; the Mac publishes when
+    /// due. A Mac nobody is using (`isIdle`) ticks only every `timing.idleTick`,
+    /// to announce itself, so the switch being on doesn't keep it from idling;
+    /// a phone finds it anyway, since its arrival is answered at once (`receive`).
     private func startTicker() {
+        // In the idle wait, but not idle any more (a remote spoke, a player opened): start again at the fast pace.
+        if tickingIdle, !isIdle(at: now()) { ticker?.cancel(); ticker = nil; tickingIdle = false }
         guard ticker == nil else { return }
-        let interval = timing.tick
         ticker = Task { [weak self] in
             while !Task.isCancelled {
+                guard let interval = self?.nextTick() else { return }
                 try? await Task.sleep(for: interval)
                 guard let self, !Task.isCancelled else { return }
                 self.tick()
@@ -309,16 +322,60 @@ public final class RemoteControl {
         }
     }
 
+    /// How long until the next tick, noting whether it's the idle wait.
+    private func nextTick() -> Duration {
+        tickingIdle = isIdle(at: now())
+        return tickingIdle ? timing.idleTick : timing.tick
+    }
+
+    /// A remote said hello or sent a command within `remoteLinger`.
+    func remoteActive(at date: Date) -> Bool {
+        lastRemoteSeen.map { date.timeIntervalSince($0) < Self.remoteLinger } ?? false
+    }
+
+    /// A Mac with nothing playing that no remote has spoken to lately. A
+    /// phone keeps its fast clock (its own display and hellos run on it), and
+    /// so does a Mac playing, whose changes (play, pause, tracks) are noticed on the tick.
+    func isIdle(at date: Date) -> Bool {
+        controllable && player == nil && !remoteActive(at: date)
+    }
+
+    /// A remote said hello or sent a command: answer it briskly for `remoteLinger`.
+    private func heardRemote() {
+        lastRemoteSeen = now()
+        #if os(macOS)
+        if controllable { holdActivity(true) }
+        #endif
+        startTicker()
+    }
+
+    #if os(macOS)
+    private func holdActivity(_ on: Bool) {
+        if on, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+                                                             reason: "Answering Bluebox's remote")
+        } else if !on, let a = activity {
+            ProcessInfo.processInfo.endActivity(a)
+            activity = nil
+        }
+    }
+    #endif
+
     private func tick() {
         let date = now()
+        let remoteAbout = remoteActive(at: date)
+        #if os(macOS)
+        // No remote for `remoteLinger`: App Nap may have the Mac again.
+        if !remoteAbout { holdActivity(false) }
+        #endif
         if channelState == .joined, lastAnnounced.map({ date.timeIntervalSince($0) >= RemoteDevice.announceInterval }) ?? true {
             announce()
         }
         pruneDevices(at: date)
         if player != nil {
             publish(force: false)
-            // Now and then the screen as well, which carries the player too.
-            if lastScreenAt.map({ date.timeIntervalSince($0) >= 10 }) ?? true { publishScreen(force: true) }
+            // Now and then the screen as well, which carries the player too, while a remote is about to see it.
+            if remoteAbout, lastScreenAt.map({ date.timeIntervalSince($0) >= 10 }) ?? true { publishScreen(force: true) }
         }
         if controllable { return }
         if channelState == .joined, let lastHello {
@@ -351,8 +408,12 @@ public final class RemoteControl {
             refreshDisplayed()
         case .device(let d):
             guard d.id != deviceID else { return }
+            let new = heard[d.id] == nil
             heard[d.id] = (d, now())
             pruneDevices(at: now())
+            // A device just joined (a phone opening Bluebox): it hears of this
+            // Mac at once, rather than at the next announce, up to 30 s off while idle.
+            if new, controllable { announce() }
         case .screen(let s):
             guard !controllable, s.deviceID == (target ?? controlled?.id) else { return }
             let wasPlaying = screen?.playing != nil
@@ -367,13 +428,13 @@ public final class RemoteControl {
             }
         case .hello(let from):
             guard controllable || player != nil else { return }
-            lastRemoteSeen = now()
+            heardRemote()
             if heard[from] == nil { announce() }  // a remote that hasn't heard of us yet
             publish(force: true)
             publishScreen(force: true)
         case .command(let command):
             guard command.target == deviceID, controllable || player != nil else { return }
-            lastRemoteSeen = now()
+            heardRemote()
             // A scroll or pointer move is never retried, so it needs no ack.
             if !command.action.isContinuous { enqueue(.ack(RemoteAck(commandID: command.id, deviceID: deviceID, seq: seq))) }
             guard !applied.contains(command.id) else { return }  // a retry of one already applied
@@ -586,8 +647,13 @@ public final class RemoteControl {
         }
     }
 
+    /// Only while a remote is about (a hello or command within `remoteLinger`):
+    /// working out the screen walks the Mac's window (and the first walk turns
+    /// on its accessibility tree for good), which is wasted with no phone to
+    /// see it: on joining, on every page the Mac's own user opens, every 10 s
+    /// of a film. A phone that turns up says hello, and gets one at once.
     private func publishScreen(force: Bool) {
-        guard controllable, channel != nil, channelState == .joined, let handler else { return }
+        guard controllable, channel != nil, channelState == .joined, remoteActive(at: now()), let handler else { return }
         var screen = handler.remoteScreen()
         screen.deviceID = deviceID
         if let player, var state = makeState(player) {
@@ -607,7 +673,7 @@ public final class RemoteControl {
         guard let player, channel != nil, channelState == .joined, let state = makeState(player) else { return }
         let date = now()
         if !force, let last = lastPublished {
-            let fast = lastRemoteSeen.map { date.timeIntervalSince($0) < Self.remoteLinger } ?? false
+            let fast = remoteActive(at: date)
             let interval = fast ? Self.fastInterval : Self.slowInterval
             let changed = !Self.samePlayback(last.state, state)
             guard changed || date.timeIntervalSince(last.at) >= interval else { return }
@@ -678,15 +744,18 @@ public final class RemoteControl {
     public func seedForReview() {
         seededForReview = true
         channelState = .joined
-        let mac = RemoteDevice(id: "review-mac", name: "Studio", kind: .mac, controllable: true, playing: "Severance")
+        // `-showcase` (README graphics): Blender Studio's open films instead of the usual titles.
+        let showcase = SampleMetadataProvider.showcase
+        let playing = showcase ? "Cosmos Laundromat" : "Severance"
+        let mac = RemoteDevice(id: "review-mac", name: "Studio", kind: .mac, controllable: true, playing: playing)
         let other = RemoteDevice(id: "review-other", name: "Living Room Mac", kind: .mac, controllable: true)
         heard = [mac.id: (mac, .distantFuture), other.id: (other, .distantFuture)]
         devices = [mac, other]
         target = mac.id
-        screen = RemoteScreen(deviceID: mac.id, title: "Home", focusedID: "title:severance", focusedLabel: "Severance",
-                              focused: RemoteScreenItem(label: "Severance", kind: .poster),
-                              before: RemoteScreenItem(label: "Under Blue Ice", kind: .poster),
-                              after: RemoteScreenItem(label: "Harbor Lights", kind: .poster),
+        screen = RemoteScreen(deviceID: mac.id, title: "Home", focusedID: "title:severance", focusedLabel: playing,
+                              focused: RemoteScreenItem(label: playing, kind: .poster),
+                              before: RemoteScreenItem(label: showcase ? "Sintel" : "Under Blue Ice", kind: .poster),
+                              after: RemoteScreenItem(label: showcase ? "Tears of Steel" : "Harbor Lights", kind: .poster),
                               horizontal: true, section: "Continue Watching", bumps: 0)
         // `-seed-remote-idle`: the Mac on Home with nothing playing, for the remote's getting-around screen.
         if ProcessInfo.processInfo.arguments.contains("-seed-remote-idle") {
@@ -694,13 +763,13 @@ public final class RemoteControl {
             return
         }
         reconciler.receive(RemoteNowPlaying(
-            deviceID: mac.id, deviceName: "Studio", title: "Severance", subtitle: "S1·E2 · Half Loop",
-            position: 1_312, duration: 3_240, paused: false,
+            deviceID: mac.id, deviceName: "Studio", title: playing, subtitle: showcase ? nil : "S1·E2 · Half Loop",
+            position: showcase ? 41 : 1_312, duration: showcase ? 730 : 3_240, paused: false,
             audioTracks: [RemoteTrack(id: "a1", label: "English · 5.1"), RemoteTrack(id: "a2", label: "Español · Stereo")],
             subtitleTracks: [RemoteTrack(id: "s1", label: "English"), RemoteTrack(id: "s2", label: "English (SDH)"),
                              RemoteTrack(id: "s3", label: "Français")],
             audioID: "a1", subtitleID: "s1", volume: 0.7, hasNext: true, skipOffer: "Skip Intro",
-            chapters: [0, 95, 1_260, 2_410], seq: 1), at: now())
+            chapters: showcase ? [0, 160, 410, 600] : [0, 95, 1_260, 2_410], seq: 1), at: now())
         // Never stale while the screenshot is taken.
         reconciler.staleAfter = .infinity
         refreshDisplayed()

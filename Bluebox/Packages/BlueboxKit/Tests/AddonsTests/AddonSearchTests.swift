@@ -109,6 +109,60 @@ final class FakeTransport: AddonTransport, @unchecked Sendable {
         }
     }
 
+    /// Every add-on timing out at once is the connection's fault: three such
+    /// searches skip nobody and leave their records alone.
+    @Test func aRoundWhereEveryAddonTimesOutCountsAgainstNone() async {
+        let transport = FakeTransport([
+            "one": .init(body: "", error: URLError(.timedOut)),
+            "two": .init(body: "", error: URLError(.notConnectedToInternet)),
+        ])
+        let health = AddonHealthMonitor()
+        for _ in 0..<3 {
+            _ = try? await AddonSearch.run([addon("one"), addon("two")], request: request,
+                                           client: AddonClient(transport: transport), health: health)
+        }
+        #expect(transport.requests.count == 6)
+        #expect(await health.shouldAsk("one"))
+        #expect(await health.shouldAsk("two"))
+        #expect(await health.health("one").requests == 0)
+    }
+
+    /// A timeout held while nobody had answered counts once another add-on does.
+    @Test func aTimeoutCountsOnceAnotherAddonAnswers() async throws {
+        let transport = FakeTransport([
+            "down": .init(body: "", error: URLError(.timedOut)),
+            "ok": .init(delay: 0.3, body: StreamFixtures.torrentioMovie),
+        ])
+        let health = AddonHealthMonitor()
+        let outcome = try await AddonSearch.run([addon("down"), addon("ok")], request: request,
+                                                client: AddonClient(transport: transport), health: health,
+                                                timing: SearchTiming(perAddon: 30, grace: 5, softDeadline: 10))
+        #expect(outcome.releases.count == 5)
+        #expect(await health.health("down").timeouts == 1)
+        #expect(await health.health("ok").successes == 1)
+    }
+
+    /// With every add-on skipped, a search still asks them rather than failing unasked.
+    @Test func asksSkippedAddonsWhenEveryOneIsSkipped() async throws {
+        let transport = FakeTransport([
+            "one": .init(body: StreamFixtures.torrentioMovie),
+            "two": .init(body: StreamFixtures.stremThruMovie),
+        ])
+        let health = AddonHealthMonitor()
+        for id in ["one", "two"] {
+            for _ in 0..<3 { await health.recordFailure(id, error: AddonError.timedOut, latency: 10) }
+        }
+        #expect(!(await health.shouldAsk("one")))
+        #expect(!(await health.shouldAsk("two")))
+        let outcome = try await AddonSearch.run([addon("one"), addon("two")], request: request,
+                                                client: AddonClient(transport: transport), health: health,
+                                                timing: SearchTiming(perAddon: 30, grace: 5, softDeadline: 10))
+        #expect(transport.requests.count == 2)
+        #expect(outcome.releases.count == 5 + 3 - 1)
+        #expect(await health.shouldAsk("one"))
+        #expect(await health.shouldAsk("two"))
+    }
+
     @Test func skipsAddonsThatDontStreamTheType() async throws {
         let transport = FakeTransport(["movies": .init(body: StreamFixtures.torrentioMovie),
                                        "all": .init(body: StreamFixtures.torrentioEpisode)])

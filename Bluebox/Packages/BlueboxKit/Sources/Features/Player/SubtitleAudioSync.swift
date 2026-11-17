@@ -1,3 +1,4 @@
+import AVFoundation
 import Domain
 import Foundation
 import Observation
@@ -8,7 +9,8 @@ import TorrentStreaming
 import VLCPlayback
 
 /// Sync to the Audio (top of the Timing page): listens to a couple of
-/// minutes of the soundtrack with Apple's on-device speech recognition,
+/// minutes of the soundtrack with Apple's on-device speech recognition
+/// (`SpeechTranscriber` where the system has it, else `SFSpeechRecognizer`),
 /// lines the words up with the subtitle text (`SubtitleAudioAlignment`) and
 /// sets the delay, and the drift when it can tell. Runs only when asked, and
 /// carries on if the card is closed (the player says when it's done).
@@ -66,18 +68,10 @@ final class SubtitleAudioSync {
         let selection = session.subtitleSelection
         var cues = session.subtitleCues
         guard cues.count >= 10 else { update(.failed("There aren't enough subtitle lines to match yet.")); return }
-        guard await Self.authorize() else {
-            update(.failed("Allow speech recognition for Bluebox in System Settings › Privacy & Security.")); return
-        }
-        if Task.isCancelled { return }
         let language = Self.language(of: session, cues: cues)
         let name = Locale.current.localizedString(forLanguageCode: language) ?? "this language"
-        guard let recognizer = Self.recognizer(for: language), recognizer.isAvailable else {
-            update(.failed("Speech recognition isn't available for \(name).")); return
-        }
-        guard recognizer.supportsOnDeviceRecognition else {
-            update(.failed("This device can't recognise \(name) offline.")); return
-        }
+        guard let listener = await listener(for: language, name: name) else { return }
+        if Task.isCancelled { return }
 
         let previous = session.subtitleOffset
         let (url, planned) = Self.plan(resource: resource, position: session.snapshot.position, duration: duration)
@@ -113,7 +107,7 @@ final class SubtitleAudioSync {
                 let (wav, start) = try await withTaskCancellationHandler { try await current.value } onCancel: { current.cancel() }
                 defer { try? FileManager.default.removeItem(at: wav) }
                 let hints = Self.hints(cues, around: start, offset: previous)
-                words += try await Self.recognize(wav, with: recognizer, hints: hints).map { .init($0.text, at: start + $0.time) }
+                words += try await Self.recognize(wav, with: listener, hints: hints).map { .init($0.text, at: start + $0.time) }
             } catch is CancellationError {
                 return
             } catch {
@@ -242,6 +236,54 @@ final class SubtitleAudioSync {
         return fallback
     }
 
+    /// What listens to the clips.
+    enum Listener {
+        /// The system's newer on-device transcriber (macOS 26, iOS 26), for this locale.
+        case transcriber(Locale)
+        case recognizer(SFSpeechRecognizer)
+    }
+
+    /// The transcriber where the system has one for the language: it needs no
+    /// permission and downloads the language's model on first use. Otherwise
+    /// the older recogniser, which asks for speech recognition permission and
+    /// only works offline in languages the device already has (the reason most
+    /// runs failed: "can't recognise English offline", or the permission was
+    /// never granted). Nil once the reason it can't listen has been shown.
+    private func listener(for language: String, name: String) async -> Listener? {
+        if #available(macOS 26, iOS 26, *), let locale = await TranscriberListening.locale(for: language) {
+            do {
+                try await TranscriberListening.prepare(locale)
+                return .transcriber(locale)
+            } catch is CancellationError {
+                return nil
+            } catch {
+                // No network for the model, say: the older recogniser may still have the language.
+                Log.playback.notice("Audio sync: transcriber for \(locale.identifier, privacy: .public) unavailable: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        if Task.isCancelled { return nil }
+        guard await Self.authorize() else {
+            update(.failed("Allow speech recognition for Bluebox in System Settings › Privacy & Security.")); return nil
+        }
+        guard let recognizer = Self.recognizer(for: language), recognizer.isAvailable else {
+            update(.failed("Speech recognition isn't available for \(name).")); return nil
+        }
+        guard recognizer.supportsOnDeviceRecognition else {
+            update(.failed("This device can't recognise \(name) offline.")); return nil
+        }
+        return .recognizer(recognizer)
+    }
+
+    static func recognize(_ url: URL, with listener: Listener, hints: [String]) async throws -> Heard {
+        switch listener {
+        case .transcriber(let locale):
+            guard #available(macOS 26, iOS 26, *) else { return [] }
+            return try await TranscriberListening.recognize(url, locale: locale, hints: hints)
+        case .recognizer(let recognizer):
+            return try await recognize(url, with: recognizer, hints: hints)
+        }
+    }
+
     nonisolated static func authorize() async -> Bool {
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized: return true
@@ -316,6 +358,79 @@ final class SubtitleAudioSync {
                 continuation?.resume(with: result)
                 continuation = nil
             }
+        }
+    }
+}
+
+/// Sync to the Audio's listening with `SpeechAnalyzer` and `SpeechTranscriber`
+/// (macOS 26, iOS 26): on-device, word times included, no permission to ask
+/// for, and many more languages than the older recogniser has offline.
+@available(macOS 26, iOS 26, *)
+enum TranscriberListening {
+    static func module(_ locale: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [.audioTimeRange])
+    }
+
+    /// The transcriber's locale for a language code: the region given, else
+    /// this device's region of it, else the language's usual one ("en" is
+    /// American English, not the first English the list happens to hold).
+    static func locale(for language: String) async -> Locale? {
+        let wanted = Locale(identifier: language)
+        guard let code = wanted.language.languageCode else { return nil }
+        let given = wanted.language.region, here = Locale.current.region
+        let usual = Locale.Language(identifier: Locale.Language(identifier: language).maximalIdentifier).region
+        func rank(_ l: Locale) -> Int {
+            if let given, l.language.region == given { return 0 }
+            if l.language.region == here { return 1 }
+            return l.language.region == usual ? 2 : 3
+        }
+        return await SpeechTranscriber.supportedLocales
+            .filter { $0.language.languageCode == code }
+            .min { (rank($0), $0.identifier) < (rank($1), $1.identifier) }
+    }
+
+    /// Downloads the language's model if this device doesn't have it yet.
+    static func prepare(_ locale: Locale) async throws {
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [module(locale)]) {
+            try await request.downloadAndInstall()
+        }
+    }
+
+    /// Words heard in a clip, with their times from its start.
+    static func recognize(_ url: URL, locale: Locale, hints: [String]) async throws -> SubtitleAudioSync.Heard {
+        let transcriber = module(locale)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        if !hints.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = hints
+            try? await analyzer.setContext(context)
+        }
+        let file = try AVAudioFile(forReading: url)
+        let words = Task {
+            var out: SubtitleAudioSync.Heard = []
+            for try await result in transcriber.results {
+                for run in result.text.runs {
+                    guard let range = run.audioTimeRange else { continue }
+                    out.append((String(result.text[run.range].characters), range.start.seconds))
+                }
+            }
+            return out
+        }
+        return try await withTaskCancellationHandler {
+            do {
+                if let last = try await analyzer.analyzeSequence(from: file) {
+                    try await analyzer.finalizeAndFinish(through: last)
+                } else {
+                    await analyzer.cancelAndFinishNow()
+                }
+            } catch {
+                words.cancel()
+                throw error
+            }
+            return try await words.value
+        } onCancel: {
+            words.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
         }
     }
 }

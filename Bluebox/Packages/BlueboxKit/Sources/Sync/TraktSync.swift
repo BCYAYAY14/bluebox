@@ -27,12 +27,18 @@ public actor TraktSync {
     /// Builds a full title (artwork, overview) for something added on Trakt.
     let resolveTitle: @Sendable (MediaKey) async -> Title?
     let ratings: TraktRatingsStore
+    /// Every foreground, closed player and My List change asks for a pass. One
+    /// with nothing here waiting to go up is skipped until this long after the
+    /// last pass, so flicking between apps doesn't keep asking Trakt.
+    let minimumInterval: TimeInterval
     private var running = false
 
     public init(client: TraktClient, store: LibraryStore, prefs: PreferencesStore,
                 now: @escaping @Sendable () -> Date = { Date() },
+                minimumInterval: TimeInterval = 5 * 60,
                 resolveTitle: @escaping @Sendable (MediaKey) async -> Title? = { _ in nil }) {
         self.client = client; self.store = store; self.prefs = prefs; self.now = now; self.resolveTitle = resolveTitle
+        self.minimumInterval = minimumInterval
         ratings = TraktRatingsStore(prefs: prefs)
     }
 
@@ -42,23 +48,152 @@ public actor TraktSync {
     /// Forgets what was agreed with Trakt, e.g. after connecting another account.
     public func resetState() {
         for key in [Keys.watchlistBase, Keys.historyCursor, Keys.historyBase, Keys.ratingsBase, Keys.ratingsCursor, Keys.outbox,
-                    Keys.listIDs, Keys.listBases] {
+                    Keys.listIDs, Keys.listBases, Keys.activities] {
             prefs.set(String?.none, for: key)
         }
     }
 
+    /// The parts of a pass that can be skipped on their own, each with its
+    /// own time in `sync/last_activities`.
+    enum Section: String, CaseIterable, Sendable {
+        case watchlist, watchedMovies, watchedEpisodes, ratedMovies, ratedShows, ratedEpisodes, lists
+    }
+
+    /// What `sync/last_activities` said for each part at the last pass, and
+    /// when that pass ran, for one Trakt account: another account's times
+    /// mean nothing, so a different account starts with a full pass.
+    struct ActivityState: Codable, Equatable, Sendable {
+        var account: String
+        var stamps: [String: String] = [:]
+        var lastPass: Date?
+    }
+
+    /// Asks Trakt what changed since the last pass (`sync/last_activities`)
+    /// and syncs only those parts, plus any part with something here waiting
+    /// to go up. If Trakt can't say, everything syncs. A pass with nothing
+    /// waiting here within `minimumInterval` of the last one is skipped
+    /// altogether unless `force` (an explicit Sync Now).
     @discardableResult
-    public func sync() async throws -> Report {
+    public func sync(force: Bool = false) async throws -> Report {
         guard !running else { return Report() }
         running = true
         defer { running = false }
         var report = Report()
         try await flushOutbox(&report)
-        try await syncWatchlist(&report)
-        if prefs.value(Bool.self, for: Keys.listsEnabled) == true { try await syncLists(&report) }
-        try await syncHistory(&report)
-        try await syncRatings(&report)
+        // Taken before looking for local changes, and used as the history and
+        // ratings cursors, so a change made while this pass runs is still
+        // newer than the cursor next time.
+        let started = now()
+        let listsOn = prefs.value(Bool.self, for: Keys.listsEnabled) == true
+        let account = await client.username ?? ""
+        var state = activityState(for: account)
+        let waiting = try await localChanges(listsOn: listsOn)
+        if !force, waiting.isEmpty, let last = state.lastPass, started >= last, started.timeIntervalSince(last) < minimumInterval {
+            return report
+        }
+        let activities = await lastActivities()
+        // Due when something here waits, or Trakt's time moved or is unknown.
+        func due(_ section: Section) -> Bool {
+            guard let stamp = activities?.stamp(section) else { return true }
+            return waiting.contains(section) || state.stamps[section.rawValue] != stamp
+        }
+        // Saved part by part, so a failure later in the pass keeps what was done.
+        func done(_ sections: [Section]) {
+            guard let activities else { return }
+            for s in sections { state.stamps[s.rawValue] = activities.stamp(s) }
+            prefs.set(state, for: Keys.activities)
+        }
+
+        if due(.watchlist) { try await syncWatchlist(&report); done([.watchlist]) }
+        if listsOn, due(.lists) { try await syncLists(&report); done([.lists]) }
+        let history = [Section.watchedMovies, .watchedEpisodes].filter { due($0) }
+        if !history.isEmpty {
+            try await syncHistory(movies: history.contains(.watchedMovies), episodes: history.contains(.watchedEpisodes),
+                                  started: started, &report)
+            done(history)
+        }
+        let rated = [Section.ratedMovies, .ratedShows, .ratedEpisodes].filter { due($0) }
+        if !rated.isEmpty {
+            try await syncRatings(Set(rated), started: started, &report)
+            done(rated)
+        }
+        state.lastPass = started
+        prefs.set(state, for: Keys.activities)
         return report
+    }
+
+    private func activityState(for account: String) -> ActivityState {
+        if let saved = prefs.value(ActivityState.self, for: Keys.activities), saved.account == account { return saved }
+        return ActivityState(account: account)
+    }
+
+    /// Trakt's last-change times, or nil when it can't say (offline, an
+    /// error, a reply that isn't JSON): then every part syncs, as it always did.
+    private func lastActivities() async -> TraktActivities? {
+        do {
+            let data = try await client.get("sync/last_activities")
+            return TraktActivities(data)
+        } catch {
+            Log.sync.notice("Trakt: no last activities, syncing everything: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
+    // MARK: Changes waiting here
+
+    /// History records looked at for unsent changes; if every one of them
+    /// changed since the last pass there may be more, so history counts as waiting.
+    static let recentScan = 500
+
+    /// The parts with something here that Trakt hasn't had: compared with
+    /// what both sides agreed at the last pass, as if Trakt still held that.
+    /// Only local data is read.
+    func localChanges(listsOn: Bool) async throws -> Set<Section> {
+        var out: Set<Section> = []
+
+        let base = prefs.value([MediaKey].self, for: Keys.watchlistBase).map(Set.init)
+        let watchlist = Set(try await store.watchlist().map(\.key).filter { $0.tmdbID != nil && $0.seriesKey == nil })
+        if watchlist != base { out.insert(.watchlist) }
+
+        if listsOn {
+            let ids = prefs.value([String: Int].self, for: Keys.listIDs) ?? [:]
+            let bases = prefs.value([String: [MediaKey]].self, for: Keys.listBases) ?? [:]
+            for list in try await store.lists() {
+                let entries = Set(try await store.entries(in: list.id).map(\.key).filter { $0.tmdbID != nil && $0.seriesKey == nil })
+                if ids[list.id] == nil || bases[list.id].map(Set.init) != entries { out.insert(.lists); break }
+            }
+        }
+
+        if let cursor = prefs.value(Date.self, for: Keys.historyCursor),
+           let agreed = Self.dates(prefs.value([String: Date].self, for: Keys.historyBase)) {
+            // Only records that changed here since the last pass can hold anything new.
+            let recent = try await store.recent(limit: Self.recentScan)
+            if recent.count == Self.recentScan, let oldest = recent.last, oldest.updatedAt > cursor {
+                out.formUnion([.watchedMovies, .watchedEpisodes])
+            } else {
+                let changed = try await store.completedProgress(updatedAfter: cursor) + recent.filter { $0.updatedAt > cursor }
+                let local = Dictionary(changed.filter { Self.syncsHistory($0.key) }.map { ($0.key, $0) }) { a, _ in a }
+                let plan = HistoryReconcile.plan(local: local, remote: agreed.filter { local[$0.key] != nil }, base: agreed)
+                for key in Set(plan.addRemote.keys).union(plan.removeRemote) {
+                    out.insert(key.isMovie ? .watchedMovies : .watchedEpisodes)
+                }
+            }
+        } else {
+            out.formUnion([.watchedMovies, .watchedEpisodes])
+        }
+
+        if let cursor = prefs.value(Date.self, for: Keys.ratingsCursor) {
+            for (key, rating) in ratings.all() where rating.updatedAt > cursor { out.insert(Self.ratingSection(key)) }
+        } else {
+            out.formUnion([.ratedMovies, .ratedShows, .ratedEpisodes])
+        }
+        return out
+    }
+
+    /// Which `sync/ratings/*` list a rating belongs to.
+    static func ratingSection(_ key: MediaKey) -> Section {
+        if key.seriesKey != nil { return .ratedEpisodes }
+        return key.isSeries ? .ratedShows : .ratedMovies
     }
 
     // MARK: Watchlist
@@ -109,11 +244,14 @@ public actor TraktSync {
 
     /// Three-way merge of watched state (`HistoryReconcile`): plays go both
     /// ways, and so do removals (unwatching here, or removing a play on Trakt).
-    private func syncHistory(_ report: inout Report) async throws {
-        let started = now()
-        let watched = try await remoteWatched()
-        let base = Self.dates(prefs.value([String: Date].self, for: Keys.historyBase))
-        let all = try await store.recent(limit: 100_000).filter { Self.syncsHistory($0.key) }
+    /// Movies and episodes merge apart, so one that hasn't changed on either
+    /// side isn't fetched; its agreed plays are kept as they were.
+    private func syncHistory(movies: Bool, episodes: Bool, started: Date, _ report: inout Report) async throws {
+        func included(_ key: MediaKey) -> Bool { key.isMovie ? movies : episodes }
+        let watched = try await remoteWatched(movies: movies, episodes: episodes)
+        let allBase = Self.dates(prefs.value([String: Date].self, for: Keys.historyBase))
+        let base = allBase?.filter { included($0.key) }
+        let all = try await store.recent(limit: 100_000).filter { Self.syncsHistory($0.key) && included($0.key) }
         let local = Dictionary(all.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
 
         let plan = HistoryReconcile.plan(local: local, remote: watched, base: base)
@@ -134,7 +272,8 @@ public actor TraktSync {
             _ = try await client.post("sync/history/remove", TraktEpisodeItems(plan.removeRemote))
             report.pushed += plan.removeRemote.count
         }
-        prefs.set(Self.raw(plan.agreed), for: Keys.historyBase)
+        let untouched = allBase?.filter { !included($0.key) } ?? [:]
+        prefs.set(Self.raw(plan.agreed.merging(untouched) { a, _ in a }), for: Keys.historyBase)
         prefs.set(started, for: Keys.historyCursor)
     }
 
@@ -151,7 +290,7 @@ public actor TraktSync {
         key.tmdbID != nil && (key.seriesKey != nil || key.isMovie)
     }
 
-    private func remoteWatched() async throws -> [MediaKey: Date] {
+    private func remoteWatched(movies: Bool, episodes: Bool) async throws -> [MediaKey: Date] {
         struct Movie: Decodable { let last_watched_at: String?; let movie: TraktMedia }
         struct Show: Decodable {
             struct Season: Decodable {
@@ -161,10 +300,13 @@ public actor TraktSync {
             let show: TraktMedia; let seasons: [Season]?
         }
         var out: [MediaKey: Date] = [:]
-        for m in try decode([Movie].self, try await client.get("sync/watched/movies")) {
-            guard let id = m.movie.ids.tmdb, let at = m.last_watched_at.flatMap(TraktDate.parse) else { continue }
-            out[.movie(tmdbID: id)] = at
+        if movies {
+            for m in try decode([Movie].self, try await client.get("sync/watched/movies")) {
+                guard let id = m.movie.ids.tmdb, let at = m.last_watched_at.flatMap(TraktDate.parse) else { continue }
+                out[.movie(tmdbID: id)] = at
+            }
         }
+        guard episodes else { return out }
         for s in try decode([Show].self, try await client.get("sync/watched/shows")) {
             guard let id = s.show.ids.tmdb else { continue }
             for season in s.seasons ?? [] where season.number > 0 {
@@ -196,6 +338,8 @@ public actor TraktSync {
         static let listIDs = "bluebox.trakt.listIDs"
         /// [list ID: [MediaKey]]: what both sides held after the last sync, per list.
         static let listBases = "bluebox.trakt.listBases"
+        /// ActivityState: Trakt's last-change times at the last pass, and when it ran.
+        static let activities = "bluebox.trakt.activities"
     }
 
     // MARK: Lists
@@ -282,11 +426,14 @@ public actor TraktSync {
         ratings.set(rating.map { min(max($0, 1), 10) }, for: key, at: now())
     }
 
-    private func syncRatings(_ report: inout Report) async throws {
-        let started = now()
-        let remote = try await remoteRatings()
-        let local = ratings.all()
-        let base = Self.dates(prefs.value([String: Date].self, for: Keys.ratingsBase))
+    /// Movies, shows and episodes merge apart (like history), so only the
+    /// kinds in `kinds` are fetched; the others' agreed ratings stay as they were.
+    private func syncRatings(_ kinds: Set<Section>, started: Date, _ report: inout Report) async throws {
+        func included(_ key: MediaKey) -> Bool { kinds.contains(Self.ratingSection(key)) }
+        let remote = try await remoteRatings(kinds)
+        let local = ratings.all().filter { included($0.key) }
+        let allBase = Self.dates(prefs.value([String: Date].self, for: Keys.ratingsBase))
+        let base = allBase?.filter { included($0.key) }
         let plan = RatingsReconcile.plan(local: local, remote: remote, base: base)
         if !plan.setRemote.isEmpty {
             _ = try await client.post("sync/ratings", TraktRatingItems(plan.setRemote.compactMapValues { l in
@@ -300,19 +447,22 @@ public actor TraktSync {
         }
         for (key, r) in plan.setLocal { ratings.set(r.rating, for: key, at: r.ratedAt); report.applied += 1 }
         for key in plan.removeLocal { ratings.set(nil, for: key, at: started); report.applied += 1 }
-        ratings.dropRemovalMarkers()
-        prefs.set(Self.raw(plan.agreed), for: Keys.ratingsBase)
+        // Markers set after this pass started haven't reached Trakt yet: they stay for the next one.
+        ratings.dropRemovalMarkers(through: started)
+        let untouched = allBase?.filter { !included($0.key) } ?? [:]
+        prefs.set(Self.raw(plan.agreed.merging(untouched) { a, _ in a }), for: Keys.ratingsBase)
         prefs.set(started, for: Keys.ratingsCursor)
     }
 
-    private func remoteRatings() async throws -> [MediaKey: RemoteRating] {
+    private func remoteRatings(_ kinds: Set<Section>) async throws -> [MediaKey: RemoteRating] {
         struct Entry: Decodable {
             struct Episode: Decodable { let season: Int?; let number: Int? }
             let rated_at: String?; let rating: Int; let type: String?
             let movie: TraktMedia?; let show: TraktMedia?; let episode: Episode?
         }
         var out: [MediaKey: RemoteRating] = [:]
-        for kind in ["movies", "shows", "episodes"] {
+        let paths: [(Section, String)] = [(.ratedMovies, "movies"), (.ratedShows, "shows"), (.ratedEpisodes, "episodes")]
+        for (section, kind) in paths where kinds.contains(section) {
             for e in try decode([Entry].self, try await client.get("sync/ratings/\(kind)")) {
                 let at = e.rated_at.flatMap(TraktDate.parse) ?? .distantPast
                 let key: MediaKey?
@@ -388,10 +538,12 @@ public final class TraktRatingsStore: @unchecked Sendable {
         }
     }
 
-    /// Once removals have reached Trakt, the markers aren't needed.
-    func dropRemovalMarkers() {
+    /// Once removals have reached Trakt, the markers aren't needed. Only those
+    /// made by `date` go: a later one hasn't been sent yet.
+    func dropRemovalMarkers(through date: Date) {
         lock.withLock {
-            let raw = (prefs.value([String: LocalRating].self, for: Self.key) ?? [:]).filter { $0.value.rating != nil }
+            let raw = (prefs.value([String: LocalRating].self, for: Self.key) ?? [:])
+                .filter { $0.value.rating != nil || $0.value.updatedAt > date }
             prefs.set(raw, for: Self.key)
         }
     }
@@ -427,6 +579,42 @@ public enum WatchlistReconcile {
 }
 
 // MARK: Wire format
+
+/// `GET sync/last_activities`: when each part of the account last changed on
+/// Trakt (`{ all, movies: { watched_at, rated_at, watchlisted_at, … },
+/// episodes: {…}, shows: {…}, lists: { updated_at, … }, watchlist: { updated_at } }`).
+/// The times are kept as Trakt's own strings and only compared for equality,
+/// so a format change can't confuse anything; a missing one counts as changed.
+struct TraktActivities: Sendable, Equatable {
+    let fields: [String: [String: String]]
+
+    init?(_ data: Data) {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        var fields: [String: [String: String]] = [:]
+        for (group, value) in object {
+            if let values = value as? [String: Any] { fields[group] = values.compactMapValues { $0 as? String } }
+        }
+        self.fields = fields
+    }
+
+    /// One part's time, or nil when Trakt didn't say.
+    func stamp(_ section: TraktSync.Section) -> String? {
+        func field(_ group: String, _ name: String) -> String? { fields[group]?[name] }
+        switch section {
+        case .watchlist:
+            // My List holds movies and shows. `watchlist.updated_at` is newer
+            // and only adds to the stamp when it's there.
+            guard let movies = field("movies", "watchlisted_at"), let shows = field("shows", "watchlisted_at") else { return nil }
+            return [movies, shows, field("watchlist", "updated_at") ?? ""].joined(separator: "|")
+        case .watchedMovies: return field("movies", "watched_at")
+        case .watchedEpisodes: return field("episodes", "watched_at")
+        case .ratedMovies: return field("movies", "rated_at")
+        case .ratedShows: return field("shows", "rated_at")
+        case .ratedEpisodes: return field("episodes", "rated_at")
+        case .lists: return field("lists", "updated_at")
+        }
+    }
+}
 
 struct TraktIDs: Codable, Sendable {
     var tmdb: Int?

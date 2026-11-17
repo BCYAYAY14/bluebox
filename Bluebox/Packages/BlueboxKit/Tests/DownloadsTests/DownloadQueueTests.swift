@@ -296,6 +296,104 @@ final class FakeRunner: @unchecked Sendable {
         #expect(!m.isDownloaded(.episode(seriesID: 9, season: 1, episode: 3)))
     }
 
+    // MARK: Index writes
+
+    /// What a relaunch would read.
+    func onDisk(_ dir: URL) throws -> [String: DownloadRecord] {
+        let list = try JSONDecoder().decode([DownloadRecord].self, from: Data(contentsOf: dir.appending(path: "index.json")))
+        return Dictionary(list.map { ($0.id, $0) }) { a, _ in a }
+    }
+
+    /// Pausing, resuming or deleting a 100-episode selection used to write
+    /// the index twice per episode on the caller's thread.
+    @Test func bulkCommandsWriteTheIndexOnce() async throws {
+        let dir = DownloadsTests.tempDir()
+        let runner = FakeRunner()
+        let m = manager(dir, settings: DownloadSettings(maxConcurrent: 2), runner: runner)
+        let hashes = (0..<100).map { String(format: "%040x", $0 + 1) }
+        for (i, h) in hashes.enumerated() {
+            try m.enqueue(torrent(h, key: .movie(tmdbID: 100 + i)), key: .movie(tmdbID: 100 + i), title: h)
+        }
+        try await ready(m) { _ in runner.log.count == 2 }
+        let ids = hashes.map(id)
+
+        var before = m.indexWrites
+        m.pause(ids)
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir).values.allSatisfy { $0.state == .paused })
+
+        before = m.indexWrites
+        m.resume(ids)
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir).values.allSatisfy { $0.state == .queued || $0.state == .downloading })
+
+        before = m.indexWrites
+        m.delete(ids)
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir).isEmpty)
+        await m.settle()
+    }
+
+    @Test func aQueuePassThatChangesNothingDoesNotWrite() async throws {
+        let runner = FakeRunner()
+        let m = manager(settings: DownloadSettings(maxConcurrent: 1), runner: runner)
+        try m.enqueue(torrent(Self.hashA), key: .movie(tmdbID: 1), title: "A")
+        try m.enqueue(torrent(Self.hashB, key: .movie(tmdbID: 2)), key: .movie(tmdbID: 2), title: "B")
+        try await ready(m) { _ in runner.log.count == 1 }
+        let before = m.indexWrites
+        m.pump()
+        m.pump()
+        #expect(m.indexWrites == before)
+        // Pausing an already paused download is no command at all.
+        m.pause(id(Self.hashA))
+        let paused = m.indexWrites
+        m.pause(id(Self.hashA))
+        m.resume(id(Self.hashB))  // queued, not paused: nothing to resume
+        #expect(m.indexWrites == paused)
+        await m.settle()
+    }
+
+    /// Every command is on disk by the time it returns, in one write.
+    @Test func eachCommandIsOnDiskWhenItReturns() async throws {
+        let dir = DownloadsTests.tempDir()
+        let runner = FakeRunner()
+        let m = manager(dir, settings: DownloadSettings(maxConcurrent: 1), runner: runner)
+        try m.enqueue(torrent(Self.hashA), key: .movie(tmdbID: 1), title: "A")
+        try await ready(m) { _ in runner.log.count == 1 }
+
+        var before = m.indexWrites
+        try m.enqueue(torrent(Self.hashB, key: .movie(tmdbID: 2)), key: .movie(tmdbID: 2), title: "B", mobileData: true)
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir)[id(Self.hashB)]?.state == .queued)
+        #expect(try onDisk(dir)[id(Self.hashB)]?.allowsMobileData == true)
+
+        before = m.indexWrites
+        m.pause(id(Self.hashA))  // B takes A's slot in the same write
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir)[id(Self.hashA)]?.state == .paused)
+        #expect(try onDisk(dir)[id(Self.hashB)]?.state == .downloading)
+
+        before = m.indexWrites
+        m.resume(id(Self.hashA))  // back in its old place, ahead of B, so it takes the slot back
+        #expect(m.indexWrites == before + 1)
+        var disk = try onDisk(dir)
+        #expect(disk[id(Self.hashA)]?.state == .downloading && disk[id(Self.hashB)]?.state == .queued)
+
+        before = m.indexWrites
+        m.prioritize(id(Self.hashB))
+        #expect(m.indexWrites == before + 1)
+        disk = try onDisk(dir)
+        let a = try #require(disk[id(Self.hashA)]), b = try #require(disk[id(Self.hashB)])
+        #expect(b.sortOrder < a.sortOrder)
+        #expect(disk[id(Self.hashB)]?.state == .downloading && disk[id(Self.hashA)]?.state == .queued)
+
+        before = m.indexWrites
+        m.delete(id(Self.hashB))
+        #expect(m.indexWrites == before + 1)
+        #expect(try onDisk(dir)[id(Self.hashB)] == nil)
+        await m.settle()
+    }
+
     @Test func withoutARunnerTorrentsFailClearly() async throws {
         let m = DownloadManager(directory: DownloadsTests.tempDir(), configuration: .ephemeral, monitorsNetwork: false)
         try m.enqueue(torrent(Self.hashA), key: .movie(tmdbID: 1), title: "A")

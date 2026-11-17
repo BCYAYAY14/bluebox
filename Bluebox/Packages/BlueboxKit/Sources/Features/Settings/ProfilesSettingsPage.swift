@@ -45,6 +45,7 @@ struct ProfilesSection: View {
                     SettingsChevron()
                 }
                 .settingsRow(p.id == app.currentProfileID ? "Edit Profile" : "Profile \(p.id)")
+                .profileDeleteMenu(p)
             }
             NavigationLink(value: SettingsRoute.newProfile) {
                 Text("Add Profile…").foregroundStyle(Palette.brandBright).frame(maxWidth: .infinity, alignment: .leading)
@@ -78,6 +79,47 @@ struct ProfilesSection: View {
     }
 }
 
+// MARK: - Delete from a menu
+
+extension View {
+    /// Right-click (long press on iPhone and iPad) a profile for Delete
+    /// Profile…, so it isn't only at the foot of its editor.
+    func profileDeleteMenu(_ profile: Profile) -> some View { modifier(ProfileDeleteMenu(profile: profile)) }
+}
+
+/// The menu and its confirmation. Offered only where the profile could be
+/// edited without a PIN: never for the first profile (it holds the account's
+/// library and Trakt), a restricted profile watching (Settings asks for a PIN),
+/// or a locked one that would ask for its PIN: someone else's, or at the
+/// launch "Who's watching?" even the restored one (`ProfileLock`).
+private struct ProfileDeleteMenu: ViewModifier {
+    @Environment(AppModel.self) private var app
+    let profile: Profile
+    @State private var confirming = false
+
+    private var canDelete: Bool {
+        ProfileLock.canDeleteFromMenu(profileID: profile.id, isDefault: profile.isDefault, currentID: app.currentProfileID,
+                                      isLocked: app.isLocked(profile.id), atGate: app.profileGateOpen,
+                                      settingsNeedsPIN: app.settingsNeedsPIN)
+    }
+
+    func body(content: Content) -> some View {
+        if canDelete {
+            content
+                .contextMenu {
+                    Button("Delete Profile…", systemImage: "trash", role: .destructive) { confirming = true }
+                }
+                .confirmationDialog("Delete this profile?", isPresented: $confirming) {
+                    Button("Delete Profile", role: .destructive) { Task { await app.deleteProfile(profile.id) } }
+                } message: {
+                    Text("Its My List and watch progress are removed from all your devices.")
+                }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Editor
 
 /// Create and edit a profile on a full page (not a form sheet): a big avatar
@@ -104,7 +146,8 @@ struct ProfileEditorPage: View {
     @State private var allowsUnrated: Bool?
     @State private var loaded = false
     @State private var confirmingDelete = false
-    /// A locked profile that isn't the one watching asks for its PIN before editing.
+    /// A locked profile that isn't the one watching (or any locked one, from the
+    /// launch "Who's watching?") asks for its PIN before editing.
     @State private var unlocked = false
     @FocusState private var nameFocused: Bool
 
@@ -124,7 +167,11 @@ struct ProfileEditorPage: View {
                 // A restricted profile watching: its PIN before editing itself or adding
                 // a profile (Settings asks too; this covers the Mac picker's Add Profile).
                 SettingsPINGate { dismiss() }
-            } else if let profile, app.isLocked(profile.id), profile.id != app.currentProfileID, !unlocked {
+            } else if let profile, !unlocked,
+                      ProfileLock.needsPIN(profileID: profile.id, currentID: app.currentProfileID,
+                                           isLocked: app.isLocked(profile.id), atGate: app.profileGateOpen) {
+                // Someone else's locked profile, or the watching one when Manage
+                // Profiles was opened from the launch "Who's watching?".
                 ProfilePINEntry(profile: profile, done: { _ in unlocked = true }, cancel: { dismiss() })
             } else {
                 editor

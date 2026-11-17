@@ -37,6 +37,10 @@ public struct AddonHealth: Sendable, Equatable {
     public var skippedUntil: Date?
     /// How long the next skip lasts.
     var backoff: TimeInterval = AddonHealthMonitor.firstBackoff
+    /// Failures in a row counting towards a skip. Like `consecutiveFailures`,
+    /// but a network change starts it again while Settings still shows the
+    /// failures that happened.
+    var strikes = 0
 
     public init(addonID: String) { self.addonID = addonID }
 
@@ -97,6 +101,7 @@ public actor AddonHealthMonitor {
         r.requests += 1
         r.successes += 1
         r.consecutiveFailures = 0
+        r.strikes = 0
         r.lastError = nil
         r.lastReleaseCount = releases
         r.skippedUntil = nil
@@ -109,6 +114,7 @@ public actor AddonHealthMonitor {
         var r = records[id] ?? AddonHealth(addonID: id)
         r.requests += 1
         r.consecutiveFailures += 1
+        r.strikes += 1
         let isTimeout = Self.isTimeout(error)
         if isTimeout {
             r.timeouts += 1
@@ -118,7 +124,7 @@ public actor AddonHealthMonitor {
             r.lastError = Self.shortDescription(error)
         }
         r.averageLatency = r.averageLatency.map { $0 * 0.7 + latency * 0.3 } ?? latency
-        if isTimeout || Self.isUnreachable(error), r.consecutiveFailures >= Self.timeoutsBeforeSkipping {
+        if isTimeout || Self.isUnreachable(error), r.strikes >= Self.timeoutsBeforeSkipping {
             r.skippedUntil = now().addingTimeInterval(r.backoff)
             r.backoff = min(r.backoff * 2, Self.maxBackoff)
         }
@@ -132,9 +138,27 @@ public actor AddonHealthMonitor {
     /// Ends a skip early ("Try Again" in Settings).
     public func reset(_ id: String) { records[id] = nil }
 
+    /// The network path changed (back online, Wi-Fi to mobile data): timeouts
+    /// on the old one say nothing about the add-ons, so every skip ends and the
+    /// count towards the next starts again. The tallies and last error stay,
+    /// so Settings still tells what happened until an add-on answers.
+    public func networkChanged() {
+        for id in records.keys {
+            records[id]?.skippedUntil = nil
+            records[id]?.strikes = 0
+            records[id]?.backoff = Self.firstBackoff
+        }
+    }
+
     static func isTimeout(_ error: Error) -> Bool {
         if let e = error as? AddonError, e == .timedOut { return true }
         return (error as? URLError)?.code == .timedOut
+    }
+
+    /// A failure that the connection, not the add-on, may be to blame for:
+    /// no answer came back at all.
+    static func blamesNetwork(_ error: Error) -> Bool {
+        isTimeout(error) || isUnreachable(error) || (error as? URLError)?.code == .notConnectedToInternet
     }
 
     static func isUnreachable(_ error: Error) -> Bool {

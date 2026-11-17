@@ -179,17 +179,24 @@ public struct SearchOutcome: Sendable {
 /// short grace after the first useful answer, or at the soft deadline if
 /// anything has come in. Add-ons still answering keep going; each late
 /// answer calls `onLate` with the full merged list. Cancelling the caller
-/// cancels every request.
+/// cancels every request. Skipped add-ons sit out, unless every one is
+/// skipped: then they're all asked, so a search always sends a request.
 public enum AddonSearch {
     public static func run(_ addons: [ResolvedAddon], request: StreamRequest, client: AddonClient,
                            health: AddonHealthMonitor, timing: SearchTiming = SearchTiming(),
                            onLate: @escaping @Sendable ([AddonRelease]) async -> Void = { _ in }) async throws -> SearchOutcome {
+        let eligible = addons.filter { $0.types.isEmpty || $0.types.contains(request.type) }
         var asked: [ResolvedAddon] = []
-        for addon in addons where addon.types.isEmpty || addon.types.contains(request.type) {
+        for addon in eligible {
             if await health.shouldAsk(addon.id) { asked.append(addon) }
         }
+        // Every add-on is sitting out a skip: ask them all anyway. Failing
+        // without a request would tell nobody anything, and the skips may only
+        // have come from a bad connection that has since come back.
+        if asked.isEmpty { asked = eligible }
         guard !asked.isEmpty else { throw addons.isEmpty ? AddonError.noAddons : AddonError.timedOut }
 
+        let round = HealthRound(health: health)
         let collector = Collector(count: asked.count, onLate: onLate)
         let grace = timing.grace
         await collector.setGrace { Task { try? await Task.sleep(for: .seconds(grace)); await collector.graceEnded() } }
@@ -201,15 +208,15 @@ public enum AddonSearch {
                     let response = try await client.streams(addon, request: request, timeout: timing.perAddon)
                     let elapsed = Date().timeIntervalSince(started)
                     if response.debridRejected {
-                        await health.recordFailure(addon.id, error: AddonError.debridRejected, latency: elapsed)
+                        await round.failure(addon.id, error: AddonError.debridRejected, latency: elapsed)
                         await collector.deliver(index, .failure(AddonError.debridRejected), name: addon.id)
                     } else {
-                        await health.recordSuccess(addon.id, latency: elapsed, releases: response.releases.count)
+                        await round.success(addon.id, latency: elapsed, releases: response.releases.count)
                         await collector.deliver(index, .success(response.releases), name: addon.id)
                     }
                 } catch {
                     if !(error is CancellationError), !Task.isCancelled {
-                        await health.recordFailure(addon.id, error: error, latency: Date().timeIntervalSince(started))
+                        await round.failure(addon.id, error: error, latency: Date().timeIntervalSince(started))
                     }
                     await collector.deliver(index, .failure(error), name: addon.id)
                 }
@@ -233,6 +240,45 @@ public enum AddonSearch {
         } onCancel: {
             tasks.forEach { $0.cancel() }
             timers.forEach { $0.cancel() }
+        }
+    }
+
+    /// Writes one search's answers into each add-on's health, except where
+    /// the connection rather than the add-on is to blame. A timeout or a
+    /// failed connection counts once another add-on in the same search has
+    /// answered at all (even an HTTP error shows the network was up); when
+    /// every add-on failed that way, their records are left alone, so a weak
+    /// signal on a train doesn't get every add-on skipped.
+    actor HealthRound {
+        private let health: AddonHealthMonitor
+        /// Some add-on has answered, so the network works.
+        private var networkWorked = false
+        /// Network failures waiting to learn whether the network was up.
+        private var held: [(id: String, error: Error, latency: TimeInterval)] = []
+
+        init(health: AddonHealthMonitor) { self.health = health }
+
+        func success(_ id: String, latency: TimeInterval, releases: Int) async {
+            await health.recordSuccess(id, latency: latency, releases: releases)
+            await networkAnswered()
+        }
+
+        func failure(_ id: String, error: Error, latency: TimeInterval) async {
+            let blamesNetwork = AddonHealthMonitor.blamesNetwork(error)
+            guard networkWorked || !blamesNetwork else {
+                held.append((id: id, error: error, latency: latency))
+                return
+            }
+            await health.recordFailure(id, error: error, latency: latency)
+            if !blamesNetwork { await networkAnswered() }
+        }
+
+        /// The held failures were the add-ons' own after all: record them.
+        private func networkAnswered() async {
+            networkWorked = true
+            let held = self.held
+            self.held = []
+            for h in held { await health.recordFailure(h.id, error: h.error, latency: h.latency) }
         }
     }
 

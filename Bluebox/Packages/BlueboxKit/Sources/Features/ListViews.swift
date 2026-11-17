@@ -116,12 +116,23 @@ struct ListDetailView: View {
     @State private var totalMinutes = 0
     @State private var loaded = false
     @State private var failed = false
+    /// What the page last read, so coming back from a title page doesn't read
+    /// the list and its runtimes again when the library hasn't changed.
+    @State private var loadMemory = PageLoadMemory<LoadKey>()
     @State private var sort: MyListSort = .manual
     @State private var editing = false
     @State private var editOrder: [Title] = []
     @State private var selection: Set<MediaKey> = []
 
     private var isSmart: Bool { !id.isEditable }
+
+    /// A list changes with the library (its entries, My List, progress and
+    /// downloads for smart lists); 4K Available follows the sources too.
+    struct LoadKey: Hashable, Sendable {
+        let libraryRevision: Int
+        let sourcesRevision: Int
+        let profileID: String
+    }
 
     private var name: String {
         switch id {
@@ -177,37 +188,47 @@ struct ListDetailView: View {
         }
     }
 
-    private func load() async {
+    /// Reads the list. Skipped on the way back from a title page when the
+    /// library is as it was (within `PageLoadMemory.maxAge`), unless `force` (Try Again).
+    private func load(force: Bool = false) async {
+        let key = LoadKey(libraryRevision: app.libraryRevision, sourcesRevision: app.sourcesRevision, profileID: app.currentProfileID)
+        if !force, loadMemory.isCurrent(key) { return }
+        // Unchanged values aren't written back: each write redraws the page.
+        func show(manual newManual: [MediaKey], recent newRecent: [Title]) {
+            if newManual != manual { manual = newManual }
+            if newRecent != recent { recent = newRecent }
+        }
         do {
             switch id {
             case .myList:
                 let entries = try await app.store.watchlistEntries()
-                manual = entries.map(\.key)
-                recent = entries.sorted { $0.addedAt > $1.addedAt }.map(\.title)
+                show(manual: entries.map(\.key), recent: entries.sorted { $0.addedAt > $1.addedAt }.map(\.title))
             case .own(let listID):
-                list = try await app.store.list(listID)
+                let read = try await app.store.list(listID)
+                if read != list { list = read }
                 // A list deleted on another device: leave its page.
                 guard list != nil else { dismiss(); return }
                 let entries = try await app.store.entries(in: listID)
-                manual = entries.map(\.key)
-                recent = entries.sorted { $0.addedAt > $1.addedAt }.map(\.title)
+                show(manual: entries.map(\.key), recent: entries.sorted { $0.addedAt > $1.addedAt }.map(\.title))
             case .smart:
                 let titles = try await app.listTitles(id)
-                manual = titles.map(\.key)
-                recent = titles
+                show(manual: titles.map(\.key), recent: titles)
             }
-            failed = false
+            if failed { failed = false }
         } catch {
             failed = true
         }
         let runtimes = await app.runtimes(for: recent)
-        totalMinutes = recent.reduce(0) { $0 + (runtimes[$1.key] ?? 0) }
+        let minutes = recent.reduce(0) { $0 + (runtimes[$1.key] ?? 0) }
+        if minutes != totalMinutes { totalMinutes = minutes }
         if !loaded {
             let saved = ViewMemory.string(memoryKey, profile: app.currentProfileID).flatMap(MyListSort.init(rawValue:))
             sort = saved.flatMap { MyListSort.options(smart: isSmart).contains($0) ? $0 : nil } ?? .manual
         }
         rearrange()
         loaded = true
+        // A failed read, or one cut short by leaving, reads again next time.
+        if failed || Task.isCancelled { loadMemory.forget() } else { loadMemory.remember(key) }
     }
 
     private func rearrange() {
@@ -253,7 +274,7 @@ struct ListDetailView: View {
         if failed {
             StateMessage(.failed, title: "Couldn't open this list",
                          message: "Bluebox couldn't read the library on this device. Try again.",
-                         actionTitle: "Try Again") { Task { await load() } }
+                         actionTitle: "Try Again") { Task { await load(force: true) } }
         } else if case .smart(let s) = id {
             StateMessage(systemImage: s.symbol, title: "Nothing here yet", message: smartHint(s))
         } else {

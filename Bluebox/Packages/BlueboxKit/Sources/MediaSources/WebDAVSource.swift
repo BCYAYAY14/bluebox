@@ -32,6 +32,7 @@ public actor WebDAVSource: MediaSource {
     private var nonceCount = 0
     private var scanned: [Entry]?
     private var scannedAt: Date?
+    private var loading: Task<[Entry], Error>?
     /// Catalog matches by path, kept across rescans like local folders.
     private var matches: [String: MediaKey] = [:]
     private var now: @Sendable () -> Date = { Date() }
@@ -86,6 +87,7 @@ public actor WebDAVSource: MediaSource {
 
     public func rescan() async throws -> [MediaVariant] {
         scanned = nil
+        loading?.cancel(); loading = nil  // a scan under way would answer with the old matches
         matches = [:]
         return try await catalog()
     }
@@ -120,6 +122,16 @@ public actor WebDAVSource: MediaSource {
             let allMatched = matcher == nil || !scanned.contains { $0.key == nil }
             if age < (allMatched ? Self.refreshInterval : Self.unmatchedRetryInterval) { return scanned }
         }
+        // One load at a time: a season page asks about every episode at once, and
+        // each ask used to start its own read of the whole library.
+        if let loading { return try await loading.value }
+        let task = Task { try await self.loadEntries() }
+        loading = task
+        defer { if loading == task { loading = nil } }
+        return try await task.value
+    }
+
+    private func loadEntries() async throws -> [Entry] {
         let root = Self.directory(credentials.server)
         let rootPath = root.path(percentEncoded: false)
         var queue: [(URL, Int)] = [(root, 0)]

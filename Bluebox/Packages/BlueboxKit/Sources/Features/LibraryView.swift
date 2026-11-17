@@ -49,9 +49,13 @@ struct LibraryView: View {
     /// History under date headings, grouped once per load.
     @State private var historyGroups: [WatchHistory.Group] = []
     @State private var groups: [SourceGroup] = []
-    @State private var loaded = false
-    /// The library itself couldn't be read (the store on this device).
-    @State private var libraryFailed = false
+    /// Sections read at least once: each loads when it's first shown.
+    @State private var loadedSections: Set<Section> = []
+    /// Sections whose last read of the library failed (the store on this device).
+    @State private var failedSections: Set<Section> = []
+    /// What each section last loaded, so coming back from a title page, or to
+    /// a section, doesn't read it again when nothing it shows has changed.
+    @State private var loadMemory: [Section: PageLoadMemory<LoadKey>] = [:]
     /// Sources that couldn't be reached on the last load (their titles from before stay).
     @State private var unreachableSources: [String] = []
     /// Folders that couldn't be read, and why (moved, or no longer permitted).
@@ -69,17 +73,36 @@ struct LibraryView: View {
     /// "Add a Source" from the empty My Sources: Settings › Sources.
     @Environment(\.openSettingsPage) private var openSettingsPage
 
-    struct SourceGroup: Identifiable {
+    struct SourceGroup: Identifiable, Equatable {
         let id: SourceID
         let name: String
         let items: [SourceItem]
     }
 
-    struct SourceItem: Identifiable {
+    struct SourceItem: Identifiable, Equatable {
         let variant: MediaVariant
         let title: Title?
         var id: String { variant.sourceID.rawValue + "/" + variant.id }
     }
+
+    /// What the section on screen is read from: the library's revision, or
+    /// for My Sources the sources' (closing the player bumps the library's,
+    /// and a source tab kept alive on Mac shouldn't list every file again).
+    struct LoadKey: Hashable, Sendable {
+        let section: Section
+        let revision: Int
+        let profileID: String
+    }
+
+    private var loadKey: LoadKey {
+        LoadKey(section: section, revision: section == .onDevice ? app.sourcesRevision : app.libraryRevision,
+                profileID: app.currentProfileID)
+    }
+
+    /// The section on screen has been read (its skeleton gives way).
+    private var loaded: Bool { loadedSections.contains(section) }
+    /// Its last read of the library failed.
+    private var libraryFailed: Bool { failedSections.contains(section) }
 
     var body: some View {
         GeometryReader { geo in
@@ -115,8 +138,14 @@ struct LibraryView: View {
         .toolbarBackground(Palette.background, for: .navigationBar)
         .toolbarBackgroundVisibility(scrolled ? .visible : .hidden, for: .navigationBar)
         #endif
-        .task(id: "\(app.libraryRevision)-\(app.sourcesRevision)") { await load() }
-        .refreshable { await app.rescanSources() }
+        // The section on screen, when it's shown, when what it's read from changes, and
+        // on the way back from a title page (`load` keeps it then if nothing changed).
+        .task(id: loadKey) { await load() }
+        .refreshable {
+            await app.rescanSources()
+            // My Sources loads again by itself on the new sources revision.
+            if section != .onDevice { await load(force: true) }
+        }
         .onChange(of: section) { _, s in if !fixed { ViewMemory.set(s.rawValue, "librarySection", profile: app.currentProfileID) } }
         .task(id: app.currentProfileID) {
             let profile = app.currentProfileID
@@ -139,7 +168,7 @@ struct LibraryView: View {
             ViewMemory.set(s.rawValue, "myListSort", profile: app.currentProfileID)
             rearrange()
         }
-        .reloadsWhenBackOnline(!unreachableSources.isEmpty) { await load() }
+        .reloadsWhenBackOnline(!unreachableSources.isEmpty) { await load(force: true) }
         .fixMatchSheet($fixingMatch)
     }
 
@@ -165,32 +194,88 @@ struct LibraryView: View {
         .accessibilityLabel("Library sections")
     }
 
-    /// Reads My List, Continue Watching, History and your sources. What fails
-    /// keeps what it showed: a store read leaves the list as it was (and says
-    /// so if there's nothing), a source that can't be reached keeps its files
-    /// from the last load and is named in a "Couldn't reach" notice.
-    private func load() async {
-        var failed = false
+    /// Reads the section on screen: My List, Lists, Continue Watching, History
+    /// or your sources (the other sections load when they're shown). Skipped
+    /// when it was read recently from the same revision, unless `force` (Try
+    /// Again, Retry, pull to refresh, back online). What fails keeps what it
+    /// showed: a store read leaves the list as it was (and says so if there's
+    /// nothing), a source that can't be reached keeps its files from the last
+    /// load and is named in a "Couldn't reach" notice.
+    private func load(force: Bool = false) async {
+        let key = loadKey
+        let shown = key.section
+        if !force, loadMemory[shown]?.isCurrent(key) == true { return }
+        let worked: Bool
+        switch shown {
+        case .myList: worked = await loadMyList()
+        case .lists: worked = await loadLists()
+        case .watching: worked = await loadWatching()
+        case .history: worked = await loadHistory()
+        case .onDevice: worked = await loadSources()
+        }
+        // Left for another section or page part way: the next showing reads it again.
+        guard !Task.isCancelled else { return }
+        if shown != .onDevice {
+            if worked { failedSections.remove(shown) } else { failedSections.insert(shown) }
+        }
+        // A failed read, or an unreachable source, isn't remembered: coming back tries again.
+        if worked { loadMemory[shown, default: PageLoadMemory()].remember(key) } else { loadMemory[shown] = nil }
+        // The first time, the skeletons fade into the page instead of cutting to it.
+        if !loadedSections.contains(shown) { withAnimation(Motion.standard(reduceMotion)) { _ = loadedSections.insert(shown) } }
+    }
+
+    private func loadMyList() async -> Bool {
         do {
-            watchlist = try await app.store.watchlist()
-            manualOrder = try await app.store.watchlistEntries().map(\.key)
-        } catch { failed = true }
-        rearrange()
-        do { summaries = try await app.librarySummaries() } catch { failed = true }
-        // Titles looked up side by side (each may be a catalogue request).
+            let list = try await app.store.watchlist()
+            let order = try await app.store.watchlistEntries().map(\.key)
+            guard !Task.isCancelled else { return false }
+            if list != watchlist { watchlist = list }
+            if order != manualOrder { manualOrder = order }
+            rearrange()
+            return true
+        } catch {
+            rearrange()
+            return false
+        }
+    }
+
+    private func loadLists() async -> Bool {
+        do {
+            let read = try await app.librarySummaries()
+            guard !Task.isCancelled else { return false }
+            if read != summaries { summaries = read }
+            return true
+        } catch { return false }
+    }
+
+    /// Titles looked up side by side (each may be a catalogue request).
+    private func loadWatching() async -> Bool {
         do {
             let progress = try await app.store.continueWatching(limit: 50)
             let titles = await app.titles(for: progress.map { $0.key.seriesKey ?? $0.key })
-            watching = zip(progress, titles).compactMap { p, t in t.map { WatchEntry(progress: p, title: $0) } }
-        } catch { failed = true }
+            guard !Task.isCancelled else { return false }
+            let entries = zip(progress, titles).compactMap { p, t in t.map { WatchEntry(progress: p, title: $0) } }
+            if entries != watching { watching = entries }
+            return true
+        } catch { return false }
+    }
+
+    private func loadHistory() async -> Bool {
         do {
             let finished = Array(WatchHistory.finished(try await app.store.recent(limit: 500)).prefix(200))
             let titles = await app.titles(for: finished.map { $0.key.seriesKey ?? $0.key })
-            history = zip(finished, titles).compactMap { p, t in t.map { HistoryEntry(progress: p, title: $0) } }
-            historyGroups = WatchHistory.grouped(history)
-        } catch { failed = true }
-        libraryFailed = failed
+            guard !Task.isCancelled else { return false }
+            let entries = zip(finished, titles).compactMap { p, t in t.map { HistoryEntry(progress: p, title: $0) } }
+            if entries != history {
+                history = entries
+                historyGroups = WatchHistory.grouped(entries)
+            }
+            return true
+        } catch { return false }
+    }
 
+    /// Your sources' files. True when every source answered.
+    private func loadSources() async -> Bool {
         var built: [SourceGroup] = []
         var unreachable: [String] = []
         var problems: [String] = []
@@ -217,11 +302,11 @@ struct LibraryView: View {
             let items = variants.enumerated().map { i, v in SourceItem(variant: v, title: byIndex[i]) }
             built.append(SourceGroup(id: source.id, name: source.displayName, items: items))
         }
-        groups = built
-        unreachableSources = unreachable
-        folderProblems = problems
-        // The first time, the skeletons fade into the page instead of cutting to it.
-        if !loaded { withAnimation(Motion.standard(reduceMotion)) { loaded = true } }
+        guard !Task.isCancelled else { return false }
+        if built != groups { groups = built }
+        if unreachable != unreachableSources { unreachableSources = unreachable }
+        if problems != folderProblems { folderProblems = problems }
+        return unreachable.isEmpty
     }
 
     /// My List filtered and sorted. Runs on load and when the chips or sort
@@ -257,7 +342,7 @@ struct LibraryView: View {
         if phase == .failed {
             StateMessage(.failed, title: "Couldn't open your library",
                          message: "Bluebox couldn't read the library on this device. Try again; if it keeps happening, restart Bluebox.",
-                         actionTitle: "Try Again") { Task { await load() } }
+                         actionTitle: "Try Again") { Task { await load(force: true) } }
         }
     }
 
@@ -440,7 +525,7 @@ struct LibraryView: View {
     private func removeFromContinueWatching(_ entry: WatchEntry) {
         Task {
             await app.removeFromContinueWatching(entry.progress)
-            await load()
+            await load(force: true)
             app.showToast(AppToast(entry.title.name, message: "Removed from Continue Watching", actionTitle: "Undo") { [app] in
                 Task { await app.restoreToContinueWatching(entry.progress) }
             })
@@ -506,7 +591,7 @@ struct LibraryView: View {
         if !unreachableSources.isEmpty {
             InlineNotice(systemImage: "wifi.exclamationmark",
                          "Couldn't reach \(ListFormatter.localizedString(byJoining: unreachableSources))",
-                         actionTitle: "Retry") { Task { await load() } }
+                         actionTitle: "Retry") { Task { await load(force: true) } }
                 .padding(.horizontal, inset)
         }
         ForEach(folderProblems, id: \.self) { problem in
@@ -532,7 +617,8 @@ struct LibraryView: View {
                 if sourceFilter == nil {
                     Text(group.name).font(Typography.rowTitle).padding(.horizontal, inset).accessibilityAddTraits(.isHeader)
                 }
-                VStack(spacing: 0) {
+                // Lazy: a server can list thousands of files, each row with a poster to load.
+                LazyVStack(spacing: 0) {
                     ForEach(group.items) { item in
                         if item.id != group.items.first?.id {
                             // Inset to the text, past the poster, as in a grouped list.

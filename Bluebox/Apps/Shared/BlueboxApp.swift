@@ -238,6 +238,10 @@ struct BlueboxApp: App {
             }
             await m.bootstrap()
             #if DEBUG
+            // README graphics: with -empty-library, so the sample library doesn't mix in.
+            if args.contains("-ui-testing") && args.contains("-showcase") {
+                await m.seedShowcaseForReview(family: args.contains("-showcase-family"))
+            }
             if args.contains("-ui-testing") && args.contains("-seed-screens") { await m.seedScreensForReview() }
             if args.contains("-ui-testing") && args.contains("-seed-profiles") { m.seedProfilesForReview() }
             if args.contains("-ui-testing") && args.contains("-seed-remote") { m.remote.seedForReview() }

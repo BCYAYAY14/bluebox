@@ -217,7 +217,10 @@ public struct TMDBService: MetadataProvider {
         return Self.imageBase.appending(path: Self.sizeBucket(for: artwork.kind, width: width)).appending(path: artwork.path)
     }
 
-    /// Picks the smallest TMDB size bucket that is at least `width` pixels.
+    /// Picks the smallest TMDB size bucket that is at least `width` pixels,
+    /// or the largest sized one past that. Never `original`: an original
+    /// backdrop is a multi-MB file that decodes to 18-33 MB, so a wide hero
+    /// or title page used to push Home's posters out of the image cache.
     static func sizeBucket(for kind: Artwork.Kind, width: Int) -> String {
         let buckets: [Int] = switch kind {
         case .poster: [92, 154, 185, 342, 500, 780]
@@ -226,10 +229,9 @@ public struct TMDBService: MetadataProvider {
         case .still: [92, 185, 300]
         case .profile: [45, 185]
         }
-        if let b = buckets.first(where: { $0 >= width }) { return "w\(b)" }
-        // Above the largest bucket: still and profile cap at their max (TMDB has
-        // an h632 profile and original, but originals can be huge).
-        return kind == .backdrop || kind == .poster ? "original" : "w\(buckets.last!)"
+        // Above the largest bucket every kind caps at its max (w1280 backdrops,
+        // w780 posters): scaled up a little on a very wide page, it still looks sharp.
+        return "w\(buckets.first(where: { $0 >= width }) ?? buckets.last!)"
     }
 
     private func titles(_ path: String, kind: TitleKind?, query: [String: String]) async throws -> Page<Title> {

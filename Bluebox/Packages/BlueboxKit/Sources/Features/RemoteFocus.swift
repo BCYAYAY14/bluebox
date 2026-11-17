@@ -39,6 +39,7 @@ public final class RemoteFocus {
         /// What the remote calls it: "title:<key>", "episode:<key>", "release:<id>", "play".
         var id: String
         var label: String
+        /// Where it is, when it was registered; `locate` overrides it.
         var frame: CGRect
         /// A sheet over the window is its own layer: only the top layer is reachable.
         var layer: Int
@@ -47,6 +48,10 @@ public final class RemoteFocus {
         var image: URL? = nil
         /// The row it's in ("Continue Watching"), for the phone.
         var section: String? = nil
+        /// Where it is now, asked of its view only when the remote looks, so a
+        /// scroll costs nothing per item while no remote is in use. nil when
+        /// it isn't in a window (or has no size); tests give `frame` instead.
+        var locate: (@MainActor () -> CGRect?)? = nil
         var select: @MainActor () -> Void
     }
 
@@ -232,9 +237,22 @@ public final class RemoteFocus {
         }
     }
 
-    /// Only the top layer's items: a sheet's, while one is up (none, if it has none).
+    /// Only the top layer's items: a sheet's, while one is up (none, if it has
+    /// none), each with its frame as it is now; one with nowhere to be is left out.
     private var reachable: [(UUID, Target)] {
-        targets.filter { $0.value.layer == topLayer }.map { ($0.key, $0.value) }
+        targets.compactMap { id, target in
+            guard target.layer == topLayer, let frame = self.frame(of: target) else { return nil }
+            var t = target
+            t.frame = frame
+            return (id, t)
+        }
+    }
+
+    /// Where a marked item is now: asked of its view in the app, as registered in tests.
+    private func frame(of target: Target) -> CGRect? {
+        let frame: CGRect? = if let locate = target.locate { locate() } else { target.frame }
+        guard let frame, frame.width > 0, frame.height > 0 else { return nil }
+        return frame
     }
 
     /// The highlighted marked item, if it's still in reach.
@@ -488,7 +506,7 @@ public final class RemoteFocus {
         guard !pointerMode, let bounds = platform?.bounds ?? window()?.bounds else { return }
         let all = candidates()
         if let here = currentCandidate(in: all), bounds.intersects(here.frame) { onChange?(); return }
-        let was = current?.1.frame ?? element?.frame ?? CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+        let was = current.flatMap { frame(of: $0.1) } ?? element?.frame ?? CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
         let onScreen = all.filter { bounds.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
         if let nearest = onScreen.min(by: { hypot($0.frame.midX - was.midX, $0.frame.midY - was.midY) < hypot($1.frame.midX - was.midX, $1.frame.midY - was.midY) }) {
             setFocus(nearest.ref, driver: driver)
@@ -559,7 +577,7 @@ public final class RemoteFocus {
         focusedRef(ref)
         // The window follows the highlight: an item partly off screen scrolls into view.
         let frame: CGRect? = switch ref {
-        case .target(let id): targets[id]?.frame
+        case .target(let id): targets[id].flatMap { self.frame(of: $0) }
         case .element(let e): e.frame
         }
         if let frame, let platform, platform.scrollIntoView(frame) {
@@ -647,12 +665,7 @@ public final class RemoteFocus {
     func screen() -> RemoteScreen {
         var s = RemoteScreen(deviceID: "", title: screenTitle, focusedID: focusedID, focusedLabel: focusedLabel,
                              pointer: pointerMode ? true : nil, bumps: bumps)
-        if let menu = BlueboxMenuRemote.current {
-            s.menu = RemoteMenu(title: menu.title, items: menu.items.map {
-                RemoteMenu.Item(index: $0.index, title: $0.title, subtitle: $0.subtitle, systemImage: $0.systemImage,
-                                checked: $0.checked, disabled: $0.disabled, destructive: $0.destructive)
-            }, highlighted: menu.highlightedIndex)
-        }
+        s.menu = menuSnapshot()
         guard !pointerMode else { return s }
         let all = candidates()
         guard let here = currentCandidate(in: all) else { return s }
@@ -667,6 +680,17 @@ public final class RemoteFocus {
             s.after = Self.step(from: here, toward: .down, in: all)?.item
         }
         return s
+    }
+
+    /// The open Bluebox menu, for the phone, if there is one. On its own, for
+    /// the player: under it there's nothing to highlight, so it needs this
+    /// without `screen()`'s walk of the window.
+    func menuSnapshot() -> RemoteMenu? {
+        guard let menu = BlueboxMenuRemote.current else { return nil }
+        return RemoteMenu(title: menu.title, items: menu.items.map {
+            RemoteMenu.Item(index: $0.index, title: $0.title, subtitle: $0.subtitle, systemImage: $0.systemImage,
+                            checked: $0.checked, disabled: $0.disabled, destructive: $0.destructive)
+        }, highlighted: menu.highlightedIndex)
     }
 
     /// The main window's size and the pointer in it, top-left origin, as SwiftUI's global frames are.
@@ -800,10 +824,22 @@ private struct RemoteModal: ViewModifier {
     }
 }
 
-/// The press action as it is now: a target keeps the box, not a closure
-/// captured when its frame last changed.
-@MainActor private final class SelectBox {
+/// The press action as it is now, and the view to find the item by: a target
+/// keeps the box, not a closure captured when it was last registered.
+@MainActor private final class TargetBox {
     var select: @MainActor () -> Void = {}
+    #if os(macOS)
+    /// Behind the item, its size (`ScrollIntoView`): where the item is, whenever the remote asks.
+    weak var view: NSView?
+
+    /// The view's frame in its window's content, top-left origin, as SwiftUI's
+    /// global frames are; nil while it's out of a window or hidden.
+    func frame() -> CGRect? {
+        guard let view, let content = view.window?.contentView, !view.isHiddenOrHasHiddenAncestor else { return nil }
+        let r = view.convert(view.bounds, to: content)
+        return content.isFlipped ? r : CGRect(x: r.minX, y: content.bounds.height - r.maxY, width: r.width, height: r.height)
+    }
+    #endif
 }
 
 extension EnvironmentValues {
@@ -826,8 +862,7 @@ private struct RemoteFocusable: ViewModifier {
     @Environment(\.isTopPage) private var isTopPage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var instance = UUID()
-    @State private var frame: CGRect = .zero
-    @State private var box = SelectBox()
+    @State private var box = TargetBox()
 
     func body(content: Content) -> some View {
         #if os(macOS)
@@ -862,17 +897,19 @@ private struct RemoteFocusable: ViewModifier {
             .zIndex(on ? 1 : 0)
             .animation(Motion.snappy(reduceMotion), value: on)
             .animation(Motion.standard(reduceMotion), value: bold)
-            .background(ScrollIntoView(active: on))
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { new in
-                frame = new
-                register()
-            }
+            // Its view is also where the remote finds it: no frame is tracked
+            // as the page scrolls (that was work per poster per frame, remote
+            // or no remote); a look asks the view where it is then.
+            .background(ScrollIntoView(active: on, box: box))
+            .onAppear { register() }
             .onChange(of: isTabVisible) { register() }
             .onChange(of: isTopPage) { register() }
             .onChange(of: id) { register() }
             .onChange(of: label) { register() }
             .onChange(of: layer) { register() }
             .onChange(of: section) { register() }
+            .onChange(of: kind) { register() }
+            .onChange(of: image) { register() }
             .onDisappear { focus.unregister(instance) }
         #else
         content
@@ -880,21 +917,30 @@ private struct RemoteFocusable: ViewModifier {
     }
 
     private func register() {
+        #if os(macOS)
         // A page pushed over this one, or another tab, hides it from the remote.
-        guard isTabVisible, isTopPage, frame.width > 0 else { app.remoteFocus.unregister(instance); return }
-        app.remoteFocus.register(instance, .init(id: id, label: label, frame: frame, layer: layer, kind: kind, image: image,
-                                                 section: section, select: { [box] in box.select() }))
+        guard isTabVisible, isTopPage else { app.remoteFocus.unregister(instance); return }
+        app.remoteFocus.register(instance, .init(id: id, label: label, frame: .zero, layer: layer, kind: kind, image: image,
+                                                 section: section, locate: { [box] in box.frame() }, select: { [box] in box.select() }))
+        #endif
     }
 }
 
 #if os(macOS)
-/// Scrolls the highlighted item into view, through every scroll view around it (a row inside the page).
+/// Scrolls the highlighted item into view, through every scroll view around it
+/// (a row inside the page). Its view, the item's size, is how the remote finds the item (`TargetBox.frame`).
 private struct ScrollIntoView: NSViewRepresentable {
     let active: Bool
+    let box: TargetBox
 
-    func makeNSView(context: Context) -> NSView { NSView() }
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        box.view = view
+        return view
+    }
 
     func updateNSView(_ view: NSView, context: Context) {
+        box.view = view
         guard active, !context.coordinator.wasActive else { context.coordinator.wasActive = active; return }
         context.coordinator.wasActive = true
         DispatchQueue.main.async { _ = view.scrollToVisible(view.bounds.insetBy(dx: -40, dy: -40)) }

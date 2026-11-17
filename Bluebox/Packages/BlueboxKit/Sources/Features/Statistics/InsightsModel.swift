@@ -59,9 +59,19 @@ extension AppModel {
             WatchStatistics.compute(records: records, titles: titles, genreNames: names, now: now)
         }.value
         // Switched profile or turned off while working: drop it.
-        guard profile == currentProfileID, featureSwitches.statistics else { return }
+        guard profile == currentProfileID, featureSwitches.statistics else {
+            // The page's own refresh for the new profile stood back while this one ran.
+            insights.isComputing = false
+            await refreshStatistics(now: now)
+            return
+        }
         insights.statistics = stats
         insights.statisticsRevision = revision
+        // The library changed meanwhile (a sync, the player closing): count again.
+        if libraryRevision != revision {
+            insights.isComputing = false
+            await refreshStatistics(now: now)
+        }
     }
 
     /// TMDB's genre names: the catalogue's (usually cached), filled in with

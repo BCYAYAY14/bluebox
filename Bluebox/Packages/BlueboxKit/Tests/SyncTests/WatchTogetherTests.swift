@@ -481,6 +481,96 @@ final class TestClock {
         #expect(cy.isHost)
     }
 
+    /// Steps the clock a keep-alive at a time for `seconds`, the party's timer
+    /// running on each of `rooms` (and `beat` standing in for any player's
+    /// heartbeat), letting each step's messages arrive before the next.
+    func pass(_ seconds: TimeInterval, _ rooms: [TogetherRoom], beat: @MainActor () -> Void = {}) async {
+        var gone: TimeInterval = 0
+        while gone < seconds {
+            clock.advance(TogetherRoom.keepAliveAfter); gone += TogetherRoom.keepAliveAfter
+            let before = hub.messages.count
+            beat()
+            for r in rooms { r.keepAlive() }
+            await settle { hub.messages.count >= before + rooms.count }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    func presences(from id: String) -> Int {
+        hub.messages.filter { if case .presence(let p) = $0 { p.id == id } else { false } }.count
+    }
+
+    func events(_ r: TogetherRoom) -> [String] {
+        r.feed.compactMap { if case .event(_, let text, _) = $0 { text } else { nil } }
+    }
+
+    /// Was: only a player sent heartbeats, so someone still finding and
+    /// opening their copy (or whose copy never opened) went quiet, and after
+    /// 15 seconds the others said they'd left and stopped waiting for them.
+    @Test func nobodyIsDroppedWhileTheirTitleOpens() async {
+        let alice = room("alice"), bo = room("bo", joinedAfter: 1)
+        alice.host(lobby: false)
+        await alice.join(); await bo.join()
+        await settle { alice.others["bo"] != nil && bo.others["alice"] != nil && bo.settings != nil }
+        alice.start(TogetherTitle(key: "tmdb:movie:438631", name: "Dune", release: TogetherRelease(infoHash: "beef", label: "")))
+        await settle { bo.title != nil }
+
+        // Neither has a player for twice `goneAfter`: only the party's own timers run.
+        await pass(TogetherRoom.goneAfter * 2, [alice, bo])
+        #expect(alice.others["bo"] != nil && bo.others["alice"] != nil)
+        #expect(alice.waitingFor.map(\.id) == ["bo"])  // still waited for
+        #expect(!events(alice).contains("Bo left") && !events(bo).contains("Alice left"))
+        #expect(alice.isHost && bo.settings?.host == "alice")
+    }
+
+    /// Was: the host's next episode took more than 15 seconds to open, the
+    /// guests (still beating on the last one) dropped the host, and the
+    /// longest-present guest became host.
+    @Test func aHostWhoseNextEpisodeIsSlowStaysHost() async {
+        let alice = room("alice"), bo = room("bo", joinedAfter: 1)
+        alice.host(lobby: false)
+        await alice.join(); await bo.join()
+        await settle { alice.others["bo"] != nil && bo.others["alice"] != nil && bo.settings != nil }
+        bo.heartbeat(TogetherPlayhead(position: 1_400, paused: true, sentAt: clock.now), status: .ready)
+        await settle { alice.others["bo"]?.status == .ready }
+        let boPresences = presences(from: "bo")
+
+        await pass(TogetherRoom.goneAfter * 2, [alice, bo]) {
+            bo.heartbeat(TogetherPlayhead(position: 1_400, paused: true, sentAt: clock.now), status: .ready)
+        }
+        #expect(bo.others["alice"] != nil)
+        #expect(bo.settings?.host == "alice" && !bo.isHost)
+        #expect(!events(bo).contains("You're the host now"))
+        // A player's heartbeats are enough: no keep-alive on top of them.
+        #expect(presences(from: "bo") == boPresences)
+    }
+
+    /// Someone who really goes quiet is still forgotten by a device with no
+    /// player; if they turn out to be there after all (they talk again), they're back.
+    @Test func someoneDroppedForGoingQuietIsBackWhenHeardAgain() async {
+        let alice = room("alice"), bo = room("bo", joinedAfter: 1)
+        await alice.join(); await bo.join()
+        await settle { alice.others["bo"] != nil && bo.others["alice"] != nil }
+        // The rest of the joining answers land first: one arriving after Bo is
+        // forgotten would bring Bo back by itself, with no hello to count.
+        try? await Task.sleep(for: .milliseconds(100))
+
+        // Bo says nothing for too long (an older Bluebox opening a title sends nothing).
+        clock.advance(TogetherRoom.goneAfter + 1)
+        alice.keepAlive()
+        #expect(alice.others["bo"] == nil)
+        #expect(events(alice).contains("Bo left"))
+
+        // Then Bo talks: Alice asks who's there, and Bo's answer brings Bo back.
+        bo.say("still here")
+        await settle { alice.others["bo"] != nil }
+        #expect(alice.others["bo"]?.name == "Bo")
+        #expect(messages(alice) == ["still here"])
+        // Alice's hello on joining, and the one asking after Bo.
+        let hellos = hub.messages.filter { if case .hello(let p) = $0 { p.id == "alice" } else { false } }.count
+        #expect(hellos == 2, "Alice said hello \(hellos) times")
+    }
+
     @Test func hostTools() async {
         let alice = room("alice"), bo = room("bo", joinedAfter: 1)
         var ended: String?

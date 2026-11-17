@@ -67,6 +67,16 @@ public final class VLCEngine: PlaybackEngine {
     private var scopedRoot: URL?
     private var eventTask: Task<Void, Never>?
     private var tickTask: Task<Void, Never>?
+    /// The tick is sleeping its slow pace (see `tickInterval`).
+    private var tickIsSlow = false
+    private var positionAtLastTick: TimeInterval?
+    /// What the published track lists were built from (see `publishTracks`).
+    private var publishedTrackSources: TrackSources?
+    private struct TrackSources: Equatable {
+        var audio: [Track]
+        var subtitles: [Track]
+        var drawnByBluebox: [Bool]
+    }
     private var adjustments = Playback.VideoAdjustments()
     private var chaptersLoaded = false
 
@@ -86,12 +96,17 @@ public final class VLCEngine: PlaybackEngine {
     private var textFeedURL: URL?
     /// The file's track behind each VLC subtitle track id (see `feedTrack`).
     private var fileTracks: [String: MatroskaTrack] = [:]
+    /// The lists `fileTracks` was matched from; unchanged lists match the same.
+    private var fileTracksMatched: (vlc: [Track], file: [MatroskaTrack])?
     /// The track whose every line has been asked for (`embeddedSubtitleCues`).
     private var wholeTrackRead: Int?
     /// The lines drawn into the picture (libVLC's logo overlay) for Picture in Picture.
     private var burnIn: SubtitleBurnIn?
     private var burnInFile = 0
+    /// Wakes the overlay when its next line comes or goes (see `scheduleOverlayWake`).
     private var subtitleTask: Task<Void, Never>?
+    /// Each overlay track's lines as a timeline, and how many lines it was made from.
+    private var wakeTimelines: [Int: (count: Int, timeline: SubtitleTimeline)] = [:]
     /// Runs the subtitle clock between VLC's updates, never stepping back on their jitter.
     private var clock = PlayheadClock()
     /// A seek requested before the media became seekable, or the start point
@@ -321,6 +336,7 @@ public final class VLCEngine: PlaybackEngine {
         lastPauseReassert = .now
         player.pause()
         if snapshot.status == .playing || snapshot.status == .buffering { snapshot.status = .paused }
+        updateOverlayText()  // the line stays where it stopped; no more wakes
     }
 
     public func seek(to seconds: TimeInterval) async {
@@ -370,6 +386,10 @@ public final class VLCEngine: PlaybackEngine {
     private func holdPosition(at target: TimeInterval) {
         snapshot.position = target
         heldPosition = (target, ContinuousClock.now + .milliseconds(1500))
+        // The lines at the new point now, not at the next tick; and the tick back
+        // to its quick pace while VLC settles there.
+        updateOverlayText()
+        speedUpTickIfNeeded()
     }
 
     public func diagnostics() -> PlaybackDiagnostics {
@@ -457,6 +477,7 @@ public final class VLCEngine: PlaybackEngine {
         let r = min(max(rate, 0.25), 4)
         snapshot.rate = r
         try? player.setPlaybackRate(PlaybackRate(r))
+        updateOverlayText()  // the next line's wake, at the new pace
     }
 
     public func selectAudio(_ trackID: String?) {
@@ -514,6 +535,7 @@ public final class VLCEngine: PlaybackEngine {
         let s = seconds.isFinite ? min(max(seconds, -600), 600) : 0
         guard s != subtitleDelay else { return }
         subtitleDelay = s
+        updateOverlayText()  // the overlay's lines move with the delay
         guard resource != nil else { return }
         try? player.setSubtitleDelay(.milliseconds(Int((s * 1000).rounded())))
     }
@@ -565,7 +587,8 @@ public final class VLCEngine: PlaybackEngine {
     /// Stops for good.
     public func stop() {
         teardown()
-        textFeed = nil; textFeedURL = nil; fileTracks = [:]; wholeTrackRead = nil
+        textFeed = nil; textFeedURL = nil; fileTracks = [:]; fileTracksMatched = nil; wholeTrackRead = nil
+        wakeTimelines = [:]
     }
 
     /// Stops what's playing (also the first step of every load).
@@ -573,6 +596,8 @@ public final class VLCEngine: PlaybackEngine {
         eventTask?.cancel(); eventTask = nil
         tickTask?.cancel(); tickTask = nil
         subtitleTask?.cancel(); subtitleTask = nil
+        tickIsSlow = false; positionAtLastTick = nil
+        publishedTrackSources = nil  // the next video's lists are published afresh
         clock.reset()
         if resource != nil || player.state != .idle { player.stop() }
         resource = nil
@@ -593,6 +618,7 @@ public final class VLCEngine: PlaybackEngine {
         snapshot.status = intendedPaused ? .paused : .buffering
         lastDisplayedPictures = nil  // a new media's counts start over
         do { try open(resource, startAt: seconds) } catch let e as PlaybackError { fail(e) } catch {}
+        speedUpTickIfNeeded()
     }
 
     // MARK: Picture
@@ -761,23 +787,64 @@ public final class VLCEngine: PlaybackEngine {
                 self.handle(event)
             }
         }
+        // The overlay's lines need no loop of their own: `updateOverlayText`
+        // runs on every tick and wakes itself for the next line in between.
+        subtitleTask?.cancel(); subtitleTask = nil
+        startTick()
+    }
+
+    /// Copies VLC's state into the snapshot at `tickInterval`'s pace, picked
+    /// afresh before each sleep.
+    private func startTick() {
         tickTask?.cancel()
         tickTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let interval = self?.nextTickInterval() else { return }
+                try? await Task.sleep(for: interval)
                 guard let self, !Task.isCancelled else { return }
                 self.refresh()
             }
         }
-        subtitleTask?.cancel()
-        subtitleTask = Task { [weak self] in
-            // Often enough that a line comes and goes within a frame or two of its time.
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(50))
-                guard let self, !Task.isCancelled else { return }
-                self.updateOverlayText()
-            }
+    }
+
+    private func nextTickInterval() -> Duration {
+        let moved = positionAtLastTick.map { $0 != snapshot.position } ?? true
+        positionAtLastTick = snapshot.position
+        let interval = Self.tickInterval(status: snapshot.status, settling: isSettling, positionMoved: moved)
+        tickIsSlow = interval > Self.fastTick
+        return interval
+    }
+
+    /// A seek, a scrub or an opening VLC is still carrying out (and the
+    /// position held meanwhile), or a buffer filling: the tick watches these.
+    private var isSettling: Bool {
+        pendingSeek != nil || heldPosition != nil || scrubPending != nil || heldForStartSeek
+            || player.state == .opening || player.state == .buffering
+    }
+
+    /// Wakes a tick sleeping its slow pace once things move again (play, a
+    /// seek, VLC's own state changing), rather than up to a second later.
+    private func speedUpTickIfNeeded() {
+        guard tickIsSlow, tickTask != nil else { return }
+        let moved = positionAtLastTick.map { $0 != snapshot.position } ?? true
+        guard Self.tickInterval(status: snapshot.status, settling: isSettling, positionMoved: moved) == Self.fastTick else { return }
+        startTick()
+    }
+
+    static let fastTick: Duration = .milliseconds(250)
+    static let slowTick: Duration = .seconds(1)
+
+    /// Four times a second while anything moves. Once a second while nothing
+    /// can (paused, ended, failed, idle, with no seek or buffering under way):
+    /// still each of the frozen-picture watchdog's once-a-second samples, and
+    /// soon enough for `enforcePause` to catch VLC playing on under a pause
+    /// (the position moving brings the quick pace straight back).
+    static func tickInterval(status: Playback.PlaybackStatus, settling: Bool, positionMoved: Bool) -> Duration {
+        let still = switch status {
+        case .paused, .ended, .failed, .idle: true
+        case .loading, .playing, .buffering: false
         }
+        return still && !settling && !positionMoved ? slowTick : fastTick
     }
 
     private func handle(_ event: PlayerEvent) {
@@ -811,6 +878,12 @@ public final class VLCEngine: PlaybackEngine {
         guard resource != nil else { return }
         if case .failed = snapshot.status { return }
         let state = reportedState ?? player.state
+        // With the position and status just read: the overlay's line and its
+        // next wake, and the tick's pace if things started moving.
+        defer {
+            updateOverlayText()
+            speedUpTickIfNeeded()
+        }
 
         if !ended, player.didReachEnd { markEnded() }
         if let d = player.duration, d > .zero { snapshot.duration = Self.seconds(d) }
@@ -962,21 +1035,33 @@ public final class VLCEngine: PlaybackEngine {
         return now - since > .milliseconds(1500)
     }
 
+    /// Runs on every tick, but the lists (labels, language names) are only
+    /// rebuilt when what they're made of changed: VLC's tracks (their
+    /// selection included) or which of them Bluebox's overlay draws. SwiftVLC
+    /// mirrors its track lists a moment after `tracksChanged`, so comparing
+    /// them here catches that too, at the cost of comparing two short arrays.
     private func publishTracks() {
-        let audio = player.audioTracks.enumerated().map { i, t in
-            MediaTrack(id: t.id, kind: .audio, label: Self.label(t, index: i), languageCode: t.language)
-        }
-        if audio != snapshot.audioTracks { snapshot.audioTracks = audio }
+        let audioTracks = player.audioTracks
         let subtitleTracks = player.subtitleTracks
         rebuildTrackMap(subtitleTracks)
-        let subs = subtitleTracks.enumerated().map { i, t in
-            MediaTrack(id: t.id, kind: .subtitle, label: Self.label(t, index: i), languageCode: t.language,
-                       isBitmap: Self.isBitmapSubtitle(codec: t.codecString), format: Self.subtitleFormat(codec: t.codecString),
-                       drawnByBluebox: overlayDraws(t.id))
+        let sources = TrackSources(audio: audioTracks, subtitles: subtitleTracks,
+                                   drawnByBluebox: subtitleTracks.map { overlayDraws($0.id) })
+        if sources != publishedTrackSources {
+            publishedTrackSources = sources
+            let audio = audioTracks.enumerated().map { i, t in
+                MediaTrack(id: t.id, kind: .audio, label: Self.label(t, index: i), languageCode: t.language)
+            }
+            if audio != snapshot.audioTracks { snapshot.audioTracks = audio }
+            let subs = subtitleTracks.enumerated().map { i, t in
+                MediaTrack(id: t.id, kind: .subtitle, label: Self.label(t, index: i), languageCode: t.language,
+                           isBitmap: Self.isBitmapSubtitle(codec: t.codecString), format: Self.subtitleFormat(codec: t.codecString),
+                           drawnByBluebox: sources.drawnByBluebox[i])
+            }
+            if subs != snapshot.embeddedSubtitles { snapshot.embeddedSubtitles = subs }
         }
-        if subs != snapshot.embeddedSubtitles { snapshot.embeddedSubtitles = subs }
-        snapshot.selectedAudioID = player.selectedAudioTrack?.id
-        snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID
+        let selectedAudio = player.selectedAudioTrack?.id
+        if snapshot.selectedAudioID != selectedAudio { snapshot.selectedAudioID = selectedAudio }
+        if snapshot.selectedEmbeddedSubtitleID != desiredSubtitleID { snapshot.selectedEmbeddedSubtitleID = desiredSubtitleID }
     }
 
     /// VLC picks "default" tracks itself; Bluebox's session decides. The audio
@@ -1007,7 +1092,7 @@ public final class VLCEngine: PlaybackEngine {
     /// Starts reading the file's text tracks when it may be Matroska.
     private func prepareTextFeed(for resource: PlaybackResource) {
         if textFeedURL == resource.url, textFeed != nil { return }
-        textFeed = nil; textFeedURL = nil; fileTracks = [:]
+        textFeed = nil; textFeedURL = nil; fileTracks = [:]; fileTracksMatched = nil; wakeTimelines = [:]
         let container = (resource.variant.container ?? resource.url.pathExtension).lowercased()
         guard Self.matroskaContainers.contains(container),
               let source = byteSource(for: resource.url, headers: resource.httpHeaders) else { return }
@@ -1041,8 +1126,12 @@ public final class VLCEngine: PlaybackEngine {
     private func rebuildTrackMap(_ tracks: [Track]) {
         guard let feed = textFeed, !feed.failed, !feed.tracks.isEmpty else {
             if !fileTracks.isEmpty { fileTracks = [:] }
+            fileTracksMatched = nil
             return
         }
+        // Called on every tick: lists that haven't changed match the same.
+        if let matched = fileTracksMatched, matched.vlc == tracks, matched.file == feed.tracks { return }
+        fileTracksMatched = (tracks, feed.tracks)
         let listed = tracks.map { (id: $0.id, format: Self.subtitleFormat(codec: $0.codecString)) }
         var map: [String: MatroskaTrack] = [:]
         for t in listed { map[t.id] = Self.matroskaTrack(for: t.id, listed: listed, fileTracks: feed.tracks) }
@@ -1109,6 +1198,7 @@ public final class VLCEngine: PlaybackEngine {
     /// Publishes the overlay's lines for the subtitle clock, and keeps the feed reading around it.
     private func updateOverlayText() {
         guard let feed = textFeed, !feed.failed, !feed.tracks.isEmpty, resource != nil else {
+            subtitleTask?.cancel(); subtitleTask = nil
             if snapshot.embeddedSubtitleText != nil { snapshot.embeddedSubtitleText = nil }
             if snapshot.secondaryEmbeddedSubtitleText != nil { snapshot.secondaryEmbeddedSubtitleText = nil }
             return
@@ -1132,6 +1222,47 @@ public final class VLCEngine: PlaybackEngine {
         let text = line(primary), second = line(secondary)
         if snapshot.embeddedSubtitleText != text { snapshot.embeddedSubtitleText = text }
         if snapshot.secondaryEmbeddedSubtitleText != second { snapshot.secondaryEmbeddedSubtitleText = second }
+        let shown = [primary, secondary].compactMap { $0 }.map(\.number).filter { feed.verdict(track: $0) == .bluebox }
+        scheduleOverlayWake(after: t, tracks: shown, feed: feed)
+    }
+
+    /// Wakes the overlay just as its next line comes or goes, while playing:
+    /// in between there's nothing to change. The tick (four times a second
+    /// while playing) keeps the feed reading ahead and catches the clock's
+    /// corrections, and a seek, pause, play, rate, delay or track change calls
+    /// `updateOverlayText` at once, which schedules this afresh.
+    private func scheduleOverlayWake(after t: TimeInterval, tracks: [Int], feed: EmbeddedTextFeed) {
+        subtitleTask?.cancel(); subtitleTask = nil
+        guard snapshot.status == .playing, !tracks.isEmpty else { return }
+        let timelines = tracks.map { overlayTimeline(track: $0, feed: feed) }
+        guard let wait = Self.overlayWake(after: t, timelines: timelines, rate: snapshot.rate) else { return }
+        subtitleTask = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            guard let self, !Task.isCancelled else { return }
+            self.subtitleTask = nil
+            self.updateOverlayText()
+        }
+    }
+
+    /// A track's lines as a timeline, made again only when lines were added
+    /// (the feed only ever adds them).
+    private func overlayTimeline(track: Int, feed: EmbeddedTextFeed) -> SubtitleTimeline {
+        let cues = feed.cues(track: track)
+        if let cached = wakeTimelines[track], cached.count == cues.count { return cached.timeline }
+        let timeline = SubtitleTimeline(cues: cues)
+        wakeTimelines[track] = (cues.count, timeline)
+        return timeline
+    }
+
+    /// How long after `t` (the file's clock) a line on any of `timelines`
+    /// next comes or goes, in real time at `rate`, just past the change so the
+    /// line is due when it's looked up. Nil when nothing changes in the next
+    /// two seconds: the tick looks again long before.
+    static func overlayWake(after t: TimeInterval, timelines: [SubtitleTimeline], rate: Float) -> Duration? {
+        guard let next = timelines.compactMap({ $0.nextChange(after: t) }).min() else { return nil }
+        let wait = (next - t) / Double(max(rate, 0.01))
+        guard wait < 2 else { return nil }
+        return .seconds(max(wait, 0) + 0.002)
     }
 
     /// The playhead between VLC's updates, at the playback rate (see `PlayheadClock`).

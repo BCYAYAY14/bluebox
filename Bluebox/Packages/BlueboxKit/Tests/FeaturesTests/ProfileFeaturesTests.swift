@@ -406,3 +406,32 @@ private struct StubCatalogue: MetadataProvider {
         #expect(store.profile("k")?.allowsUnrated == true)
     }
 }
+
+// MARK: - Who owes a PIN
+
+@Suite struct ProfileLockDecisionTests {
+    /// The launch "Who's watching?" restores last time's profile as current; a
+    /// locked one still asks for its PIN there, though not once someone chose it.
+    @Test func theRestoredProfileAsksForItsPINAtTheGate() {
+        #expect(ProfileLock.needsPIN(profileID: "sam", currentID: "sam", isLocked: true, atGate: true))
+        #expect(!ProfileLock.needsPIN(profileID: "sam", currentID: "sam", isLocked: true, atGate: false))
+        #expect(ProfileLock.needsPIN(profileID: "sam", currentID: "mia", isLocked: true, atGate: false))
+        #expect(ProfileLock.needsPIN(profileID: "sam", currentID: "mia", isLocked: true, atGate: true))
+        #expect(!ProfileLock.needsPIN(profileID: "mia", currentID: "sam", isLocked: false, atGate: true))
+    }
+
+    /// Delete Profile… from a menu skips the PIN, so it's refused wherever one is owed.
+    @Test func aLockedProfileCantBeDeletedFromTheGatesMenu() {
+        func canDelete(_ id: String, current: String = "sam", locked: Bool = true, gate: Bool, settingsPIN: Bool = false,
+                       isDefault: Bool = false) -> Bool {
+            ProfileLock.canDeleteFromMenu(profileID: id, isDefault: isDefault, currentID: current, isLocked: locked,
+                                          atGate: gate, settingsNeedsPIN: settingsPIN)
+        }
+        #expect(!canDelete("sam", gate: true))
+        #expect(canDelete("sam", gate: false))
+        #expect(!canDelete("mia", gate: false))
+        #expect(canDelete("mia", locked: false, gate: true))
+        #expect(!canDelete("sam", gate: false, settingsPIN: true))
+        #expect(!canDelete(Profile.defaultID, current: "mia", locked: false, gate: false, isDefault: true))
+    }
+}

@@ -136,7 +136,16 @@ extension ExternalPlayer {
     }
 
     /// This platform's players that are installed, in menu order.
-    static var installed: [ExternalPlayer] { forThisPlatform.filter(\.isInstalled) }
+    /// Remembered for a few seconds: menus ask for this while drawing (the player
+    /// several times a second), and each ask is a round of LaunchServices lookups.
+    static var installed: [ExternalPlayer] {
+        let now = ContinuousClock.now
+        if let cached = installedCache, now - cached.at < .seconds(10) { return cached.players }
+        let players = forThisPlatform.filter(\.isInstalled)
+        installedCache = (players, now)
+        return players
+    }
+    private static var installedCache: (players: [ExternalPlayer], at: ContinuousClock.Instant)?
 
     #if os(macOS)
     /// By bundle ID, else whichever app opens the player's own links.

@@ -2,6 +2,7 @@ import Addons
 import Domain
 import Downloads
 import Foundation
+import Observation
 import Playback
 import TorrentStreaming
 
@@ -165,7 +166,25 @@ extension AppModel {
         let monitor = MobileDataMeter()
         Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                // On Wi‑Fi with nothing playing the meter has nothing to count
+                // or clear (the sample before already forgot its baselines), so
+                // rather than waking every 2 s for the app's life (on a Mac,
+                // where it's never on mobile data, always), it sleeps until a
+                // player opens or the network changes, with a long sleep as a
+                // backstop. A stream's own bookkeeping still runs every 2 s.
+                let idle = self.map { !$0.settings.isOnMobileData && $0.activePlayer == nil && $0.settings.streamingVariant == nil } ?? false
+                if idle {
+                    let nap = Task<Void, Never> { try? await Task.sleep(for: .seconds(60)) }
+                    withObservationTracking {
+                        _ = self?.activePlayer
+                        _ = self?.settings.network
+                    } onChange: {
+                        nap.cancel()
+                    }
+                    await nap.value
+                } else {
+                    try? await Task.sleep(for: .seconds(2))
+                }
                 guard let self else { return }
                 await self.meter(monitor)
             }
@@ -395,7 +414,10 @@ extension AppModel {
                 meter.torrentBytes = total
             } else if let size = variant.sizeBytes, let duration = session.snapshot.duration, duration > 0 {
                 let buffered = max(session.snapshot.bufferedUntil, session.snapshot.position)
-                let last = meter.bufferedUntil ?? buffered
+                var last = meter.bufferedUntil ?? buffered
+                // A skip ahead past what had loaded: the part skipped over was never
+                // fetched, so counting starts again from where the film now is.
+                if session.snapshot.position > last + 2 { last = buffered }
                 if buffered > last { streamed += Int64(Double(size) * (buffered - last) / duration) }
                 meter.bufferedUntil = max(buffered, last)
             }

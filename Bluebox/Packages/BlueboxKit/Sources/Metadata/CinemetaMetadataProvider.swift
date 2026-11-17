@@ -69,11 +69,16 @@ public struct CinemetaMetadataProvider: MetadataProvider, MetadataExtras {
         guard let title = CinemetaMapping.title(meta, fallbackType: key.isMovie ? "movie" : "series") else {
             throw MetadataError.notFound
         }
-        let seasons = Dictionary(grouping: meta.videos?.compactMap(\.value).filter { $0.season != nil } ?? []) { $0.season! }
-            .map { number, eps in
-                SeasonSummary(number: number, name: number == 0 ? "Specials" : "Season \(number)", episodeCount: eps.count)
-            }
-            .sorted { ($0.number == 0 ? Int.max : $0.number) < ($1.number == 0 ? Int.max : $1.number) }
+        // In steps with their types spelled out: as one chain, older compilers (GitHub's
+        // CodeQL build) give up type-checking it.
+        let videos = meta.videos?.compactMap(\.value).filter { $0.season != nil } ?? []
+        let bySeason = Dictionary(grouping: videos) { $0.season! }
+        let summaries: [SeasonSummary] = bySeason.map { number, eps in
+            let name = number == 0 ? "Specials" : "Season \(number)"
+            return SeasonSummary(number: number, name: name, episodeCount: eps.count)
+        }
+        // Specials go last.
+        let seasons = summaries.sorted { ($0.number == 0 ? Int.max : $0.number) < ($1.number == 0 ? Int.max : $1.number) }
         let credits = CinemetaMapping.credits(meta)
         return TitleDetail(
             title: title, runtimeMinutes: CinemetaMapping.minutes(meta.runtime),
@@ -291,13 +296,22 @@ struct CinemetaMeta: Decodable, Sendable {
 enum CinemetaMapping {
     static func date(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        if let d = f.date(from: s) { return d }
+        if let d = fractionalDate.date(from: s) ?? wholeDate.date(from: s) { return d }
         return TMDBMapping.date(String(s.prefix(10)))
     }
+
+    // Made once, not per date: a long show asks for hundreds. (ISO8601DateFormatter
+    // is safe to share between threads.)
+    private nonisolated(unsafe) static let fractionalDate: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private nonisolated(unsafe) static let wholeDate: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
     /// "2008–2013" or "1999" → 1 January of the first year.
     static func yearDate(_ s: String?) -> Date? {

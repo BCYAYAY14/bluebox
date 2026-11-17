@@ -70,6 +70,9 @@ struct SubtitleText: View {
             }
             base.foregroundStyle(color)
         }
+        // One shadow for the flattened line. Without the group SwiftUI blurs a
+        // shadow under each of the 13 copies, every time a line changes.
+        .compositingGroup()
         .shadow(color: style.shadow ? .black.opacity(style.shadowOpacity) : .clear, radius: max(1, size * 0.08), x: 0, y: size * 0.03)
         .padding(.horizontal, style.backgroundOpacity > 0 ? size * 0.35 : 0)
         .padding(.vertical, style.backgroundOpacity > 0 ? size * 0.12 : 0)

@@ -123,9 +123,15 @@ extension AppModel {
     }
 
     func continueWatching(_ payload: WatchActivityPayload) async {
-        if let profile = payload.profileID, profile != currentProfileID,
-           profiles.contains(where: { $0.id == profile && !$0.isRemoved }) {
-            await switchProfile(to: profile)
+        if let profile = payload.profileID, profiles.contains(where: { $0.id == profile && !$0.isRemoved }) {
+            // A locked profile isn't opened by a Handoff: its PIN is asked for
+            // first (in the picker), and the film is left for after that.
+            if ProfileLock.needsPIN(profileID: profile, currentID: currentProfileID, isLocked: isLocked(profile),
+                                    atGate: profileGateOpen) {
+                if profile != currentProfileID { requestProfileSwitch(to: profile) }
+                return
+            }
+            if profile != currentProfileID { await switchProfile(to: profile) }
         }
         if activePlayer != nil { await closePlayer() }
         // Record the handed-off position as the newest progress, so the play

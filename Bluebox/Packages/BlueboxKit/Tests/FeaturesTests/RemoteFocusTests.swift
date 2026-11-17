@@ -180,6 +180,28 @@ import Testing
         #expect(changes == before + 1)
     }
 
+    /// In the app an item's frame isn't tracked as the page scrolls: it's asked
+    /// of its view when the remote looks. One scrolled since it registered is
+    /// found where it is now; one with nowhere to be (out of its window) is out of reach.
+    @Test func framesAreAskedForWhenTheRemoteLooks() {
+        let focus = RemoteFocus()
+        focus.window = { nil }
+        var aFrame = card(row: 0, 0)
+        var bShowing = true
+        focus.register(UUID(), .init(id: "a", label: "A", frame: .zero, layer: 0, locate: { aFrame }, select: {}))
+        focus.register(UUID(), .init(id: "b", label: "B", frame: .zero, layer: 0, locate: { bShowing ? self.card(row: 0, 1) : nil },
+                                     select: {}))
+        focus.move(.down, driver: "iPhone")  // shows "a", the first
+        #expect(focus.focusedID == "a")
+        // The row scrolled: "a" is now to the right of "b".
+        aFrame = card(row: 0, 3)
+        focus.move(.left, driver: "iPhone")
+        #expect(focus.focusedID == "b")
+        bShowing = false
+        #expect(focus.candidates().map(\.id) == ["a"])
+        #expect(focus.screen().focused == nil)  // the highlighted one went
+    }
+
     // MARK: The better remote (31 Oct 2026)
 
     /// Waits for something the main actor does later (a fade, a coast), however busy the machine is.

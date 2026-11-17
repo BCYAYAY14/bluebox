@@ -105,7 +105,7 @@ public final class EmbeddedTextFeed {
         let range = 0..<end
         store.reading = range
         store.retryAt = nil
-        store.task = read(track: number, codec: codec, range: range)
+        store.task = read(track: number, codec: codec, range: range, whole: true)
     }
 
     /// Makes sure the lines of `tracks` around `time` are read or being read.
@@ -125,25 +125,34 @@ public final class EmbeddedTextFeed {
                 store.task = nil; store.reading = nil
             }
             if let retry = store.retryAt, ContinuousClock.now < retry { continue }
-            let from = current?.upperBound ?? max(0, t - Self.lookback)
+            // A read that stopped just short of here (see `MatroskaSubtitleReader.read`) is
+            // carried on, not started over from the lookback, or it would never catch up.
+            let behind = store.covered.last { $0.upperBound <= t && $0.upperBound >= t - Self.lookback }
+            let from = current?.upperBound ?? behind?.upperBound ?? max(0, t - Self.lookback)
             let range = from..<(max(from, t) + Self.readAhead)
             store.reading = range
             store.task = read(track: number, codec: codec, range: range)
         }
     }
 
-    private func read(track: Int, codec: EmbeddedTextCodec, range: Range<TimeInterval>) -> Task<Void, Never> {
+    private func read(track: Int, codec: EmbeddedTextCodec, range: Range<TimeInterval>, whole: Bool = false) -> Task<Void, Never> {
         let reader = reader
         return Task { [weak self] in
             let result: Result<[MatroskaBlock], Error>
-            do { result = .success(try await reader.blocks(track: track, from: range.lowerBound, to: range.upperBound)) }
-            catch { result = .failure(error) }
+            var upTo = range.upperBound
+            do {
+                let read = try await reader.read(track: track, from: range.lowerBound, to: range.upperBound, whole: whole)
+                result = .success(read.blocks)
+                upTo = read.upTo
+            } catch { result = .failure(error) }
             guard !Task.isCancelled, let self else { return }
-            self.finish(track: track, codec: codec, range: range, result: result)
+            self.finish(track: track, codec: codec, range: range, upTo: upTo, result: result)
         }
     }
 
-    private func finish(track: Int, codec: EmbeddedTextCodec, range: Range<TimeInterval>, result: Result<[MatroskaBlock], Error>) {
+    /// `upTo` is how far the read really got: only that much counts as covered.
+    private func finish(track: Int, codec: EmbeddedTextCodec, range: Range<TimeInterval>, upTo: TimeInterval,
+                        result: Result<[MatroskaBlock], Error>) {
         guard var store = stores[track], store.reading == range else { return }
         store.task = nil; store.reading = nil
         switch result {
@@ -154,7 +163,7 @@ public final class EmbeddedTextFeed {
             return
         case .success(let blocks):
             store.retryAt = nil
-            store.covered = Self.merging(range, into: store.covered)
+            store.covered = Self.merging(range.lowerBound..<min(range.upperBound, max(upTo, range.lowerBound)), into: store.covered)
             if codec.isASS, !blocks.isEmpty {
                 if blocks.contains(where: { EmbeddedTextCodec.hasOverrideTags($0.payload) }) {
                     store.verdict = .player

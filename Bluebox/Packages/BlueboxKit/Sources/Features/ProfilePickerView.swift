@@ -31,6 +31,11 @@ struct ProfilePickerView: View {
 
     private var profiles: [Profile] { app.profiles.filter { !$0.isRemoved } }
 
+    /// Opened as a gate, it stays one until someone is chosen, even if a
+    /// shortcut or the menu bar asks for the picker again meanwhile (RootView
+    /// then passes `canClose`): closing would open the restored profile unasked.
+    private var closable: Bool { canClose && !app.profileGateOpen }
+
     var body: some View {
         Group {
             if let unlocking {
@@ -46,7 +51,7 @@ struct ProfilePickerView: View {
             BlueboxWordmark(size: 26).padding(.top, Spacing.s)
         }
         .overlay(alignment: .topTrailing) {
-            if canClose && unlocking == nil {
+            if closable && unlocking == nil {
                 Button(action: onDone) {
                     Image(systemName: "xmark")
                         .font(.system(size: 15, weight: .bold))
@@ -74,6 +79,7 @@ struct ProfilePickerView: View {
         }
         .foregroundStyle(.white)
         .onAppear {
+            if !canClose { app.profileGateOpen = true }
             focusIndex = profiles.firstIndex { $0.id == app.currentProfileID } ?? 0
             if let pinFor, let p = profiles.first(where: { $0.id == pinFor }) { unlocking = p }
             withAnimation(Motion.spatial(reduceMotion).delay(0.05)) { appeared = true }
@@ -136,7 +142,7 @@ struct ProfilePickerView: View {
                 return .handled
             }
             .onKeyPress(.escape) {
-                guard canClose else { return .ignored }
+                guard closable else { return .ignored }
                 onDone()
                 return .handled
             }
@@ -146,7 +152,7 @@ struct ProfilePickerView: View {
     #if os(macOS)
     private var hint: String {
         let keys = profiles.count > 1 ? " · ⌃⌘1–\(min(profiles.count, ProfileShortcuts.count)) switch from anywhere" : ""
-        return canClose ? "Esc keeps \(app.currentProfile.name)\(keys)" : "Return opens the profile with the ring\(keys)"
+        return closable ? "Esc keeps \(app.currentProfile.name)\(keys)" : "Return opens the profile with the ring\(keys)"
     }
     #endif
 
@@ -167,6 +173,7 @@ struct ProfilePickerView: View {
                     focusIndex = i
                     choose(p)
                 }
+                .profileDeleteMenu(p)
                 .opacity(appeared ? 1 : 0)
                 .scaleEffect(appeared || reduceMotion ? 1 : 0.9)
                 .animation(Motion.spatial(reduceMotion).delay(Double(i) * 0.05), value: appeared)
@@ -181,8 +188,12 @@ struct ProfilePickerView: View {
     }
 
     private func choose(_ p: Profile) {
-        if p.id == app.currentProfileID && canClose { onDone(); return }
-        if app.isLocked(p.id) && p.id != app.currentProfileID {
+        // Opened from inside the app: your own profile just closes the picker.
+        if p.id == app.currentProfileID && closable { onDone(); return }
+        // At launch the current profile is only last time's, so a locked one
+        // asks for its PIN like any other (Return starts on it).
+        if ProfileLock.needsPIN(profileID: p.id, currentID: app.currentProfileID, isLocked: app.isLocked(p.id),
+                                atGate: app.profileGateOpen) {
             withAnimation(Motion.standard(reduceMotion)) { unlocking = p }
             return
         }
@@ -193,6 +204,8 @@ struct ProfilePickerView: View {
     /// switches underneath at the same time (no wait).
     private func commit(_ p: Profile) {
         chosen = p.id
+        // Someone has chosen (with the PIN if it has one): the gate is passed.
+        app.profileGateOpen = false
         // From the PIN screen the tile isn't on screen: the picker just fades.
         if !reduceMotion, unlocking == nil, let frame = tileFrames[p.id] {
             flight?.fly(symbol: p.symbol, color: p.color, from: frame)

@@ -265,6 +265,46 @@ enum HomeLayout {
     }
 }
 
+// MARK: - Coming back to a page
+
+/// What a page last loaded in full, and when. Coming back from a pushed page
+/// (a title page, a list) restarts the page's `.task`; when what the page is
+/// built from (`Key`: category, profile, revisions) hasn't changed and the
+/// load is recent, the page keeps what it shows instead of reading it all
+/// again during the pop animation. Pull to refresh and Try Again load anyway.
+struct PageLoadMemory<Key: Hashable & Sendable>: Sendable {
+    /// Five minutes: long enough for a look at a few title pages and back,
+    /// short enough that a media server's new files or tomorrow's trending
+    /// list turn up without a pull to refresh. Changes Bluebox makes itself
+    /// (watching, My List, sources) bump a revision in `Key` and load at once.
+    static var maxAge: TimeInterval { 5 * 60 }
+
+    private(set) var key: Key?
+    private(set) var loadedAt: Date?
+
+    init() {}
+
+    /// True when the last successful load was of `key`, under `maxAge` ago.
+    func isCurrent(_ key: Key, now: Date = Date()) -> Bool {
+        guard key == self.key, let loadedAt else { return false }
+        let age = now.timeIntervalSince(loadedAt)
+        // A clock set back makes the age negative: load rather than trust it.
+        return age >= 0 && age < Self.maxAge
+    }
+
+    /// After a load that worked (a failed or cancelled one isn't remembered,
+    /// so coming back tries again).
+    mutating func remember(_ key: Key, at now: Date = Date()) {
+        self.key = key
+        loadedAt = now
+    }
+
+    mutating func forget() {
+        key = nil
+        loadedAt = nil
+    }
+}
+
 // MARK: - Continue Watching
 
 enum ContinueWatchingRules {

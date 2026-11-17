@@ -152,8 +152,18 @@ public actor MatroskaSubtitleReader {
 
     /// Blocks of `track` starting in `from..<to` (seconds), in time order.
     public func blocks(track: Int, from: TimeInterval, to: TimeInterval) async throws -> [MatroskaBlock] {
+        try await read(track: track, from: from, to: to).blocks
+    }
+
+    /// The same, with how far the read got: short of `to` when the subtitles
+    /// aren't indexed and the span held more than `clusterBudget` of clusters
+    /// (a high-bitrate file), so the caller reads on from there instead of
+    /// taking the rest of the span for empty. `whole` reads to `to` whatever it takes.
+    public func read(track: Int, from: TimeInterval, to: TimeInterval,
+                     whole: Bool = false) async throws -> (blocks: [MatroskaBlock], upTo: TimeInterval) {
         let index = try await loadIndex()
-        guard let entry = index.tracks.first(where: { $0.number == track }), to > from else { return [] }
+        guard let entry = index.tracks.first(where: { $0.number == track }), to > from else { return ([], to) }
+        var upTo = to
         let lo = index.ticks(max(0, from)), hi = index.ticks(to)
         var out: [MatroskaBlock] = []
         let indexed = index.cues.contains { $0.positions.contains { $0.track == track } }
@@ -175,7 +185,7 @@ public actor MatroskaSubtitleReader {
         } else {
             var position = try await clusterStart(before: lo, index: index)
             var budget = Self.clusterBudget
-            while let at = position, at < index.segmentEnd, budget > 0 {
+            while let at = position, at < index.segmentEnd {
                 try Task.checkCancellation()
                 let cluster = try await readCluster(at: at, track: entry, index: index, endTick: hi)
                 guard let end = cluster.end else { break }
@@ -183,12 +193,19 @@ public actor MatroskaSubtitleReader {
                 if cluster.time >= hi { break }
                 budget -= Int(end - at)
                 position = end
+                if !whole, budget <= 0, end < index.segmentEnd {
+                    // Out of budget: everything before this cluster's start is read for certain.
+                    let reached = index.seconds(cluster.time)
+                    if reached > from { upTo = min(to, reached) }
+                    break
+                }
             }
         }
         var seen = Set<Data>()
-        return out.filter { $0.start >= index.seconds(lo) && $0.start < index.seconds(hi) }
+        let blocks = out.filter { $0.start >= index.seconds(lo) && $0.start < index.seconds(hi) }
             .sorted { $0.start < $1.start }
             .filter { seen.insert(Self.key($0)).inserted }
+        return (blocks, upTo)
     }
 
     private static func key(_ b: MatroskaBlock) -> Data {

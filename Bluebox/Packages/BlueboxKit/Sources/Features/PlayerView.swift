@@ -135,7 +135,7 @@ struct PlayerView: View {
 
     private var barContext: PlayerBarLayout.Context {
         PlayerBarLayout.Context(isSeries: episodes.isSeries, hasPreviousEpisode: hasPrevious, hasNextEpisode: hasNext,
-                                chapterCount: session.snapshot.chapters.count, pipAvailable: pipAvailable,
+                                chapterCount: session.slowSnapshot.chapters.count, pipAvailable: pipAvailable,
                                 isSwitching: session.isLoadingNext)
     }
 
@@ -155,7 +155,7 @@ struct PlayerView: View {
             app.remoteSkip = offer.map { o in (SkipSegmentPlanner.title(for: o), { perform(skip.accept()) }) }
         }
         .onDisappear { app.remoteSkip = nil }
-        .sheet(isPresented: $jumping) { JumpToTimeSheet(duration: session.snapshot.duration ?? 0, position: session.displayPosition) { t in Task { await session.seek(to: t) } } }
+        .sheet(isPresented: $jumping) { JumpToTimeSheet(duration: session.slowSnapshot.duration ?? 0, position: session.displayPosition) { t in Task { await session.seek(to: t) } } }
         // On its own view: one sheet per view (see the tools sheet above).
         .background {
             Color.clear.sheet(item: $releaseRequest) { request in
@@ -256,13 +256,13 @@ struct PlayerView: View {
     /// film) asks what to do next. They stay while a panel card is open, and
     /// while the video opens or stalls; playing or paused they fade when idle.
     private var controlsShown: Bool {
-        let status = session.snapshot.status
+        let status = session.slowSnapshot.status
         return !showsCard && (controlsVisible || panel != nil || (status != .playing && status != .paused))
     }
 
     /// The video is opening or stalled (not while scrubbing, which pauses on purpose).
     private var waiting: Bool {
-        !session.isScrubbing && (session.snapshot.status == .buffering || session.snapshot.status == .loading)
+        !session.isScrubbing && (session.slowSnapshot.status == .buffering || session.slowSnapshot.status == .loading)
     }
 
     /// The error card or the end-of-film card is up.
@@ -270,7 +270,7 @@ struct PlayerView: View {
 
     /// A film (or an episode with nothing queued after it) played to the end.
     private var showsEndCard: Bool {
-        session.snapshot.status == .ended && session.upNext == nil && !session.isLoadingNext && session.item != nil
+        session.slowSnapshot.status == .ended && session.upNext == nil && !session.isLoadingNext && session.item != nil
             && app.party?.room.upNext == nil
     }
 
@@ -278,7 +278,7 @@ struct PlayerView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             GeometryReader { geo in
-                let layout = VideoLayout(container: geo.size, natural: session.snapshot.presentationSize, framing: session.videoFraming)
+                let layout = VideoLayout(container: geo.size, natural: session.slowSnapshot.presentationSize, framing: session.videoFraming)
                 ZStack(alignment: .topLeading) {
                     if let avPlayer {
                         videoLayer(layout: layout) { framed in VideoSurface(player: avPlayer, pip: pip, stretch: framed) }
@@ -288,8 +288,9 @@ struct PlayerView: View {
                         }
                     }
                     // While the lines are drawn into the picture (PiP, AirPlay) the overlay stands aside.
-                    let inPicture = session.drawsSubtitlesInPicture || session.snapshot.isExternalPlaybackActive
-                    SubtitleOverlay(primary: inPicture ? nil : session.subtitleText, secondary: inPicture ? nil : session.secondarySubtitleText,
+                    let inPicture = session.drawsSubtitlesInPicture || session.slowSnapshot.isExternalPlaybackActive
+                    LiveSubtitleLines(session: session, hidden: inPicture) { primary, secondary in
+                    SubtitleOverlay(primary: primary, secondary: secondary,
                                     style: Bindable(app).subtitleStyle,
                                     videoRect: layout.visibleRect.isEmpty ? CGRect(origin: .zero, size: geo.size) : layout.visibleRect,
                                     // Down into the black bar under a letterboxed picture, or up into the one above.
@@ -304,6 +305,7 @@ struct PlayerView: View {
                                         subtitleEditing = editing
                                         lastInteraction = Date()
                                     })
+                    }
                 }
             }
             .ignoresSafeArea()
@@ -408,7 +410,7 @@ struct PlayerView: View {
                     onContinue: { app.dismissMobileDataBanner() },
                     onLowerQuality: { Task { await app.lowerQualityForMobileData() } },
                     onPause: {
-                        if session.snapshot.status == .playing { session.togglePlayPause() }
+                        if session.slowSnapshot.status == .playing { session.togglePlayPause() }
                         app.dismissMobileDataBanner()
                         poke()
                     })
@@ -453,9 +455,9 @@ struct PlayerView: View {
         // size (rotation on iPad): ask for the same frame again once it settles.
         .onChange(of: stageSize) { if showsRotatePrompt, PlayerOrientation.isSettled { showsRotatePrompt = false } }
         .task(id: stageSize) {
-            guard let avPlayer, session.snapshot.status == .paused, stageSize != .zero else { return }
+            guard let avPlayer, session.slowSnapshot.status == .paused, stageSize != .zero else { return }
             try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, session.snapshot.status == .paused else { return }
+            guard !Task.isCancelled, session.slowSnapshot.status == .paused else { return }
             await avPlayer.seek(to: avPlayer.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
         }
         #endif
@@ -504,11 +506,11 @@ struct PlayerView: View {
         // Picture in Picture can't show the overlay: the lines go into the picture.
         .onChange(of: pipActive, initial: true) { _, active in session.drawsSubtitlesInPicture = active }
         // Release ranking prefers MP4 while the video goes to AirPlay.
-        .onChange(of: session.snapshot.isExternalPlaybackActive, initial: true) { _, active in app.noteAirPlayingVideo(active) }
+        .onChange(of: session.slowSnapshot.isExternalPlaybackActive, initial: true) { _, active in app.noteAirPlayingVideo(active) }
         .modifier(PlayerKeys(actions: keyActions))
-        .task(id: session.snapshot.status == .playing || session.snapshot.status == .paused) { await autoHide() }
+        .task(id: session.slowSnapshot.status == .playing || session.slowSnapshot.status == .paused) { await autoHide() }
         // Pausing shows the controls (they fade again after a while, so a paused frame reads as it played).
-        .onChange(of: session.snapshot.status == .paused) { _, paused in if paused { poke() } }
+        .onChange(of: session.slowSnapshot.status == .paused) { _, paused in if paused { poke() } }
         // The profile's equaliser changed elsewhere (Settings, another device): hear it now.
         .onChange(of: app.equalizer) { _, eq in
             guard session.audioEffects.equalizer != eq else { return }
@@ -522,7 +524,7 @@ struct PlayerView: View {
             await episodes.load(for: session.item?.key, app: app)
         }
         // The credits countdown only runs while it can be seen and playback runs.
-        .onChange(of: session.snapshot.status != .playing || panel != nil || previewing || locked || showsCard, initial: true) { _, held in
+        .onChange(of: session.slowSnapshot.status != .playing || panel != nil || previewing || locked || showsCard, initial: true) { _, held in
             skip.holdsCountdown = held
         }
         // A card left open under the error or end card would come back after it (and eat the first Esc).
@@ -550,7 +552,7 @@ struct PlayerView: View {
             }
         }
         // How long it's been loading, for the loading words.
-        .onChange(of: session.snapshot.status == .loading || session.snapshot.status == .buffering, initial: true) { _, waiting in
+        .onChange(of: session.slowSnapshot.status == .loading || session.slowSnapshot.status == .buffering, initial: true) { _, waiting in
             loadingSince = waiting ? (loadingSince ?? Date()) : nil
         }
         // The spinner waits a moment before it shows, so a short stall (a seek,
@@ -561,7 +563,7 @@ struct PlayerView: View {
                 if showsWaiting { withAnimation(Motion.disappear) { showsWaiting = false } }
                 return
             }
-            let opening = session.snapshot.status == .loading && session.snapshot.duration == nil
+            let opening = session.slowSnapshot.status == .loading && session.slowSnapshot.duration == nil
             if !opening { try? await Task.sleep(for: .milliseconds(900)) }
             guard !Task.isCancelled, waiting else { return }
             withAnimation(Motion.appear) { showsWaiting = true }
@@ -578,16 +580,19 @@ struct PlayerView: View {
                 swarm = await app.addons.streamStats()
                 fileRanges = TorrentStreamer.downloadedRanges(for: resource.url)
                 available = fileRanges?.fractions ?? []
-                let waiting = session.snapshot.status == .loading || session.snapshot.status == .buffering
+                let waiting = session.slowSnapshot.status == .loading || session.slowSnapshot.status == .buffering
                 try? await Task.sleep(for: .seconds(waiting ? 1 : 2))
             }
         }
-        .onChange(of: session.snapshot.position) {
-            app.updateNowPlaying()
-            followSkipSegments()
-            advertiseHandoff()
+        // Watched from a view of its own, so the playhead moving doesn't redraw the whole player.
+        .background {
+            PlayheadObserver(session: session) {
+                app.updateNowPlaying()
+                followSkipSegments()
+                advertiseHandoff()
+            }
         }
-        .onChange(of: session.snapshot.status) {
+        .onChange(of: session.slowSnapshot.status) {
             app.updateNowPlaying()
             advertiseHandoff(force: true)
         }
@@ -608,77 +613,25 @@ struct PlayerView: View {
         .task(id: thumbnailID) {
             thumbnails = nil
             guard app.settings.scrubThumbnails, let resource = session.currentResource,
-                  let duration = session.snapshot.duration, duration > 0 else { return }
+                  let duration = session.slowSnapshot.duration, duration > 0 else { return }
             thumbnails = ScrubThumbnailer.make(for: resource, duration: duration, usesVLC: vlcEngine != nil)
         }
         .onAppear {
             skip.onCountdownFinished = { Task { await session.playNext() } }
             advertiseHandoff(force: true)
             #if DEBUG
-            // Screenshots: `-player-subtitle <n>` turns on the nth subtitle track from the video,
-            // `-player-subtitle-preset <name>` gives subtitles that look (throwaway -ui-testing prefs).
-            if let n = AppModel.debugValue("-player-subtitle").flatMap(Int.init) {
-                Task {
-                    for _ in 0..<40 where session.snapshot.embeddedSubtitles.count <= n { try? await Task.sleep(for: .milliseconds(250)) }
-                    if session.snapshot.embeddedSubtitles.indices.contains(n) {
-                        session.selectSubtitle(.embedded(session.snapshot.embeddedSubtitles[n].id))
-                    }
-                    if let name = AppModel.debugValue("-player-subtitle-preset"), let p = SubtitleStyle.Preset(rawValue: name) {
-                        try? await Task.sleep(for: .seconds(2))
-                        app.subtitleStyle = app.subtitleStyle.applying(p)
-                    }
-                }
-            }
-            // Screenshots: `-player-popover tracks|episodes|speed|tools|chapters` opens that card once
-            // the video plays; `-player-page <page>` opens a page in it (style, timing, secondLine,
-            // picture, sound, audioDelay, sleep, skip, shortcuts); `-player-rate 1.15` sets the speed,
-            // `-player-stats` shows Stats.
-            if let which = AppModel.debugValue("-player-popover").flatMap(PlayerPanelKind.init(rawValue:)) {
-                let page = AppModel.debugValue("-player-page")
-                toolsStartPage = page.flatMap(ToolsPage.init(rawValue:))
-                tracksStartPage = page.flatMap(TracksPage.init(rawValue:))
-                Task {
-                    try? await Task.sleep(for: .seconds(4))
-                    if let r = AppModel.debugValue("-player-rate").flatMap(Float.init) { session.setRate(r) }
-                    if (ProcessInfo.processInfo.arguments + AppModel.environmentDebugArguments).contains("-player-stats") { statsShown = true }
-                    if which == .tracks, page == "style" { openStyle() } else { panel = which }
-                }
-            }
-            if ProcessInfo.processInfo.arguments.contains("-player-jump") {
-                // Screenshots: Jump to Time, once the video plays.
-                Task { try? await Task.sleep(for: .seconds(3)); jumping = true }
-            }
-            if ProcessInfo.processInfo.arguments.contains("-player-mobile-banner") {
-                // Screenshots: the "Now using mobile data" banner.
-                Task { try? await Task.sleep(for: .seconds(2)); app.settings.networkSwitchedToCellularDuringPlayback = true }
-            }
-            if let after = AppModel.debugPauseAfter {
-                Task { try? await Task.sleep(for: .seconds(after)); session.togglePlayPause(); poke() }
-            }
-            if let after = AppModel.debugValue("-player-night").flatMap(Double.init) {
-                Task {
-                    try? await Task.sleep(for: .seconds(after))
-                    session.setAudioEffects(AudioEffects(dialogueBoost: true, nightMode: true))
-                }
-            }
-            if let after = AppModel.debugPiPAfter {
-                Task {
-                    try? await Task.sleep(for: .seconds(after))
-                    NSLog("PLAYERFX pip before: vlc=%d supported=%d available=%d possible=%d", vlcEngine != nil ? 1 : 0,
-                          VLCPictureInPicture.isSupported ? 1 : 0, vlcPiP.isAvailable ? 1 : 0, vlcPiP.isPossible ? 1 : 0)
-                    if vlcEngine != nil { vlcPiP.toggle() } else { pip.toggle() }
-                    try? await Task.sleep(for: .seconds(4))
-                    NSLog("PLAYERFX pip after: active=%d possible=%d", vlcPiP.isActive ? 1 : 0, vlcPiP.isPossible ? 1 : 0)
-                }
-            }
+            applyDebugArguments()
             #endif
         }
         .onDisappear {
             handoff.invalidate()
             vlcPiP.stop()
         }
-        .fileImporter(isPresented: $importingSubtitle,
-                      allowedContentTypes: ["srt", "vtt", "ass", "ssa"].compactMap { UTType(filenameExtension: $0) }) { result in
+        // Any file, checked by its extension once picked: .srt, .ass and .ssa have no
+        // system type, and the made-up ones a filter would ask for don't match
+        // files another app (VLC, IINA, Infuse) has claimed, or anything in the
+        // iPhone's Files, so the subtitles showed greyed out and couldn't be picked.
+        .fileImporter(isPresented: $importingSubtitle, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result {
                 _ = url.startAccessingSecurityScopedResource()
                 session.importSubtitle(url)
@@ -706,20 +659,20 @@ struct PlayerView: View {
     // MARK: Skip Intro and Handoff
 
     private var skipLookupID: String {
-        let s = session.snapshot
+        let s = session.slowSnapshot
         let key = session.item?.key.rawValue ?? ""
         let crowd = session.item.map { app.settings.crowdSkipsAllowed(for: $0.key) } ?? true
         return "\(key)|\(s.chapters.count)|\(s.duration.map { Int($0 / 60) } ?? -1)|\(crowd)"
     }
 
     private var thumbnailID: String {
-        "\(session.item?.key.rawValue ?? "")|\((session.snapshot.duration ?? 0) > 0)|\(app.settings.scrubThumbnails)"
+        "\(session.item?.key.rawValue ?? "")|\((session.slowSnapshot.duration ?? 0) > 0)|\(app.settings.scrubThumbnails)"
     }
 
     private func followSkipSegments() {
         guard let key = session.item?.key else { return }
         let settings = app.settings
-        let action = skip.update(position: session.snapshot.position, duration: session.snapshot.duration,
+        let action = skip.update(position: session.position, duration: session.slowSnapshot.duration,
                                  modes: settings.skipModes(for: key), hasNext: hasNext,
                                  autoplayNext: settings.autoplayNextEpisode,
                                  enabled: settings.skipsAllowed(for: key), isScrubbing: session.isScrubbing,
@@ -776,6 +729,70 @@ struct PlayerView: View {
         }
     }
 
+    #if DEBUG
+    /// Launch arguments for screenshots and review. A function of its own: inside
+    /// `body`'s modifier chain it took the type checker past its time limit.
+    private func applyDebugArguments() {
+        // Screenshots: `-player-subtitle <n>` turns on the nth subtitle track from the video,
+        // `-player-subtitle-preset <name>` gives subtitles that look (throwaway -ui-testing prefs).
+        if let n = AppModel.debugValue("-player-subtitle").flatMap(Int.init) {
+            Task {
+                for _ in 0..<40 where session.slowSnapshot.embeddedSubtitles.count <= n { try? await Task.sleep(for: .milliseconds(250)) }
+                if session.slowSnapshot.embeddedSubtitles.indices.contains(n) {
+                    session.selectSubtitle(.embedded(session.slowSnapshot.embeddedSubtitles[n].id))
+                }
+                if let name = AppModel.debugValue("-player-subtitle-preset"), let p = SubtitleStyle.Preset(rawValue: name) {
+                    try? await Task.sleep(for: .seconds(2))
+                    app.subtitleStyle = app.subtitleStyle.applying(p)
+                }
+            }
+        }
+        // Screenshots: `-player-popover tracks|episodes|speed|tools|chapters` opens that card once
+        // the video plays; `-player-page <page>` opens a page in it (style, timing, secondLine,
+        // picture, sound, audioDelay, sleep, skip, shortcuts); `-player-rate 1.15` sets the speed,
+        // `-player-stats` shows Stats.
+        if let which = AppModel.debugValue("-player-popover").flatMap(PlayerPanelKind.init(rawValue:)) {
+            let page = AppModel.debugValue("-player-page")
+            toolsStartPage = page.flatMap(ToolsPage.init(rawValue:))
+            tracksStartPage = page.flatMap(TracksPage.init(rawValue:))
+            Task {
+                try? await Task.sleep(for: .seconds(4))
+                if let r = AppModel.debugValue("-player-rate").flatMap(Float.init) { session.setRate(r) }
+                if (ProcessInfo.processInfo.arguments + AppModel.environmentDebugArguments).contains("-player-stats") { statsShown = true }
+                let opensStyle: Bool = which == PlayerPanelKind.tracks && page == Optional<String>("style")
+                if opensStyle { openStyle() } else { panel = which }
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-player-jump") {
+            // Screenshots: Jump to Time, once the video plays.
+            Task { try? await Task.sleep(for: .seconds(3)); jumping = true }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-player-mobile-banner") {
+            // Screenshots: the "Now using mobile data" banner.
+            Task { try? await Task.sleep(for: .seconds(2)); app.settings.networkSwitchedToCellularDuringPlayback = true }
+        }
+        if let after = AppModel.debugPauseAfter {
+            Task { try? await Task.sleep(for: .seconds(after)); session.togglePlayPause(); poke() }
+        }
+        if let after = AppModel.debugValue("-player-night").flatMap(Double.init) {
+            Task {
+                try? await Task.sleep(for: .seconds(after))
+                session.setAudioEffects(AudioEffects(dialogueBoost: true, nightMode: true))
+            }
+        }
+        if let after = AppModel.debugPiPAfter {
+            Task {
+                try? await Task.sleep(for: .seconds(after))
+                NSLog("PLAYERFX pip before: vlc=%d supported=%d available=%d possible=%d", vlcEngine != nil ? 1 : 0,
+                      VLCPictureInPicture.isSupported ? 1 : 0, vlcPiP.isAvailable ? 1 : 0, vlcPiP.isPossible ? 1 : 0)
+                if vlcEngine != nil { vlcPiP.toggle() } else { pip.toggle() }
+                try? await Task.sleep(for: .seconds(4))
+                NSLog("PLAYERFX pip after: active=%d possible=%d", vlcPiP.isActive ? 1 : 0, vlcPiP.isPossible ? 1 : 0)
+            }
+        }
+    }
+    #endif
+
     private func advertiseHandoff(force: Bool = false) {
         guard app.settings.handoff, let payload = app.handoffPayload(for: session) else { return }
         handoff.update(payload, force: force)
@@ -820,7 +837,7 @@ struct PlayerView: View {
                     guard boostedFrom == nil, let kind = PlayerSwipe.kind(startLocation: v.startLocation, translation: v.translation, in: stageSize)
                     else { return }
                     let start = switch kind {
-                    case .seek: session.snapshot.position
+                    case .seek: session.position
                     case .brightness: ScreenBrightness.level
                     case .volume: Double(session.volume)
                     }
@@ -830,7 +847,7 @@ struct PlayerView: View {
                 switch swipe.kind {
                 case .seek:
                     let target = PlayerSwipe.seekTarget(from: swipe.start, dx: v.translation.width, width: stageSize.width,
-                                                        duration: session.snapshot.duration)
+                                                        duration: session.slowSnapshot.duration)
                     swipeSeekTarget = target
                     let delta = target - swipe.start
                     flash("\(delta < 0 ? "−" : "+")\(Formatters.duration(abs(delta))) · \(Formatters.duration(target))",
@@ -899,7 +916,7 @@ struct PlayerView: View {
             },
             stepSpeed: { steps in
                 boostedFrom = nil  // a speed picked during a 2× hold is the one kept
-                let r = PlaybackSpeed.stepped(session.snapshot.rate, by: steps)
+                let r = PlaybackSpeed.stepped(session.slowSnapshot.rate, by: steps)
                 session.setRate(r)
                 flash("Speed \(PlaybackSpeed.label(r))", symbol: "gauge.with.needle")
             },
@@ -948,7 +965,7 @@ struct PlayerView: View {
                       symbol: now == .off ? "captions.bubble" : "captions.bubble.fill", kind: "subtitles")
             },
             seekPercent: { n in
-                guard let duration = session.snapshot.duration, duration > 0 else { return }
+                guard let duration = session.slowSnapshot.duration, duration > 0 else { return }
                 Task { await session.seek(to: duration * Double(n) / 10) }
                 flash("\(n * 10)% through", symbol: "clock", level: Double(n) / 10, kind: "seekPercent")
                 poke()
@@ -987,7 +1004,7 @@ struct PlayerView: View {
     /// Plays at 2× while a key or finger is held.
     private func startBoost() {
         guard boostedFrom == nil else { return }
-        boostedFrom = session.snapshot.rate
+        boostedFrom = session.slowSnapshot.rate
         session.setRate(PlaybackSpeed.hold)
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1015,7 +1032,7 @@ struct PlayerView: View {
     }
 
     private func cycleSubtitles() {
-        let all: [SubtitleSelection] = [.off] + session.snapshot.embeddedSubtitles.map { .embedded($0.id) }
+        let all: [SubtitleSelection] = [.off] + session.slowSnapshot.embeddedSubtitles.map { .embedded($0.id) }
             + session.externalSubtitles.map { .external($0.id) }
         let next = all[((all.firstIndex(of: session.subtitleSelection) ?? 0) + 1) % all.count]
         session.selectSubtitle(next)
@@ -1028,9 +1045,9 @@ struct PlayerView: View {
     }
 
     private func cycleAudio() {
-        let tracks = session.snapshot.audioTracks
+        let tracks = session.slowSnapshot.audioTracks
         guard tracks.count > 1 else { flash("Only one audio track", symbol: "waveform"); return }
-        let i = tracks.firstIndex { $0.id == session.snapshot.selectedAudioID } ?? -1
+        let i = tracks.firstIndex { $0.id == session.slowSnapshot.selectedAudioID } ?? -1
         let next = tracks[(i + 1) % tracks.count]
         session.selectAudio(next.id)
         flash("Audio: \(TrackLabel.labels(for: tracks)[next.id]?.spoken ?? next.label)", symbol: "waveform")
@@ -1042,7 +1059,7 @@ struct PlayerView: View {
     /// clipped box that is flipped and rotated as a whole.
     private func videoLayer<Surface: View>(layout: VideoLayout, @ViewBuilder surface: @escaping (Bool) -> Surface) -> some View {
         let f = session.videoFraming
-        let framed = session.snapshot.presentationSize != .zero
+        let framed = session.slowSnapshot.presentationSize != .zero
         return GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 surface(framed)
@@ -1110,7 +1127,7 @@ struct PlayerView: View {
     private func saveSnapshot() async {
         guard let image = await session.captureFrame() else { flash("Couldn't capture this frame", symbol: "camera", style: .warning); return }
         do {
-            let place = try await SnapshotSaver.save(image, title: session.item?.title ?? "Bluebox", at: session.snapshot.position)
+            let place = try await SnapshotSaver.save(image, title: session.item?.title ?? "Bluebox", at: session.position)
             flash("Saved to \(place)", symbol: "camera.fill")
         } catch {
             flash(error.localizedDescription, symbol: "exclamationmark.triangle.fill", style: .warning)
@@ -1325,66 +1342,33 @@ struct PlayerView: View {
 
     /// The ring that fills to the resume point, with the speed or peers under it.
     private func bufferingRing(size: CGFloat) -> some View {
-        let s = session.snapshot
+        let s = session.slowSnapshot
         let elapsed = loadingSince.map { Date().timeIntervalSince($0) } ?? 0
-        return BufferingRing(fraction: BufferProgress.fraction(status: s.status, bufferFill: s.bufferFill, position: s.position,
-                                                               bufferedUntil: s.bufferedUntil),
-                             caption: BufferProgress.caption(status: s.status, torrent: swarm, elapsed: elapsed),
-                             size: size)
-            .overlay(alignment: .top) {
-                // The longer explanation once it's been a while ("This torrent may have few seeders").
-                if elapsed > 12, let detail = PlayerLoadingText.line(status: s.status, bufferFill: s.bufferFill, torrent: swarm,
-                                                                    loadingNext: false, elapsed: elapsed)?.detail {
-                    Text(detail).font(.caption2).foregroundStyle(Palette.textSecondary).fixedSize()
-                        .shadow(color: .black.opacity(0.7), radius: 3)
-                        .offset(y: size + 28)
-                }
+        // The fill follows the buffer, so only the ring redraws as it moves.
+        return PlayheadReader(session: session) { _ in
+            BufferingRing(fraction: BufferProgress.fraction(status: s.status, bufferFill: s.bufferFill, position: session.position,
+                                                            bufferedUntil: session.bufferedUntil),
+                          caption: BufferProgress.caption(status: s.status, torrent: swarm, elapsed: elapsed),
+                          size: size)
+        }
+        .overlay(alignment: .top) {
+            // The longer explanation once it's been a while ("This torrent may have few seeders").
+            if elapsed > 12, let detail = PlayerLoadingText.line(status: s.status, bufferFill: s.bufferFill, torrent: swarm,
+                                                                loadingNext: false, elapsed: elapsed)?.detail {
+                Text(detail).font(.caption2).foregroundStyle(Palette.textSecondary).fixedSize()
+                    .shadow(color: .black.opacity(0.7), radius: 3)
+                    .offset(y: size + 28)
             }
+        }
     }
 
     /// The chapter name over the timeline, the timeline, then the control row.
     private func bottomBar(short: Bool) -> some View {
-        let s = session.snapshot
-        // Unknown length: no fill, no remaining time, nothing to scrub (never a full bar at 0:00).
-        let timeline = PlaybackTimeline(position: session.displayPosition, duration: s.duration)
-        let duration = timeline.duration ?? 0
-        let shown = scrubFraction.flatMap { timeline.time(at: $0) } ?? timeline.position
-        let remaining = timeline.remaining(at: shown).map { "−" + Formatters.duration($0) } ?? "--:--"
-        return VStack(alignment: .leading, spacing: short ? 0 : 2) {
-            chapterLabel(duration: duration)
-            HStack(spacing: Spacing.m) {
-                Scrubber(fraction: timeline.fraction,
-                         buffered: timeline.fraction(at: s.bufferedUntil),
-                         duration: duration,
-                         available: available,
-                         loop: session.loopStart.map { a in (a / max(duration, 1), session.loopEnd.map { $0 / max(duration, 1) }) },
-                         chapterMarks: duration > 0 ? s.chapters.map { $0.start / duration } : [],
-                         stalled: showsWaiting,
-                         scrubFraction: $scrubFraction,
-                         onScrub: { f in
-                             guard let target = timeline.time(at: f) else { return }
-                             session.scrub(to: target)
-                             lastInteraction = Date()
-                         },
-                         onCommit: { f in
-                             guard let target = timeline.time(at: f) else { return }
-                             Task { await session.endScrub(at: target) }
-                             poke()
-                         },
-                         thumbnails: thumbnails,
-                         onPreviewing: { previewing = $0 })
-                .allowsHitTesting(timeline.isKnown)
-                .accessibilityElement()
-                .accessibilityLabel("Playback position")
-                .accessibilityValue(timeline.isKnown ? "\(Formatters.duration(timeline.position)) of \(Formatters.duration(duration))"
-                                                     : Formatters.duration(timeline.position))
-                .accessibilityAdjustableAction { dir in skipBy(forward: dir == .increment) }
-                // Fixed width, so the timeline doesn't shift when 9:59 becomes 10:00.
-                Text(remaining)
-                    .font(.footnote.weight(.semibold)).monospacedDigit()
-                    .frame(minWidth: duration >= 3600 ? 64 : 48, alignment: .trailing)
-                    .accessibilityLabel(timeline.isKnown ? "\(remaining.dropFirst()) remaining" : "Length unknown")
-            }
+        VStack(alignment: .leading, spacing: short ? 0 : 2) {
+            chapterLabel()
+            // The timeline and the time left follow the playhead in a view of
+            // their own: the rest of the bar (and the player) stays as it is.
+            PlayheadReader(session: session) { position in timelineRow(position: position) }
             controlRow
             if let err = session.subtitleError {
                 Label(err, systemImage: "captions.bubble").font(.caption).foregroundStyle(Palette.textSecondary)
@@ -1396,11 +1380,58 @@ struct PlayerView: View {
         }
     }
 
+    /// The scrubber and the time left, at `position`.
+    private func timelineRow(position: TimeInterval) -> some View {
+        let s = session.slowSnapshot
+        // Unknown length: no fill, no remaining time, nothing to scrub (never a full bar at 0:00).
+        let timeline = PlaybackTimeline(position: position, duration: s.duration)
+        let duration = timeline.duration ?? 0
+        let shown = scrubFraction.flatMap { timeline.time(at: $0) } ?? timeline.position
+        let remaining = timeline.remaining(at: shown).map { "−" + Formatters.duration($0) } ?? "--:--"
+        return HStack(spacing: Spacing.m) {
+            Scrubber(fraction: timeline.fraction,
+                     buffered: timeline.fraction(at: session.bufferedUntil),
+                     duration: duration,
+                     available: available,
+                     loop: session.loopStart.map { a in (a / max(duration, 1), session.loopEnd.map { $0 / max(duration, 1) }) },
+                     chapterMarks: duration > 0 ? s.chapters.map { $0.start / duration } : [],
+                     stalled: showsWaiting,
+                     scrubFraction: $scrubFraction,
+                     onScrub: { f in
+                         guard let target = timeline.time(at: f) else { return }
+                         session.scrub(to: target)
+                         lastInteraction = Date()
+                     },
+                     onCommit: { f in
+                         guard let target = timeline.time(at: f) else { return }
+                         Task { await session.endScrub(at: target) }
+                         poke()
+                     },
+                     thumbnails: thumbnails,
+                     onPreviewing: { previewing = $0 })
+            .allowsHitTesting(timeline.isKnown)
+            .accessibilityElement()
+            .accessibilityLabel("Playback position")
+            .accessibilityValue(timeline.isKnown ? "\(Formatters.duration(timeline.position)) of \(Formatters.duration(duration))"
+                                                 : Formatters.duration(timeline.position))
+            .accessibilityAdjustableAction { dir in skipBy(forward: dir == .increment) }
+            // Fixed width, so the timeline doesn't shift when 9:59 becomes 10:00.
+            Text(remaining)
+                .font(.footnote.weight(.semibold)).monospacedDigit()
+                .frame(minWidth: duration >= 3600 ? 64 : 48, alignment: .trailing)
+                .accessibilityLabel(timeline.isKnown ? "\(remaining.dropFirst()) remaining" : "Length unknown")
+        }
+    }
+
     /// "Chapter 3 · The Lamp Room ›": opens the chapter list. Its line is kept
     /// when there are no chapters, so the bar is the same height for every video.
-    @ViewBuilder private func chapterLabel(duration: TimeInterval) -> some View {
-        let chapters = session.snapshot.chapters
-        let index = session.currentChapterIndex
+    /// The chapter playing moves with the playhead, so it's read in a view of its own.
+    private func chapterLabel() -> some View {
+        PlayheadReader(session: session) { _ in chapterButton(index: session.currentChapterIndex) }
+    }
+
+    @ViewBuilder private func chapterButton(index: Int?) -> some View {
+        let chapters = session.slowSnapshot.chapters
         Button { toggle(.chapters) } label: {
             HStack(spacing: 5) {
                 Image(systemName: "list.bullet").font(.caption.weight(.bold))
@@ -1509,7 +1540,7 @@ struct PlayerView: View {
                 .panelAnchor(.tracks, in: $anchors)
                 .accessibilityIdentifier("tracksMenu")
         case .speed:
-            let rate = session.snapshot.rate
+            let rate = session.slowSnapshot.rate
             Button { toggle(.speed) } label: {
                 Text(PlaybackSpeed.label(rate))
                     .font(.system(size: 13, weight: .heavy)).monospacedDigit()
@@ -1583,7 +1614,7 @@ struct PlayerView: View {
     private func toggle(_ kind: PlayerPanelKind) {
         lastInteraction = Date()
         if kind == .episodes, !episodes.isSeries { return }
-        if kind == .chapters, session.snapshot.chapters.isEmpty { return }
+        if kind == .chapters, session.slowSnapshot.chapters.isEmpty { return }
         panel = panel == kind ? nil : kind
         if panel != nil { poke() }
         if panel == .episodes {
@@ -1650,10 +1681,13 @@ struct PlayerView: View {
                         onStyle: openStyle)
                 .environment(audioSync)
         case .speed:
-            SpeedPanel(rate: session.snapshot.rate,
-                       remaining: session.snapshot.duration.map { max($0 - session.snapshot.position, 0) }) { r in
-                boostedFrom = nil
-                session.setRate(r); lastInteraction = Date()
+            // Its time left follows the playhead: only the card redraws for it.
+            PlayheadReader(session: session) { position in
+                SpeedPanel(rate: session.slowSnapshot.rate,
+                           remaining: session.slowSnapshot.duration.map { max($0 - position, 0) }) { r in
+                    boostedFrom = nil
+                    session.setRate(r); lastInteraction = Date()
+                }
             }
         case .tools:
             ToolsPanel(session: session, skip: skip, columns: 3, statsShown: statsShown, initialPage: toolsStartPage,
@@ -1716,7 +1750,7 @@ struct PlayerView: View {
 
     /// VLC draws the subtitles from the file itself (Bluebox's overlay draws files and AVPlayer's text).
     private var vlcDrawsSubtitles: Bool {
-        if case .embedded = session.subtitleSelection { return session.snapshot.drawsEmbeddedSubtitles }
+        if case .embedded = session.subtitleSelection { return session.slowSnapshot.drawsEmbeddedSubtitles }
         return false
     }
 
@@ -1855,7 +1889,7 @@ struct PlayerView: View {
     /// Loads the same release again, from where it was.
     private func retryPlayback() {
         guard let item = session.item, let resource = session.currentResource else { return }
-        let position = session.snapshot.position
+        let position = session.position
         Task { await session.start(item, resource: resource, resume: true, startAt: position > 1 ? position : nil) }
     }
 
@@ -1890,7 +1924,7 @@ struct PlayerView: View {
     /// playing or paused; never mid-scrub, with the tools open, while the pointer rests on
     /// them or while subtitles are being moved. On the Mac the pointer hides too.
     private func autoHide() async {
-        while !Task.isCancelled, session.snapshot.status == .playing || session.snapshot.status == .paused {
+        while !Task.isCancelled, session.slowSnapshot.status == .playing || session.slowSnapshot.status == .paused {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             let idle = Date().timeIntervalSince(lastInteraction) > 3
@@ -1901,6 +1935,47 @@ struct PlayerView: View {
                 #endif
             }
         }
+    }
+}
+
+/// Reads the session's current lines in a view of their own, so a new line
+/// redraws only the subtitle overlay and not the whole player around it
+/// (which made the lines come up late and the player stutter on busy scenes).
+private struct LiveSubtitleLines<Content: View>: View {
+    let session: PlayerSession
+    /// Picture in Picture or AirPlay: the lines are drawn into the picture instead.
+    let hidden: Bool
+    @ViewBuilder let content: (_ primary: String?, _ secondary: String?) -> Content
+
+    var body: some View {
+        content(hidden ? nil : session.subtitleText, hidden ? nil : session.secondarySubtitleText)
+    }
+}
+
+/// Hands the playhead (where a seek is headed, else where playback is) to
+/// `content` in a view of its own. The position changes several times a
+/// second while playing: read in the player's body, it redrew the whole
+/// player each time, controls hidden or not; here only `content` follows it.
+private struct PlayheadReader<Content: View>: View {
+    let session: PlayerSession
+    @ViewBuilder let content: (_ position: TimeInterval) -> Content
+
+    var body: some View {
+        content(session.displayPosition)
+    }
+}
+
+/// Runs `action` each time the playhead moves, from a view that draws
+/// nothing, so the player's body doesn't depend on the position to watch it.
+private struct PlayheadObserver: View {
+    let session: PlayerSession
+    let action: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: session.position) { action() }
     }
 }
 

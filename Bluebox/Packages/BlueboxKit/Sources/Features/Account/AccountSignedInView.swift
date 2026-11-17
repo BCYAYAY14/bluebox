@@ -246,7 +246,7 @@ struct TraktRows: View {
                         .accessibilityIdentifier("traktSyncListsSwitch")
                 }
                 .settingsRow("Sync Lists with Trakt")
-                AccountActionRow(title: "Sync now", working: trakt.status == .syncing) { Task { await trakt.syncNow() } }
+                AccountActionRow(title: "Sync now", working: trakt.status == .syncing) { Task { await trakt.syncNow(force: true) } }
                 AccountActionRow(title: "Disconnect Trakt") { Task { await trakt.disconnect() } }
             }
             if let message { AccountErrorText(text: message).padding(.vertical, Spacing.m) }

@@ -32,6 +32,14 @@ struct SubtitleOverlay: View {
     @State private var dragging = false
     @State private var pinch: Double = 1
     @State private var pinching = false
+    /// True only while the system still runs the gesture. A gesture that's
+    /// cancelled (the line it grabbed ends and the block goes, a system
+    /// gesture or a sheet takes over) never calls `onEnded`, but these reset,
+    /// so the guides and the dashed frame can't be left on screen.
+    @GestureState private var dragLive = false
+    @GestureState private var pinchLive = false
+    /// The line being dragged, kept on screen if its time runs out mid-drag.
+    @State private var heldLine: String?
     @State private var blockSize: CGSize = .zero
     @State private var candidate: SubtitlePlacement?
     @State private var showsReset = false
@@ -45,7 +53,7 @@ struct SubtitleOverlay: View {
         let w = Double(max(videoRect.width, 1)), h = Double(max(videoRect.height, 1))
         var shown = style
         shown.relativeSize = SubtitleStyle.clampSize(style.relativeSize * pinch)
-        let primaryLine = primary ?? (secondary == nil ? placeholder : nil)
+        let primaryLine = primary ?? (secondary == nil ? (placeholder ?? (dragging || pinching ? heldLine : nil)) : nil)
         let restMargin = restingMargin(h: h)
         let offset = blockOffset(w: w, h: h)
 
@@ -87,6 +95,8 @@ struct SubtitleOverlay: View {
         .selectionHaptic(candidate?.snappedX == true)
         .selectionHaptic(candidate?.snappedY == true)
         .onChange(of: controlsVisible) { _, visible in if !visible { holdsDrop = false } }
+        .onChange(of: dragLive) { _, live in if !live { endDrag() } }
+        .onChange(of: pinchLive) { _, live in if !live { endPinch() } }
     }
 
     private func block(primary: String?, style: SubtitleStyle, h: Double) -> some View {
@@ -162,6 +172,7 @@ struct SubtitleOverlay: View {
         // Global space: the block moves under the finger, so a local translation
         // would shrink as it moves and the text would trail at half speed.
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .updating($dragLive) { _, live, _ in live = true }
             .onChanged { v in
                 if !dragging { begin(); dragging = true }
                 let rest = restingRect(w: w, h: h)
@@ -169,37 +180,47 @@ struct SubtitleOverlay: View {
                 candidate = SubtitlePlacement.dropping(block: moved, alignment: style.alignment, horizontalMargin: style.horizontalMargin,
                                                        verticalBounds: verticalBounds(h: h))
             }
-            .onEnded { _ in
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) {
-                    if let candidate { style.place(candidate) }
-                    candidate = nil
-                    dragging = false
-                    holdsDrop = controlsVisible
-                }
-                end()
-                flashReset()
-            }
+            .onEnded { _ in endDrag() }
+    }
+
+    /// Drops the text where the drag left it. Called by `onEnded`, and when
+    /// the gesture is cancelled instead (`dragLive` resets); once either way.
+    private func endDrag() {
+        guard dragging else { return }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            if let candidate { style.place(candidate) }
+            candidate = nil
+            dragging = false
+            holdsDrop = controlsVisible
+        }
+        end()
+        flashReset()
     }
 
     private var pinchGesture: some Gesture {
         MagnifyGesture()
+            .updating($pinchLive) { _, live, _ in live = true }
             .onChanged { v in
                 if !pinching { begin(); pinching = true }
                 pinch = v.magnification
             }
-            .onEnded { _ in
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) {
-                    style.relativeSize = SubtitleStyle.clampSize(style.relativeSize * pinch)
-                    pinch = 1
-                    pinching = false
-                }
-                end()
-            }
+            .onEnded { _ in endPinch() }
+    }
+
+    private func endPinch() {
+        guard pinching else { return }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            style.relativeSize = SubtitleStyle.clampSize(style.relativeSize * pinch)
+            pinch = 1
+            pinching = false
+        }
+        end()
     }
 
     private func begin() {
+        if !dragging && !pinching { heldLine = primary ?? placeholder }
         resetTask?.cancel()
         showsReset = false
         onEditingChanged(true)

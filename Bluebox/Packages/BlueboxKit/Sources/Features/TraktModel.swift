@@ -129,9 +129,11 @@ public final class TraktModel {
         status = .idle
     }
 
-    public func syncNow() async {
+    /// `force` is for someone asking (Sync now, Try Again): it reads Trakt even
+    /// if the last pass was moments ago. The app coming to the front doesn't.
+    public func syncNow(force: Bool = false) async {
         pending?.cancel(); pending = nil
-        await run()
+        await run(force: force)
     }
 
     public func scheduleSync(after delay: Duration = .seconds(5)) {
@@ -144,11 +146,11 @@ public final class TraktModel {
         }
     }
 
-    private func run() async {
+    private func run(force: Bool = false) async {
         guard let engine, isConnected else { return }
         status = .syncing
         do {
-            let report = try await engine.sync()
+            let report = try await engine.sync(force: force)
             status = .synced(.now)
             if report.applied > 0 { onRemoteChanges(); ratingsRevision += 1 }
         } catch TraktError.notConnected {

@@ -30,6 +30,7 @@ public actor PlexSource: MediaSource {
     let matcher: MediaMatcher?
     private var items: [Entry]?
     private var loadedAt: Date?
+    private var loading: Task<[Entry], Error>?
     static let refreshInterval: TimeInterval = 600
     static let plexTV = URL(string: "https://plex.tv")!
 
@@ -167,6 +168,16 @@ public actor PlexSource: MediaSource {
 
     func entries(force: Bool = false) async throws -> [Entry] {
         if !force, let items, let loadedAt, Date().timeIntervalSince(loadedAt) < Self.refreshInterval { return items }
+        // One load at a time: a season page asks about every episode at once, and
+        // each ask used to start its own read of the whole library.
+        if let loading { return try await loading.value }
+        let task = Task { try await self.loadEntries() }
+        loading = task
+        defer { if loading == task { loading = nil } }
+        return try await task.value
+    }
+
+    private func loadEntries() async throws -> [Entry] {
         let sections: Container<Directory> = try await get("/library/sections", [:])
         var out: [Entry] = []
         for section in sections.MediaContainer.Directory ?? [] {

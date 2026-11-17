@@ -48,7 +48,9 @@ public enum VLCAudioClip {
         var started = false, sought = start < 1
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
-            try await Task.sleep(for: .milliseconds(sought ? 100 : 15))
+            // Until the seek goes out, often enough that little is decoded from the
+            // beginning; what is gets cut off by `keepLast` anyway, so 30 ms is plenty.
+            try await Task.sleep(for: .milliseconds(sought ? 100 : 30))
             switch player.state {
             case .playing:
                 started = true
@@ -57,8 +59,14 @@ public enum VLCAudioClip {
             case .stopped, .stopping, .idle:
                 if started {
                     player.stop()
+                    // Off the main thread: a seek that landed late leaves a WAV of
+                    // a hundred megabytes or more, read and rewritten while the film plays.
+                    let kept = try await Task.detached(priority: .userInitiated) {
+                        try VLCAudioClip.keepLast(duration, of: destination)
+                    }.value
+                    try Task.checkCancellation()
                     // What's kept ends at the stop time.
-                    return max(0, start) + duration - (try keepLast(duration, of: destination))
+                    return max(0, start) + duration - kept
                 }
             case .error: throw Failure.noSound
             }
@@ -69,7 +77,7 @@ public enum VLCAudioClip {
     /// Cuts the WAV down to its last `seconds` (16 kHz mono, 16-bit) with a
     /// fresh header, and returns how many seconds it holds.
     @discardableResult
-    static func keepLast(_ seconds: TimeInterval, of url: URL) throws -> TimeInterval {
+    nonisolated static func keepLast(_ seconds: TimeInterval, of url: URL) throws -> TimeInterval {
         let data = try Data(contentsOf: url)
         guard let marker = data.range(of: Data("data".utf8)), marker.upperBound + 4 <= data.count else { throw Failure.noSound }
         let samples = data[(marker.upperBound + 4)...]
@@ -79,7 +87,7 @@ public enum VLCAudioClip {
         return Double(keep / 2) / 16_000
     }
 
-    static func wavHeader(dataBytes: Int) -> Data {
+    nonisolated static func wavHeader(dataBytes: Int) -> Data {
         var h = Data()
         func u32(_ v: Int) { withUnsafeBytes(of: UInt32(v).littleEndian) { h.append(contentsOf: $0) } }
         func u16(_ v: Int) { withUnsafeBytes(of: UInt16(v).littleEndian) { h.append(contentsOf: $0) } }

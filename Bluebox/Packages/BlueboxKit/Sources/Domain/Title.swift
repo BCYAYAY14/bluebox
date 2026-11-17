@@ -36,7 +36,9 @@ public struct Title: Hashable, Codable, Sendable, Identifiable {
     public let backdrop: Artwork?
 
     public var id: MediaKey { key }
-    public var year: Int? { releaseDate.map { Calendar(identifier: .gregorian).component(.year, from: $0) } }
+    public var year: Int? { releaseDate.map { Self.gregorian.component(.year, from: $0) } }
+    /// Made once: poster grids ask for the year of every card they draw.
+    private static let gregorian = Calendar(identifier: .gregorian)
 
     public init(
         key: MediaKey, kind: TitleKind, name: String, overview: String = "", releaseDate: Date? = nil,

@@ -263,10 +263,11 @@ public struct ShelfRow<Item: Identifiable, Card: View>: View {
     let itemWidth: CGFloat?
     let seeAll: (() -> Void)?
     let card: (Item) -> Card
+    /// Where the row is scrolled to. Only the pager reads it: read here, each
+    /// card crossing the leading edge would rebuild every card in the row.
     @State private var leading: Item.ID?
     @State private var hovering = false
     @State private var rowWidth: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(_ title: String, items: [Item], inset: CGFloat, itemWidth: CGFloat? = nil, seeAll: (() -> Void)? = nil,
                 @ViewBuilder card: @escaping (Item) -> Card) {
@@ -290,23 +291,38 @@ public struct ShelfRow<Item: Identifiable, Card: View>: View {
             .scrollClipDisabled()
             .scrollPosition(id: $leading, anchor: .leading)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
-            .overlay { if itemWidth != nil { pager } }
+            .overlay {
+                if let itemWidth {
+                    ShelfPager(items: items, leading: $leading, pageSize: Self.pageSize(rowWidth: rowWidth, inset: inset, itemWidth: itemWidth),
+                               inset: inset, hovering: hovering)
+                }
+            }
         }
         .onHover { hovering = $0 }
     }
 
-    // MARK: Paging arrows
-
-    private var pageSize: Int {
-        guard let itemWidth, itemWidth > 0 else { return 1 }
+    /// How many cards a page turn moves: as many as fit across the row.
+    private static func pageSize(rowWidth: CGFloat, inset: CGFloat, itemWidth: CGFloat) -> Int {
+        guard itemWidth > 0 else { return 1 }
         return max(1, Int((rowWidth - inset * 2 + Spacing.cardGap) / (itemWidth + Spacing.cardGap)))
     }
+}
+
+/// A shelf's paging arrows, a view of their own: they read where the row is
+/// scrolled to, so a card crossing the leading edge redraws them, not the row.
+private struct ShelfPager<Item: Identifiable>: View {
+    let items: [Item]
+    @Binding var leading: Item.ID?
+    let pageSize: Int
+    let inset: CGFloat
+    let hovering: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var index: Int {
         leading.flatMap { id in items.firstIndex { $0.id == id } } ?? 0
     }
 
-    private var pager: some View {
+    var body: some View {
         HStack {
             arrow("chevron.left", label: "Previous", visible: index > 0) { page(-1) }
             Spacer()
@@ -694,16 +710,13 @@ struct RaiseOnHover: ViewModifier {
 }
 
 /// The lift shadow under a hovered card. A 22-point shadow left on every card
-/// at zero opacity still costs a blur pass per card per frame, so on iOS
-/// (where most cards are never hovered) its radius drops to zero too.
+/// at zero opacity still costs a blur pass per card per frame, and only one
+/// card is ever hovered, so off hover its radius drops to zero too, on the Mac
+/// as on iOS; it grows in with the card's zoom.
 struct HoverShadow: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
-        #if os(macOS)
-        content.shadow(color: .black.opacity(on ? 0.75 : 0), radius: 22, y: 12)
-        #else
         // Same view either way (no if/else), so hovering doesn't rebuild the card.
         content.shadow(color: .black.opacity(on ? 0.75 : 0), radius: on ? 22 : 0, y: on ? 12 : 0)
-        #endif
     }
 }

@@ -13,7 +13,10 @@ public final class PictureInPictureModel: NSObject, ObservableObject, AVPictureI
     public static var isSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
 
     func attach(_ layer: AVPlayerLayer) {
-        guard controller == nil, Self.isSupported, let c = AVPictureInPictureController(playerLayer: layer) else { return }
+        // A new layer (the engine went to VLC and back for another file) takes over:
+        // a controller left on the old one never becomes possible again.
+        guard controller?.playerLayer !== layer, Self.isSupported, let c = AVPictureInPictureController(playerLayer: layer) else { return }
+        possibleObservation?.invalidate()
         #if os(iOS)
         c.canStartPictureInPictureAutomaticallyFromInline = true
         #endif

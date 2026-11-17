@@ -138,4 +138,59 @@ import TestingSupport
         #expect(try await store.progress(for: movie.key)?.position == 600)
         #expect(try await store.pendingUploads().map(\.key) == [movie.key])  // local record still pending
     }
+
+    // MARK: Title cache
+
+    /// Home stores every row's titles on each load; unchanged ones used to be rewritten every time.
+    @Test func storingAnUnchangedBatchDoesNotSave() async throws {
+        let store = try LibraryStore.make(inMemory: true)
+        let batch = (1...80).map { Title(key: .movie(tmdbID: $0), kind: .movie, name: "Film \($0)") }
+        #expect(try await store.storeTitles(batch))
+        #expect(try await !store.storeTitles(batch))
+        #expect(try await !store.storeTitles(batch.shuffled() + batch.prefix(5)))  // order and repeats don't matter
+
+        // One renamed title is written; the rest are left alone.
+        var changed = batch
+        changed[3] = Title(key: batch[3].key, kind: .movie, name: "Renamed")
+        #expect(try await store.storeTitles(changed))
+        #expect(try await store.title(for: batch[3].key)?.name == "Renamed")
+        #expect(try await store.title(for: batch[4].key)?.name == "Film 5")
+    }
+
+    /// More keys than one predicate takes.
+    @Test func storesBatchesLargerThanOnePredicate() async throws {
+        let store = try LibraryStore.make(inMemory: true)
+        let batch = (1...(LibraryStore.predicateChunk + 20)).map { Title(key: .movie(tmdbID: $0), kind: .movie, name: "Film \($0)") }
+        try await store.store(batch)
+        #expect(try await !store.storeTitles(batch))
+        #expect(try await store.title(for: batch.last!.key)?.name == batch.last!.name)
+    }
+
+    @Test func pruningKeepsTitlesTheLibraryRefersTo() async throws {
+        let store = try LibraryStore.make(inMemory: true)
+        let onMyList = Title(key: .movie(tmdbID: 10), kind: .movie, name: "My List")
+        let onAList = Title(key: .movie(tmdbID: 11), kind: .movie, name: "A list")
+        let watched = Title(key: .series(tmdbID: 12), kind: .series, name: "Watched show")
+        let withFacts = Title(key: .movie(tmdbID: 13), kind: .movie, name: "Facts")
+        let downloaded = Title(key: .series(tmdbID: 14), kind: .series, name: "Downloaded show")
+        let forgotten = Title(key: .movie(tmdbID: 15), kind: .movie, name: "Shown once on Home")
+
+        try await store.setWatchlisted(onMyList, true)
+        let list = try await store.createList(name: "Weekend")
+        try await store.setOnList(onAList, listID: list.id, true)
+        try await store.save(.fixture(.episode(seriesID: 12, season: 1, episode: 2), 600, at: 100))
+        try await store.noteTitleFacts(withFacts.key, runtimeMinutes: 100)
+        try await store.store([watched, withFacts, downloaded, forgotten])
+        let downloads: Set<MediaKey> = [.episode(seriesID: 14, season: 2, episode: 1)]
+
+        // Seen recently: nothing goes.
+        #expect(try await store.pruneTitleCache(keeping: downloads) == 0)
+
+        let later = Date.now.addingTimeInterval(LibraryStore.titleCacheLifetime + 86_400)
+        #expect(try await store.pruneTitleCache(keeping: downloads, now: later) == 1)
+        #expect(try await store.title(for: forgotten.key) == nil)
+        for kept in [onMyList, onAList, watched, withFacts, downloaded] {
+            #expect(try await store.title(for: kept.key)?.name == kept.name)
+        }
+    }
 }

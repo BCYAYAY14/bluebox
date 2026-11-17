@@ -79,6 +79,8 @@ public final class TogetherRoom {
 
     /// Not heard from for this long: gone (closed the app, lost the network).
     public static let goneAfter: TimeInterval = 15
+    /// Having sent nothing for this long, you say you're still here (well inside `goneAfter`).
+    public static let keepAliveAfter: TimeInterval = 4
     /// Drift isn't corrected this soon after a command: players are still getting there.
     public static let settleAfterCommand: TimeInterval = 2
     /// A pause or play that didn't arrive is put right after this long.
@@ -99,6 +101,9 @@ public final class TogetherRoom {
     @ObservationIgnored private var lastCommand: (seq: Int, from: String)?
     @ObservationIgnored private var lastCommandAt: Date?
     @ObservationIgnored private var heard: [String: Date] = [:]
+    /// People forgotten for going quiet, and when they were last asked who they are.
+    @ObservationIgnored private var pruned: [String: Date] = [:]
+    @ObservationIgnored private var lastSentAt: Date?
     @ObservationIgnored private var mismatchSince: Date?
     @ObservationIgnored private var drift = DriftCorrector()
     @ObservationIgnored private var recent: [String: [Date]] = [:]
@@ -176,6 +181,17 @@ public final class TogetherRoom {
         let t = now()
         // Someone peeking isn't here, so they're never counted as gone either.
         switch message { case .leave, .peek: break; default: heard[from] = t }
+        // Forgotten for going quiet but still talking (a slow network, or an
+        // older Bluebox opening a title): a hello asks them, and the presence
+        // they answer with brings them back. Older versions answer hellos too.
+        if let asked = pruned[from] {
+            switch message {
+            case .hello, .presence, .leave: pruned[from] = nil
+            case .peek: break
+            default:
+                if t.timeIntervalSince(asked) >= Self.keepAliveAfter { pruned[from] = t; send(.hello(me)) }
+            }
+        }
         switch message {
         case .hello(let p):
             guard admits(p.id) else {
@@ -202,7 +218,8 @@ public final class TogetherRoom {
             guard admits(p.id) else { return }
             if let was = others[p.id], was.away != p.away { note(p.away ? "\(p.name) stepped away" : "\(p.name) is back") }
             if others[p.id] == nil { note("\(p.name) joined") }
-            others[p.id] = p
+            // Repeated every few seconds as a keep-alive: an unchanged one doesn't redraw the people.
+            if others[p.id] != p { others[p.id] = p }
             checkUpNextReady()
         case .title(let newTitle, let starter, let seq):
             clock = max(clock, seq)
@@ -379,24 +396,55 @@ public final class TogetherRoom {
             if let match { me.match = match }
             send(.presence(me))
         }
-        let t = now()
-        var lost = false
-        for (id, at) in heard where t.timeIntervalSince(at) > Self.goneAfter {
-            if let p = others[id] { note("\(p.name) left") }
-            others[id] = nil; playheads[id] = nil; heard[id] = nil; lost = true
-        }
-        if lost { settleHost(); checkUpNextReady() }
+        prune()
         tick()
     }
 
-    /// Runs the up-next countdown; called by the heartbeat and by the party's
-    /// own second-by-second timer.
+    /// Several times a second from the party, with a player or without: a
+    /// title can take longer than `goneAfter` to find and open (or never
+    /// open), and only a player sends heartbeats, so without this the others
+    /// would drop you meanwhile, and a host's slow next episode would hand
+    /// the party on. Says you're still here when nothing else has gone out
+    /// for `keepAliveAfter` (a presence, which every version reads), forgets
+    /// people who've gone quiet, and runs the party's clocks. `status` is how
+    /// you're doing when there's no player to say.
+    public func keepAlive(status: TogetherParticipant.Status? = nil) {
+        if let status, status != me.status {
+            me.status = status
+            send(.presence(me))
+        } else if connection == .connected, endedReason == nil,
+                  now().timeIntervalSince(lastSentAt ?? Date.distantPast) >= Self.keepAliveAfter {
+            send(.presence(me))
+        }
+        prune()
+        tick()
+    }
+
+    /// Forgets people not heard from for `goneAfter`, on every device whether
+    /// or not it has a player.
+    private func prune() {
+        let t = now()
+        var lost = false
+        for (id, at) in heard where t.timeIntervalSince(at) > Self.goneAfter {
+            if let p = others[id] {
+                note("\(p.name) left")
+                pruned[id] = Date.distantPast
+            }
+            others[id] = nil; playheads[id] = nil; heard[id] = nil; lost = true
+        }
+        if lost { settleHost(); checkUpNextReady() }
+    }
+
+    /// Runs the up-next countdown; called by the heartbeat and the keep-alive.
     public func tick() {
         guard let upNext, let upNextEndsAt, now() >= upNextEndsAt else { return }
         due(upNext)
     }
 
-    private func send(_ message: TogetherMessage) { outgoing.yield(message) }
+    private func send(_ message: TogetherMessage) {
+        lastSentAt = now()  // anything that goes out tells the others you're here
+        outgoing.yield(message)
+    }
 
     // MARK: Who you are
 

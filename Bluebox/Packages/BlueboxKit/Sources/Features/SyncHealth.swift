@@ -93,7 +93,7 @@ extension AppModel {
             Task {
                 switch issue.service {
                 case .account: await account.syncNow()
-                case .trakt: await trakt.syncNow()
+                case .trakt: await trakt.syncNow(force: true)
                 }
             }
         }

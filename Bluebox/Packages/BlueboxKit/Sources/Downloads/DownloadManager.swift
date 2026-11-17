@@ -80,6 +80,11 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     private let frozenForReview = false
     #endif
     private var lastSave = Date.distantPast
+    /// Index writes so far (tests count them).
+    private var writes = 0
+    /// The conditions the last queue pass ran under: a pass that changes
+    /// nothing on disk still tells observers when these (or the waits) moved.
+    private var pumpedConditions: DownloadConditions?
     private var lastNotify = Date.distantPast
     private var lastSpaceCheck = Date.distantPast
     /// HTTP transfers that may use cellular; `wifiSession` ones may not.
@@ -189,9 +194,8 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         }
         for t in orphans { lock.withLock { _ = stoppedTasks.insert(t.taskIdentifier) }; t.cancel() }
         guard done else { return }
-        save()
         moveTransfersToMatchCellularSetting()  // Wi‑Fi Only may have changed while the app was closed
-        pump()
+        pump(dirty: true)
     }
 
     #if DEBUG
@@ -317,10 +321,11 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     /// - Parameters:
     ///   - automatic: Bluebox started it (Smart Downloads, new episodes, an upgrade), so it keeps to the download window.
     ///   - replaces: a download this one upgrades; the app deletes that one once this finishes.
+    ///   - mobileData: as `setMobileData`, set in the same write (nil leaves it as it is).
     @discardableResult
     public func enqueue(_ variant: MediaVariant, key: MediaKey?, title: String, subtitle: String? = nil,
                         artworkURL: URL? = nil, resource: PlaybackResource? = nil,
-                        automatic: Bool = false, replaces: String? = nil) throws -> DownloadRecord {
+                        automatic: Bool = false, replaces: String? = nil, mobileData: Bool? = nil) throws -> DownloadRecord {
         let id = DownloadRecord.id(for: variant)
         let isTorrent = DownloadRecord.infoHash(fromVariantID: variant.id) != nil
         guard variant.isDownloadable || isTorrent else { throw DownloadError.notDownloadable }
@@ -332,7 +337,10 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             case .completed: throw DownloadError.alreadyDownloaded
             case .queued, .downloading: throw DownloadError.alreadyInQueue
             case .paused, .failed:
-                if let resource { lock.withLock { pendingResources[id] = resource } }
+                lock.withLock {
+                    if let resource { pendingResources[id] = resource }
+                    if let mobileData { records[id]?.allowsMobileData = mobileData }
+                }
                 resume(id)
                 return lock.withLock { records[id] } ?? existing
             }
@@ -348,41 +356,61 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
                                    order: max(last + 1, Date().timeIntervalSince1970))
             if automatic { r.isAutomatic = true }
             r.replaces = replaces
+            if let mobileData { r.allowsMobileData = mobileData }
             records[id] = r
             if let resource { pendingResources[id] = resource }
             return r
         }
-        save()
-        pump()
+        pump(dirty: true)
         return lock.withLock { records[id] } ?? record
     }
 
     /// Pauses until you resume it, across launches too.
-    public func pause(_ id: String) {
-        let changed = lock.withLock { () -> Bool in
-            guard let r = records[id], r.isActive else { return false }
-            records[id]?.state = .paused
-            live[id] = nil
-            return true
+    public func pause(_ id: String) { pause([id]) }
+
+    /// Pauses several at once (Pause All, a season) with one index write and
+    /// one queue pass, rather than one of each per download.
+    public func pause(_ ids: [String]) {
+        let paused = lock.withLock { () -> [String] in
+            var paused: [String] = []
+            for id in ids {
+                guard let r = records[id], r.isActive else { continue }
+                records[id]?.state = .paused
+                live[id] = nil
+                paused.append(id)
+            }
+            return paused
         }
-        guard changed else { return }
-        stopTransfer(id)
-        save()
-        pump()
+        guard !paused.isEmpty else { return }
+        paused.forEach(stopTransfer)
+        pump(dirty: true)
     }
 
     /// Resumes a paused or failed download (it rejoins the queue in its old place).
     public func resume(_ id: String, resource: PlaybackResource? = nil) {
         let changed = lock.withLock { () -> Bool in
-            guard let r = records[id], r.state == .paused || r.isFailed else { return false }
-            records[id]?.state = .queued
-            autoRetries[id] = nil
+            guard requeueLocked(id) else { return false }
             if let resource { pendingResources[id] = resource }
             return true
         }
         guard changed else { return }
-        save()
-        pump()
+        pump(dirty: true)
+    }
+
+    /// Resumes several at once (Resume All, a season, Undo) with one index
+    /// write and one queue pass.
+    public func resume(_ ids: [String]) {
+        let changed = lock.withLock { ids.reduce(false) { requeueLocked($1) || $0 } }
+        guard changed else { return }
+        pump(dirty: true)
+    }
+
+    /// Puts a paused or failed download back in the queue. Call with the lock held.
+    private func requeueLocked(_ id: String) -> Bool {
+        guard let r = records[id], r.state == .paused || r.isFailed else { return false }
+        records[id]?.state = .queued
+        autoRetries[id] = nil
+        return true
     }
 
     /// Same as resume, for failed downloads.
@@ -391,13 +419,15 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     /// Moves a download to the front of the queue; it may take a running one's slot.
     /// An automatic download asked for by hand stops waiting for the download window.
     public func prioritize(_ id: String) {
-        lock.withLock {
+        let known = lock.withLock { () -> Bool in
+            guard records[id] != nil else { return false }
             let first = records.values.map(\.sortOrder).min() ?? 0
             records[id]?.order = first - 1
             records[id]?.isAutomatic = nil
+            return true
         }
-        save()
-        pump()
+        guard known else { return }
+        pump(dirty: true)
     }
 
     /// The queue screen's drag to reorder: `ids` in their new order. They
@@ -416,8 +446,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return changed
         }
         guard changed else { return }
-        save()
-        pump()
+        pump(dirty: true)
     }
 
     /// Equal positions nudged apart, so a reorder always takes.
@@ -465,30 +494,38 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     }
 
     /// Cancels a download and deletes its files, partial data included.
-    public func delete(_ id: String) {
-        let (task, record) = lock.withLock { () -> (URLSessionDownloadTask?, DownloadRecord?) in
-            let task = tasks.removeValue(forKey: id)
-            if let task { stoppedTasks.insert(task.taskIdentifier) }
-            starting.remove(id)
-            externalRunning.remove(id)
-            pendingResources[id] = nil; pendingSubtitles[id] = nil; live[id] = nil; waits[id] = nil; autoRetries[id] = nil
-            speedSamples[id] = nil
-            awaitingResumeData.remove(id); resumeDataReady[id] = nil; taskAllowsCellular[id] = nil
-            let record = records.removeValue(forKey: id)
-            if record?.isTorrent == true, let external { runExternalLocked(id) { await external.delete(id) } }
-            return (task, record)
-        }
-        task?.cancel()
-        if let record {
-            if let f = fileURL(record) { try? FileManager.default.removeItem(at: f) }
-            record.subtitleFiles.forEach { try? FileManager.default.removeItem(at: subtitleURL($0)) }
-        }
-        try? FileManager.default.removeItem(at: resumeURL(id))
-        save()
-        pump()
-    }
+    public func delete(_ id: String) { delete([id]) }
 
-    public func delete(_ ids: [String]) { ids.forEach(delete) }
+    /// Deletes several at once (a season, a selection) with one index write
+    /// and one queue pass, rather than one of each per download.
+    public func delete(_ ids: [String]) {
+        typealias Removed = (id: String, task: URLSessionDownloadTask?, record: DownloadRecord?)
+        let removed = lock.withLock { () -> [Removed] in
+            var removed: [Removed] = []
+            for id in ids {
+                let task = tasks.removeValue(forKey: id)
+                if let task { stoppedTasks.insert(task.taskIdentifier) }
+                starting.remove(id)
+                externalRunning.remove(id)
+                pendingResources[id] = nil; pendingSubtitles[id] = nil; live[id] = nil; waits[id] = nil; autoRetries[id] = nil
+                speedSamples[id] = nil
+                awaitingResumeData.remove(id); resumeDataReady[id] = nil; taskAllowsCellular[id] = nil
+                let record = records.removeValue(forKey: id)
+                if record?.isTorrent == true, let external { runExternalLocked(id) { await external.delete(id) } }
+                removed.append((id: id, task: task, record: record))
+            }
+            return removed
+        }
+        for (id, task, record) in removed {
+            task?.cancel()
+            if let record {
+                if let f = fileURL(record) { try? FileManager.default.removeItem(at: f) }
+                record.subtitleFiles.forEach { try? FileManager.default.removeItem(at: subtitleURL($0)) }
+            }
+            try? FileManager.default.removeItem(at: resumeURL(id))
+        }
+        pump(dirty: removed.contains { $0.record != nil })
+    }
 
     /// Waits until queued deletes and stops of torrent downloads have finished (tests, teardown).
     public func settle() async {
@@ -498,8 +535,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
 
     public func update(settings new: DownloadSettings) {
         lock.withLock { settings = new }
-        moveTransfersToMatchCellularSetting()
-        pump()
+        pump(dirty: moveTransfersToMatchCellularSetting())
     }
 
     /// "Download Now" on mobile data (`true`): this download ignores Wi‑Fi Only
@@ -512,9 +548,8 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return true
         }
         guard changed else { return }
-        save()
         moveTransfersToMatchCellularSetting()
-        pump()
+        pump(dirty: true)
     }
 
     /// Settings › Mobile Data › Torrents: whether torrent downloads may run on mobile data.
@@ -534,8 +569,10 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
 
     /// A transfer keeps the cellular rule of the session it started in, so when
     /// Wi‑Fi Only changes, running HTTP transfers stop (keeping resume data) and
-    /// continue in the session that matches.
-    private func moveTransfersToMatchCellularSetting() {
+    /// continue in the session that matches. Returns true when it moved any
+    /// (their records went back to the queue and aren't written yet).
+    @discardableResult
+    private func moveTransfersToMatchCellularSetting() -> Bool {
         let moving = lock.withLock { () -> [String] in
             guard reattached else { return [] }
             let ids = tasks.keys.filter { taskAllowsCellular[$0] != allowsCellularLocked($0) }
@@ -543,6 +580,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return ids
         }
         moving.forEach(stopTransfer)
+        return !moving.isEmpty
     }
 
     /// The same release can't download and stream at once (libtorrent keys
@@ -599,6 +637,9 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     /// e.g. when iOS may suspend or end the app.
     public func saveNow() { save() }
 
+    /// Tests: how many times the index has been written.
+    var indexWrites: Int { lock.withLock { writes } }
+
     /// Test seam and manual override for the network state.
     public func networkChanged(online: Bool, expensive: Bool) {
         let changed = lock.withLock { () -> Bool in
@@ -645,7 +686,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         guard lock.withLock({ externalRunning.remove(id) != nil }) else { return }
         guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else {
             lock.withLock { records[id]?.state = .failed("The download finished, but its file wasn't found. Retry to download it again.") }
-            save(); pump()
+            pump(dirty: true)
             return
         }
         lock.withLock {
@@ -656,8 +697,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             records[id]?.completedAt = Date()
             live[id] = nil
         }
-        save()
-        pump()
+        pump(dirty: true)
     }
 
     public func externalFailed(_ id: String, message: String) {
@@ -666,18 +706,28 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             if records[id]?.state == .downloading { records[id]?.state = .failed(message) }
             live[id] = nil
         }
-        save()
-        pump()
+        pump(dirty: true)
     }
 
     // MARK: Queue
 
     /// Starts and stops transfers to match the queue, settings and conditions.
-    public func pump() {
+    /// Writes the index only when that changed a download.
+    public func pump() { pump(dirty: false) }
+
+    /// - Parameter dirty: the caller changed records and hasn't written them.
+    ///   The index is then written once here, whether or not the queue
+    ///   changes too, so a command costs one write however many downloads it
+    ///   touched.
+    private func pump(dirty: Bool) {
         var startHTTP: [DownloadRecord] = []
         var startExternal: [DownloadRecord] = []
         var stops: [String] = []
         var refusedForSpace = false
+        var observersOnly = false
+        // A download started, stopped or refused (torrent starts with a
+        // runner are queued inside the lock, so they're in none of the lists).
+        var queueChanged = false
         let ran = lock.withLock { () -> Bool in
             guard reattached && activated && !frozenForReview else { return false }
             conditions.automaticWindowOpen = settings.window.isOpen(at: Date(), isCharging: conditions.isCharging)
@@ -688,6 +738,8 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             }
             let plan = DownloadScheduler.plan(records: Array(records.values), running: running, settings: settings,
                                               conditions: conditions, holds: heldIDs)
+            let oldWaits = waits
+            queueChanged = !plan.stop.isEmpty || !plan.start.isEmpty
             waits = plan.waits
             // Downloads started together share the free space.
             var free = plan.start.isEmpty ? nil : freeSpaceProvider(directory)
@@ -724,13 +776,26 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
                     startHTTP.append(r)
                 }
             }
+            // Nothing to write, but the queue screen's reasons and banners may still have moved.
+            observersOnly = waits != oldWaits || conditions != pumpedConditions
+            pumpedConditions = conditions
             return true
         }
-        guard ran else { return }
+        guard ran else {
+            if dirty { save() }
+            return
+        }
+        // Written before any transfer starts or stops: a relaunch then finds
+        // every command and every queue decision (a download left marked as
+        // running goes back in the queue in repairAfterLaunch).
+        if dirty || queueChanged {
+            save()
+        } else if observersOnly {
+            notify()
+        }
         for id in stops { stopTransfer(id) }
         for r in startExternal { fail(r.id, "Torrent downloads need an iPhone or iPad.") }
         for r in startHTTP { beginHTTP(r) }
-        save()
         if refusedForSpace { pump() }
     }
 
@@ -797,8 +862,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return running
         }
         if wasRunning { stopTransfer(id) }
-        save()
-        pump()
+        pump(dirty: true)
     }
 
     // MARK: HTTP transfers
@@ -924,7 +988,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         // and an older snapshot written last would undo a delete or a finish.
         saveLock.withLock {
             let list = all()
-            lock.withLock { lastSave = Date() }
+            lock.withLock { lastSave = Date(); writes += 1 }
             if let data = try? JSONEncoder().encode(list) { try? data.write(to: indexURL, options: .atomic) }
         }
         notify()
@@ -1083,8 +1147,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
         guard let id = downloadTask.taskDescription else { return }
         // `location` is deleted when this method returns, so move it now.
         finish(id, task: downloadTask, at: location)
-        save()
-        pump()
+        pump(dirty: true)
     }
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
@@ -1145,12 +1208,12 @@ extension DownloadManager: URLSessionDownloadDelegate {
                 records[id]?.state = .failed(Self.describe(ns))
             }
         }
-        save()
         if lock.withLock({ conditions.isOnline }) && Self.isConnectivity(ns) {
+            save()
             // The monitor still says online; give the network a moment before retrying.
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in self?.pump() }
         } else {
-            pump()
+            pump(dirty: true)
         }
     }
 

@@ -87,6 +87,29 @@ extension EnvironmentValues {
     @Entry var profileSwitchFlight: ProfileSwitchFlight? = nil
 }
 
+// MARK: - When a PIN is owed
+
+/// Who has to type a locked profile's PIN. The watching profile is normally
+/// trusted, since someone chose it, except at the launch "Who's watching?":
+/// there it's only the profile restored from last time, and whoever is at the
+/// screen now hasn't proved they're its owner.
+enum ProfileLock {
+    /// Opening, editing or switching to `profileID` asks for its PIN first.
+    static func needsPIN(profileID: String, currentID: String, isLocked: Bool, atGate: Bool) -> Bool {
+        isLocked && (profileID != currentID || atGate)
+    }
+
+    /// Delete Profile… may be offered from a menu, with no PIN on the way:
+    /// never for the first profile (it holds the account's library and Trakt),
+    /// while a restricted profile is watching (Settings asks for a PIN), or for
+    /// a locked profile that would need its PIN (its editor asks first).
+    static func canDeleteFromMenu(profileID: String, isDefault: Bool, currentID: String, isLocked: Bool,
+                                  atGate: Bool, settingsNeedsPIN: Bool) -> Bool {
+        !isDefault && !settingsNeedsPIN
+            && !needsPIN(profileID: profileID, currentID: currentID, isLocked: isLocked, atGate: atGate)
+    }
+}
+
 // MARK: - PIN entry
 
 /// "Enter Sam's PIN": the avatar, four digit boxes, and a keypad on iPhone

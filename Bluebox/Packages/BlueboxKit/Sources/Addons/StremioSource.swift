@@ -231,6 +231,12 @@ public actor StremioSource: MediaSource {
         await health.reset(addonID)
     }
 
+    /// The network path changed: ends every skip, since timeouts on the old
+    /// path say nothing about the add-ons.
+    public func networkChanged() async {
+        await health.networkChanged()
+    }
+
     // MARK: Releases
 
     /// All releases for the picker, best first. `refresh` asks the add-ons
@@ -426,13 +432,15 @@ public actor StremioSource: MediaSource {
     }
 
     private func search(_ key: MediaKey) async throws -> [AddonRelease] {
-        defer { inflight[key] = nil }
+        // Only this search's own entry: after a settings change cancels it, a newer
+        // search for the same title may already be in its place.
+        let started = generation
+        defer { if started == generation { inflight[key] = nil } }
         guard let imdb = await imdbID(key.seriesKey ?? key) else { throw SourceError.notFound }
         let numbers = key.episodeNumbers
         let request = StreamRequest(imdbID: imdb, season: numbers?.season, episode: numbers?.episode)
         let addons = settings.resolvedAddons(debridKey: debridKey)
         guard !addons.isEmpty else { throw AddonError.noAddons }
-        let started = generation
         let outcome = try await AddonSearch.run(addons, request: request, client: client, health: health,
                                                 timing: timing()) { [weak self] late in
             await self?.lateAnswer(late, key: key, generation: started)

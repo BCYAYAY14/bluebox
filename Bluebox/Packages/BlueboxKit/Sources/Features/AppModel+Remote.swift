@@ -103,9 +103,10 @@ extension AppModel: RemoteAppHandler {
 
     public func remoteScreen() -> RemoteScreen {
         if let player = activePlayer {
-            // The player covers the window: nothing on it to highlight, but a menu may be open over it.
+            // The player covers the window: nothing on it to highlight (so no walk of the
+            // window's accessibility tree), but a menu may be open over it.
             var s = RemoteScreen(deviceID: "", title: player.item?.title ?? remoteFocus.screenTitle)
-            s.menu = remoteFocus.screen().menu
+            s.menu = remoteFocus.menuSnapshot()
             return s
         }
         return remoteFocus.screen()

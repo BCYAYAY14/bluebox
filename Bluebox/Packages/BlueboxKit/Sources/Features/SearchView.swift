@@ -256,7 +256,7 @@ struct SearchView: View {
         }
         .task(id: query) { await searchPeople(query) }
         .task(id: app.catalogMode == .live) { await loadBrowse() }
-        .task(id: AvailabilityRequest(needed: filter.needsAvailability, downloads: app.downloadsRevision)) {
+        .task(id: AvailabilityRequest(needed: filter.needsAvailability, downloads: app.completedDownloadKeys)) {
             guard filter.needsAvailability else { return }
             availability = await app.searchAvailability()
         }
@@ -275,7 +275,9 @@ struct SearchView: View {
         .onChange(of: sectionInputs, initial: true) { _, inputs in rebuildSections(inputs) }
     }
 
-    private struct AvailabilityRequest: Hashable { let needed: Bool; let downloads: Int }
+    /// The finished downloads, not the downloads revision: that ticks twice a
+    /// second while anything downloads, and redrew Search each time.
+    private struct AvailabilityRequest: Hashable { let needed: Bool; let downloads: Set<MediaKey> }
 
     // MARK: Results
 

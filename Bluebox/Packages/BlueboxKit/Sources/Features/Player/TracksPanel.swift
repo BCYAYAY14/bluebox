@@ -105,7 +105,7 @@ struct TracksPanel: View {
 
     private var secondLineValue: String? {
         guard let id = session.secondarySubtitleID else { return nil }
-        return TrackLabel.labels(for: session.externalSubtitles + session.snapshot.embeddedSubtitles)[id]?.title
+        return TrackLabel.labels(for: session.externalSubtitles + session.slowSnapshot.embeddedSubtitles)[id]?.title
     }
 
     // MARK: Columns
@@ -313,7 +313,7 @@ struct ChaptersPanel: View {
             PlayerCardHeader("Chapters") { KeyCap("N P") }
             ScrollViewReader { proxy in
                 VStack(spacing: 1) {
-                    ForEach(Array(session.snapshot.chapters.enumerated()), id: \.offset) { i, c in
+                    ForEach(Array(session.slowSnapshot.chapters.enumerated()), id: \.offset) { i, c in
                         let current = session.currentChapterIndex == i
                         Button { Task { await session.seek(to: c.start) } } label: {
                             HStack(spacing: 6) {
