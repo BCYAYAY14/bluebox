@@ -94,10 +94,6 @@ struct PlaybackSettingsPage: View {
                 SettingsPicker("Skip Credits", selection: $settings.skipCreditsMode,
                                options: SkipSegmentPlanner.Mode.allCases.map { .init($0.title, value: $0) })
                     .settingsRow("Skip Credits")
-                SettingsLink("Always Skipping", value: countLabel(settings.showSkipRules.always.count)) {
-                    AlwaysSkipListPage()
-                }
-                .settingsRow("Always Skipping")
                 SettingsLink("Shows with Skipping Off", value: countLabel(settings.skipDisabledShows.count)) {
                     SkipShowListPage(title: "Skipping Off", keys: $settings.skipDisabledShows,
                                      footer: "Skip Intro and Skip Credits don't appear for these. Swipe to remove one, or turn skipping back on from the player.")
@@ -107,12 +103,24 @@ struct PlaybackSettingsPage: View {
                     SkipShowListPage(title: "Ignoring Community Times", keys: $settings.crowdSkipDisabledShows,
                                      footer: "These shows only skip using the file's own chapters. Swipe to remove one and use community times again.")
                 }
-                .settingsRow("Community Intro Timestamps")
+                .settingsRow("Shows Ignoring Community Times")
             } header: {
                 Text("Skipping")
             } footer: {
-                Text("Show Button offers Skip Intro and Next Episode; Automatic skips without asking. Automatic credits move on to the next episode only when the profile's Autoplay is on. Always Skipping lists the shows you chose \u{201C}Always for this show\u{201D} for; they skip without asking, whatever these say.")
+                Text("Show Button offers Skip Intro and Next Episode; Automatic skips without asking. Automatic credits move on to the next episode only when the profile's Autoplay is on.")
                 Text("Intro and credits times shared on TheIntroDB and IntroDB fill in when a file has no chapters. Mark a wrong time from the player.")
+            }
+
+            // Each profile keeps its own list (ProfileSettingKey.showSkipRules), so it's marked as the profile's.
+            Section {
+                SettingsLink("Always Skipping", value: countLabel(settings.showSkipRules.always.count)) {
+                    AlwaysSkipListPage()
+                }
+                .settingsRow("Always Skipping")
+            } header: {
+                SettingsScopeHeader("Always Skipping", scope: .profile(app.currentProfile))
+            } footer: {
+                Text("The shows this profile chose \u{201C}Always for this show\u{201D} for: they skip without asking, whatever the settings above say.")
             }
 
             Section {
@@ -133,7 +141,7 @@ struct PlaybackSettingsPage: View {
             } header: {
                 Text("Audio")
             } footer: {
-                Text("Dialogue Boost lifts speech; Night Mode evens out loud and quiet scenes. You can also change these for each video in the player's Tools. The audio language is each profile's, on the Language page.")
+                Text("Dialogue Boost lifts speech; Night Mode evens out loud and quiet scenes. You can also change these for each video in the player's Tools. The audio language is each profile's, on the Languages page.")
             }
 
             Section {
@@ -177,8 +185,8 @@ struct PlaybackSettingsPage: View {
 
             #if os(iOS)
             Section {
+                // A way to the setting, not a second copy of it: search finds it on Mobile Data.
                 SettingsPageLink("Streaming on Mobile Data", page: .mobileData, value: settings.mobileData.streaming.title)
-                .settingsRow("Stream over Cellular")
             } header: {
                 Text("Network")
             }

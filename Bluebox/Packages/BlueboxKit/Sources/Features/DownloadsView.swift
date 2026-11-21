@@ -264,8 +264,15 @@ struct DownloadQueueSummary: Equatable {
     var queued = 0
     var paused = 0
     var failed = 0
+    /// Over downloads whose size is known: the ring.
     var receivedBytes: Int64 = 0
     var expectedBytes: Int64 = 0
+    /// What the queued and running ones still have to fetch: time left.
+    /// Paused and failed ones won't come by themselves, so they don't count.
+    var remainingBytes: Int64 = 0
+    /// A queued or running download doesn't know its size yet (a torrent
+    /// before its file list), so there's no honest time left.
+    var sizesUnknown = false
     var bytesPerSecond: Double = 0
     /// Why the queue isn't moving, when nothing transfers.
     var waitReason: String?
@@ -279,8 +286,15 @@ struct DownloadQueueSummary: Equatable {
             case .failed: failed += 1
             case .completed: continue
             }
-            receivedBytes += r.receivedBytes
-            expectedBytes += max(r.expectedBytes ?? r.receivedBytes, r.receivedBytes)
+            let working = r.isActive
+            if let e = r.expectedBytes, e > 0 {
+                receivedBytes += min(r.receivedBytes, e)
+                expectedBytes += e
+                if working { remainingBytes += max(e - r.receivedBytes, 0) }
+            } else if working {
+                // What's arrived isn't the size: leave it out rather than show it nearly done.
+                sizesUnknown = true
+            }
             if r.state == .downloading { bytesPerSecond += stats(r.id)?.bytesPerSecond ?? 0 }
         }
         if downloading == 0, queued > 0 {
@@ -306,8 +320,9 @@ struct DownloadQueueSummary: Equatable {
     var detail: String? {
         if downloading > 0 {
             var parts = ["\(Formatters.bytes(Int64(bytesPerSecond)))/s"]
-            let left = expectedBytes - receivedBytes
-            if bytesPerSecond > 1_000, left > 0 { parts.append("about " + Formatters.remaining(Double(left) / bytesPerSecond)) }
+            if bytesPerSecond > 1_000, remainingBytes > 0, !sizesUnknown {
+                parts.append("about " + Formatters.remaining(Double(remainingBytes) / bytesPerSecond))
+            }
             return parts.joined(separator: " · ")
         }
         return waitReason
@@ -628,10 +643,17 @@ struct DownloadShowPoster: View {
 /// The actions a download offers, as a Bluebox menu (tap) and a context menu.
 @MainActor
 enum DownloadActions {
-    /// - Parameter details: a line about it (speed, peers, how much is in), shown first.
+    /// - Parameters:
+    ///   - details: a line about it (speed, peers, how much is in), shown first.
+    ///     A failed download shows why it failed there instead, in full.
+    ///   - stalled: a running torrent that gets nothing, so Try Another Release is offered.
     @BlueboxMenuBuilder
-    static func menu(_ r: DownloadRecord, app: AppModel, details: String? = nil) -> [BlueboxMenuEntry] {
-        if let details { [BlueboxMenuEntry.note(details)] }
+    static func menu(_ r: DownloadRecord, app: AppModel, details: String? = nil, stalled: Bool = false) -> [BlueboxMenuEntry] {
+        if let message = r.failureMessage {
+            BlueboxMenuAlertBlock(BlueboxMenuAlert(title: String(localized: "Download failed"), message: message))
+        } else if let details {
+            [BlueboxMenuEntry.note(details)]
+        }
         if let offer = app.upgradeOffer(for: r) {
             BlueboxMenuSection("Better version available") {
                 BlueboxMenuButton("Swap", systemImage: "arrow.triangle.2.circlepath", subtitle: offer.label) {
@@ -644,13 +666,21 @@ enum DownloadActions {
             case .completed:
                 BlueboxMenuButton("Play", systemImage: "play.fill") { Task { await app.playDownloadChecked(r) } }
             case .downloading, .queued:
+                playWhileDownloading(r, app: app)
                 BlueboxMenuButton("Pause", systemImage: "pause.fill") { app.pauseDownload(r) }
             case .paused:
                 BlueboxMenuButton("Resume", systemImage: "arrow.down") { Task { await app.resumeDownload(r) } }
+                playWhileDownloading(r, app: app)
             case .failed:
+                if r.suggestsAnotherRelease {
+                    tryAnotherRelease(r, app: app)
+                }
                 BlueboxMenuButton("Retry", systemImage: "arrow.clockwise") { Task { await app.resumeDownload(r) } }
             }
-            if r.state == .queued || r.state == .paused {
+            if stalled && r.isTorrent && r.state == .downloading {
+                tryAnotherRelease(r, app: app)
+            }
+            if r.state == .queued || r.state == .paused || r.isFailed {
                 BlueboxMenuButton("Download First", systemImage: "arrow.up.to.line") { app.prioritizeDownload(r) }
             }
             if let key = r.mediaKey, key.episodeNumbers != nil {
@@ -659,6 +689,7 @@ enum DownloadActions {
                 }
             }
         }
+        mobileData(r, app: app)
         if r.state == .completed {
             ExternalPlayerMenuSection(players: app.externalPlayersForDownloads) { player in
                 Task { await app.playDownloadChecked(r, in: player) }
@@ -667,6 +698,46 @@ enum DownloadActions {
         BlueboxMenuSection {
             BlueboxMenuButton(r.state == .completed ? "Delete Download" : "Cancel Download", systemImage: "trash",
                               role: .destructive) { app.deleteDownloadWithUndo(r) }
+        }
+    }
+
+    /// Play for a download that isn't in yet: it streams meanwhile.
+    @BlueboxMenuBuilder
+    static func playWhileDownloading(_ r: DownloadRecord, app: AppModel) -> [BlueboxMenuEntry] {
+        if let key = r.mediaKey {
+            BlueboxMenuButton("Play", systemImage: "play.fill", subtitle: String(localized: "Streams while it downloads")) {
+                Task { await app.play(NowPlayingItem(key: key, title: r.title, subtitle: r.subtitle, artworkURL: r.artworkURL)) }
+            }
+        }
+    }
+
+    @BlueboxMenuBuilder
+    static func tryAnotherRelease(_ r: DownloadRecord, app: AppModel) -> [BlueboxMenuEntry] {
+        if r.mediaKey != nil {
+            BlueboxMenuButton("Try Another Release", systemImage: "arrow.triangle.swap",
+                              subtitle: String(localized: "Nobody is sharing this one")) {
+                Task { await app.tryAnotherRelease(r) }
+            }
+        }
+    }
+
+    /// Download Now while it waits for Wi‑Fi on mobile data; Wait for Wi‑Fi while it uses mobile data.
+    @BlueboxMenuBuilder
+    static func mobileData(_ r: DownloadRecord, app: AppModel) -> [BlueboxMenuEntry] {
+        switch app.mobileDataChoice(for: r) {
+        case .downloadNow?:
+            BlueboxMenuSection {
+                BlueboxMenuButton("Download Now", systemImage: "antenna.radiowaves.left.and.right",
+                                  subtitle: String(localized: "Uses mobile data")) {
+                    app.setDownloadOnMobileData(r, allowed: true)
+                }
+            }
+        case .waitForWiFi?:
+            BlueboxMenuSection {
+                BlueboxMenuButton("Wait for Wi‑Fi", systemImage: "wifi") { app.setDownloadOnMobileData(r, allowed: false) }
+            }
+        case nil:
+            []
         }
     }
 }
@@ -688,6 +759,8 @@ struct DownloadButton: View {
     /// Full width under a full-width Play (iPhone).
     var fullWidth = false
     @State private var canDownload = false
+    /// The sources have answered whether it can be downloaded.
+    @State private var checked = false
 
     var body: some View {
         // Reads downloadsRevision (and pending deletes), so this refreshes with progress.
@@ -721,8 +794,9 @@ struct DownloadButton: View {
                             BlueboxMenuButton("Download Episode", systemImage: "arrow.down.circle") { start() }
                             BlueboxMenuButton("Download This and the Next 3", systemImage: "square.stack.3d.down.forward") {
                                 Task {
+                                    // This one first, so the queue keeps episode order; the next three look up side by side.
                                     await app.startDownload(key: key, title: title, subtitle: subtitle)
-                                    await app.downloadNextEpisodes(after: key, count: 3)
+                                    await app.downloadNextEpisodesAnnounced(after: key, showTitle: title)
                                 }
                             }
                         } label: {
@@ -731,14 +805,22 @@ struct DownloadButton: View {
                         .accessibilityLabel("More Download Options")
                     }
                 }
+            } else if !checked {
+                // Holds the button's place while the sources answer, so the
+                // page doesn't jump when it appears (and `.task` has a view).
+                DownloadButtonFace(text: subtitle.map { "Download \($0)" } ?? "Download", symbol: "arrow.down.circle",
+                                   fullWidth: fullWidth)
+                    .opacity(0.4)
+                    .accessibilityLabel("Checking whether this can be downloaded")
             } else {
-                // An empty Group has no view to hang `.task` on, so the check below would never run.
+                // Nothing to download: an empty Group has no view to hang `.task` on.
                 Color.clear.frame(width: 0, height: 0)
             }
         }
         .accessibilityIdentifier("downloadButton")
         .task(id: "\(key.rawValue)-\(app.sourcesRevision)") {
             canDownload = await app.downloadableVariant(for: key) != nil
+            checked = true
             await app.checkForUpgrade(key)
         }
     }
@@ -789,11 +871,13 @@ struct DownloadButton: View {
         case .paused:
             BlueboxMenuButton("Resume Download", systemImage: "arrow.down") { Task { await app.resumeDownload(r) } }
         case .failed(let message):
-            BlueboxMenuNote(message)
+            BlueboxMenuAlertBlock(BlueboxMenuAlert(title: String(localized: "Download failed"), message: message))
             BlueboxMenuSection {
+                if r.suggestsAnotherRelease { DownloadActions.tryAnotherRelease(r, app: app) }
                 BlueboxMenuButton("Try Again", systemImage: "arrow.clockwise") { Task { await app.resumeDownload(r) } }
             }
         }
+        DownloadActions.mobileData(r, app: app)
         BlueboxMenuSection {
             BlueboxMenuButton("Go to Downloads", systemImage: "arrow.down.circle") { selectTab(.downloads) }
         }

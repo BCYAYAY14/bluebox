@@ -28,6 +28,10 @@ final class SkipController {
     /// `shownAlone`, then only with the controls (nil: past that, or credits).
     private(set) var freshSince: Date?
     @ObservationIgnored var shownAlone: TimeInterval = 8
+    /// Waits out `shownAlone`. Tests put in a wait they end themselves.
+    @ObservationIgnored var waitShownAlone: @Sendable (TimeInterval) async -> Void = { seconds in
+        try? await Task.sleep(for: .seconds(seconds))
+    }
 
     /// Segments already skipped automatically or dismissed ("Watch Credits"):
     /// seeking back into one doesn't skip it again.
@@ -144,14 +148,17 @@ final class SkipController {
     private func startFresh() {
         freshTask?.cancel()
         freshSince = Date()
+        let wait = waitShownAlone, seconds = shownAlone
         freshTask = Task { [weak self] in
-            guard let wait = self?.shownAlone else { return }
-            try? await Task.sleep(for: .seconds(wait))
+            await wait(seconds)
             guard !Task.isCancelled, let self else { return }
             self.freshSince = nil
             self.freshTask = nil
         }
     }
+
+    /// Tests: until Skip Intro's time on its own has run out.
+    func freshEnded() async { await freshTask?.value }
 
     private func endFresh() {
         freshTask?.cancel(); freshTask = nil

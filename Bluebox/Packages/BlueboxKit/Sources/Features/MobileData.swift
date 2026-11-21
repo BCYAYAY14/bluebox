@@ -336,12 +336,29 @@ extension AppModel {
     }
 
     /// "Download on Wi‑Fi Later": queues the title, held for Wi‑Fi even if Wi‑Fi Only is off.
+    /// The hold goes in with the download, so the queue never starts it on mobile data first.
     func downloadOnWiFiLater(_ item: NowPlayingItem) async {
-        let before = Set(downloads.records(for: item.key).map(\.id))
-        await startDownload(key: item.key, title: item.title, subtitle: item.subtitle)
-        guard let record = downloads.records(for: item.key).first(where: { !before.contains($0.id) }) else { return }
-        downloads.setMobileData(record.id, allowed: false)
+        guard await startDownload(key: item.key, title: item.title, subtitle: item.subtitle, mobileData: false) else { return }
         showToast(AppToast("Will download on Wi‑Fi", message: "“\(item.title)” starts when you're on Wi‑Fi.", style: .info))
+    }
+
+    /// What a download's menu offers on mobile data: Download Now while it
+    /// waits for Wi‑Fi, Wait for Wi‑Fi while it's allowed to use mobile data.
+    enum DownloadNetworkChoice: Equatable { case downloadNow, waitForWiFi }
+
+    func mobileDataChoice(for r: DownloadRecord) -> DownloadNetworkChoice? {
+        guard settings.isOnMobileData, r.isActive else { return nil }
+        if downloads.wait(r.id) == .wifi { return .downloadNow }
+        if r.allowsMobileData == true || (r.allowsMobileData == nil && r.state == .downloading) { return .waitForWiFi }
+        return nil
+    }
+
+    /// The menus' Download Now (`true`) and Wait for Wi‑Fi (`false`), with a word on what changed.
+    func setDownloadOnMobileData(_ r: DownloadRecord, allowed: Bool) {
+        downloads.setMobileData(r.id, allowed: allowed)
+        let name = r.subtitle.map { "\(r.title) · \($0)" } ?? r.title
+        showToast(allowed ? AppToast("Downloading on mobile data", message: "“\(name)”", style: .success)
+                          : AppToast("Will download on Wi‑Fi", message: "“\(name)” waits for Wi‑Fi.", style: .info))
     }
 
     // MARK: Downloads

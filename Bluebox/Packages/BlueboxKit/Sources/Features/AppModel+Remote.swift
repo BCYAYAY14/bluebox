@@ -92,13 +92,23 @@ extension AppModel: RemoteAppHandler {
         case .jump(let j): remoteFocus.jump(j.direction, count: j.count, driver: driver)
         case .scroll(let s): remoteFocus.scroll(s, driver: driver)
         case .setPointer(let on): remoteFocus.setPointer(on, driver: driver)
-        case .pointer(let m): remoteFocus.movePointer(dx: m.dx, dy: m.dy, driver: driver)
+        case .pointer(let m): remoteFocus.movePointer(dx: m.dx, dy: m.dy, dt: m.dt, driver: driver)
         case .click: remoteFocus.click(driver: driver)
         case .menu: remoteFocus.openMenu(driver: driver)
         case .menuPick(let i): remoteFocus.pickMenuItem(i, driver: driver)
         case .acceptSkip: remoteSkip?.accept()
+        case .text(let t): remoteFocus.type(t, driver: driver)
+        case .repeatMove(let d): remoteFocus.repeatMove(d, driver: driver)
         default: break
         }
+    }
+
+    /// A remote search for `query`: whether Search starts over (back to its
+    /// results, closing a title opened from them) or only takes the words.
+    /// The same words again, on Search (Return, or a resend), leave an opened result open.
+    func remoteSearchStartsOver(_ query: String, onSearch: Bool) -> Bool {
+        defer { lastRemoteSearch = query }
+        return !(onSearch && query == lastRemoteSearch)
     }
 
     public func remoteScreen() -> RemoteScreen {

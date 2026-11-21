@@ -91,12 +91,15 @@ import Testing
 
     @Test func skipIntroShowsAloneAtFirstThenWithTheControls() async {
         let c = await controller([SkipSegment(kind: .intro, start: 60, end: 120, source: .chapters)])
-        c.shownAlone = 0.2
+        // The time on its own ends when the test says, not on a clock a busy machine can outrun.
+        let (ended, end) = AsyncStream<Void>.makeStream()
+        c.waitShownAlone = { _ in for await _ in ended { return } }
         _ = c.update(position: 61, duration: 1400, introMode: .button, creditsMode: .button, hasNext: true,
                      enabled: true, isScrubbing: false)
         #expect(c.freshSince != nil)
         #expect(c.pillShown(controlsShown: false))
-        try? await Task.sleep(for: .seconds(1))
+        end.yield()
+        await c.freshEnded()
         #expect(c.freshSince == nil)
         #expect(!c.pillShown(controlsShown: false))
         #expect(c.pillShown(controlsShown: true))

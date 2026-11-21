@@ -86,9 +86,8 @@ import Testing
     static func heard(_ cues: [SubtitleCue], delay: Double, scale: Double = 1, within: ClosedRange<Double>) -> [SubtitleAudioAlignment.HeardWord] {
         cues.flatMap { c -> [SubtitleAudioAlignment.HeardWord] in
             let words = c.text.split(separator: " ").map(String.init)
-            let step = (c.end - c.start) / Double(words.count)
-            return words.enumerated().compactMap { i, w in
-                let t = (c.start + step * (Double(i) + 0.5)) / scale + delay
+            return SubtitleAudioAlignmentRobustnessTests.spoken(words, in: c).compactMap { w, mid in
+                let t = mid / scale + delay
                 return within.contains(t) ? .init(w, at: t) : nil
             }
         }

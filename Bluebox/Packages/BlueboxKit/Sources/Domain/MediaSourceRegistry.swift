@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Result of asking every enabled source whether it can play a key.
 public struct Availability: Sendable, Hashable {
@@ -54,18 +55,16 @@ public actor MediaSourceRegistry {
 
     /// Asks all enabled, playable sources for variants of `key` concurrently.
     /// Results keep registration order so the preferred source comes first.
+    /// A source that hasn't answered within its `answersWithin` is reported
+    /// in `failures` as timed out, so an offline Plex or a cold library
+    /// doesn't hold up Play for the others.
     public func availability(for key: MediaKey) async -> Availability {
         let candidates = enabled(with: .play)
         var byIndex: [Int: [MediaVariant]] = [:]
         var failures: [SourceID: SourceError] = [:]
         await withTaskGroup(of: (Int, SourceID, Result<[MediaVariant], SourceError>).self) { group in
             for (i, source) in candidates.enumerated() {
-                group.addTask {
-                    do { return (i, source.id, .success(try await source.variants(for: key))) }
-                    catch let e as SourceError { return (i, source.id, .failure(e)) }
-                    catch is CancellationError { return (i, source.id, .failure(.cancelled)) }
-                    catch { return (i, source.id, .failure(.unreachable(error.localizedDescription))) }
-                }
+                group.addTask { (i, source.id, await Self.answer(from: source, for: key)) }
             }
             for await (i, id, result) in group {
                 switch result {
@@ -76,6 +75,36 @@ public actor MediaSourceRegistry {
         }
         let variants = byIndex.keys.sorted().flatMap { byIndex[$0]! }
         return Availability(variants: variants, failures: failures)
+    }
+
+    /// One source's variants, or `.timedOut` once its deadline passes. The
+    /// work isn't cancelled at the deadline: it goes on filling the source's
+    /// cache, so the next look has the answer at once.
+    private static func answer(from source: any MediaSource, for key: MediaKey) async -> Result<[MediaVariant], SourceError> {
+        let work = Task { () -> Result<[MediaVariant], SourceError> in
+            do { return .success(try await source.variants(for: key)) }
+            catch let e as SourceError { return .failure(e) }
+            catch is CancellationError { return .failure(.cancelled) }
+            catch { return .failure(.unreachable(error.localizedDescription)) }
+        }
+        guard let limit = source.answersWithin else {
+            return await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (done: CheckedContinuation<Result<[MediaVariant], SourceError>, Never>) in
+                let answered = Mutex(false)
+                // Whichever comes first, the answer or the deadline, resumes; the other is dropped.
+                let finish: @Sendable (Result<[MediaVariant], SourceError>) -> Void = { result in
+                    let first = answered.withLock { was in defer { was = true }; return !was }
+                    if first { done.resume(returning: result) }
+                }
+                Task { finish(await work.value) }
+                Task {
+                    try? await Task.sleep(for: .seconds(limit))
+                    finish(.failure(.timedOut))
+                }
+            }
+        } onCancel: { work.cancel() }
     }
 
     public func resolve(_ variant: MediaVariant) async throws -> PlaybackResource {

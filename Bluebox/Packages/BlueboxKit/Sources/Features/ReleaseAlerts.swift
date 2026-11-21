@@ -166,7 +166,7 @@ extension AppModel {
         // lists it quietly and this notice is what you see.
         await EpisodeNotifications.post(id: "release:\(film.key.rawValue)", title: film.name, body: body,
                                         key: film.key, series: nil, category: EpisodeNotifications.releaseCategory)
-        showToast(AppToast(film.name, message: body, style: .success, actionTitle: "View") { [weak self] in
+        showToast(AppToast(film.name, message: body, style: .success, verbatim: .title, actionTitle: "View") { [weak self] in
             self?.features.openRequest = OpenRequest(title: film, episode: nil)
         })
     }

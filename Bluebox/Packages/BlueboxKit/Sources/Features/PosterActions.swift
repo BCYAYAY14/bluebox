@@ -444,7 +444,7 @@ extension AppModel {
             report(error, title: "Couldn't update My List") { [weak self] in await self?.toggleWatchlistWithToast(t, adding: adding) }
             return
         }
-        showToast(AppToast(t.name, message: adding ? "Added to My List" : "Removed from My List", actionTitle: "Undo") { [weak self] in
+        showToast(AppToast(t.name, message: adding ? "Added to My List" : "Removed from My List", verbatim: .title, actionTitle: "Undo") { [weak self] in
             Task { await self?.undoMyList(t, adding: adding) }
         })
     }
@@ -466,7 +466,7 @@ extension AppModel {
             report(error, title: "Couldn't mark “\(name)”") { [weak self] in await self?.setWatchedWithToast(key, name: name, watched) }
             return
         }
-        showToast(AppToast(name, message: watched ? "Marked as watched" : "Marked as unwatched", actionTitle: "Undo") { [weak self] in
+        showToast(AppToast(name, message: watched ? "Marked as watched" : "Marked as unwatched", verbatim: .title, actionTitle: "Undo") { [weak self] in
             Task { await self?.undoWatched(key, watched, before: before) }
         })
     }

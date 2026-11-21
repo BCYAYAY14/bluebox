@@ -821,7 +821,7 @@ struct FirstRunCard: View {
                 .accessibilityIdentifier("firstRunClose")
             }
             .frame(minHeight: 32)
-            Text("Play streams torrents your add-ons find, peer to peer. Debrid, your own files and media servers are in Settings › Sources.")
+            Text("Play streams torrents your add-ons find, peer to peer. Debrid is in Settings › Torrents & Debrid; your own files and media servers are in Settings › Sources.")
                 .font(.subheadline)
                 .foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1427,7 +1427,7 @@ struct CatalogFooter: View {
             case .sample:
                 Label("Showing the built-in sample catalog. Add a TMDB token in Settings for the full catalog.", systemImage: "info.circle")
             case .cinemeta:
-                Label("Catalog from Cinemeta, Stremio's free catalog. Add a TMDB token in Settings › Catalog for cast pages, more artwork and fuller details.",
+                Label("Catalog from Cinemeta, Stremio's free catalog. Add a TMDB token in Settings › Catalog & Ratings for cast pages, more artwork and fuller details.",
                       systemImage: "info.circle")
             case .live:
                 Text("This product uses the TMDB API but is not endorsed or certified by TMDB.")

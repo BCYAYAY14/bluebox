@@ -162,6 +162,8 @@ public final class AppModel {
     @ObservationIgnored var remoteSkip: (title: String, accept: @MainActor () -> Void)?
     /// Text the remote typed for Search; SearchView takes it and clears it.
     public var remoteSearchText: String?
+    /// The words of the remote's last search (`remoteSearchStartsOver`).
+    @ObservationIgnored var lastRemoteSearch: String?
     /// Bumped by the Mac menu bar's Open Downloads; RootView shows the Downloads tab.
     public var downloadsOpenRequest = 0
     @ObservationIgnored private var bootstrapped = false
@@ -448,21 +450,37 @@ public final class AppModel {
     /// Keychain already read (`KeychainStore().cachedBundle()`) so nothing here
     /// waits on the Keychain on the main thread.
     public static func live(secrets: any SecretStore) throws -> AppModel {
+        let dir = try appFolder()
+        return live(secrets: secrets, store: try LibraryStore.make(url: dir.appending(path: "Library.store")), dir: dir)
+    }
+
+    /// Application Support/Bluebox, made if it isn't there.
+    private nonisolated static func appFolder() throws -> URL {
         let dir = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appending(path: "Bluebox", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let store = try LibraryStore.make(url: dir.appending(path: "Library.store"))
-        return AppModel(store: store, secrets: secrets, prefs: PreferencesStore(),
-                        supabase: SupabaseConfig(bundle: .main), trakt: TraktConfig(bundle: .main),
-                        torrentDirectory: dir.appending(path: "Torrents", directoryHint: .isDirectory),
-                        downloadsDirectory: dir.appending(path: "Downloads", directoryHint: .isDirectory),
-                        libraryDirectory: dir)
+        return dir
+    }
+
+    private static func live(secrets: any SecretStore, store: LibraryStore, dir: URL) -> AppModel {
+        AppModel(store: store, secrets: secrets, prefs: PreferencesStore(),
+                 supabase: SupabaseConfig(bundle: .main), trakt: TraktConfig(bundle: .main),
+                 torrentDirectory: dir.appending(path: "Torrents", directoryHint: .isDirectory),
+                 downloadsDirectory: dir.appending(path: "Downloads", directoryHint: .isDirectory),
+                 libraryDirectory: dir)
     }
 
     /// The live app, with the Keychain read off the main thread first. Use at
     /// launch: a Keychain prompt then can't hold up the first window.
+    /// The library store is opened off the main thread too: a model actor
+    /// made on the main thread can run its fetches there on some OS versions.
     public static func liveReadingSecrets() async throws -> AppModel {
-        try live(secrets: await KeychainStore().cachedBundle())
+        let secrets = await KeychainStore().cachedBundle()
+        let (store, dir) = try await Task.detached(priority: .userInitiated) {
+            let dir = try appFolder()
+            return (try LibraryStore.make(url: dir.appending(path: "Library.store")), dir)
+        }.value
+        return live(secrets: secrets, store: store, dir: dir)
     }
 
     /// Deterministic in-memory app for previews and UI tests: sample catalog,
@@ -548,7 +566,8 @@ public final class AppModel {
     public func switchProfile(to id: String, sync: Bool = true) async {
         guard id != currentProfileID, let profile = profileStore.profile(id), !profile.isRemoved else { return }
         do {
-            let s = try libraryStore(for: id)
+            let s = try await libraryStore(for: id)
+            guard id != currentProfileID else { return }  // another switch got there while it opened
             if activePlayer != nil { await closePlayer() }
             store = s
             currentProfileID = id
@@ -769,12 +788,17 @@ public final class AppModel {
     /// Shared things (Downloads) say so once there's more than one profile.
     public var showsSharedTags: Bool { profiles.count > 1 }
 
-    private func libraryStore(for id: String) throws -> LibraryStore {
+    /// A profile's store, opened off the main thread the first time (see `liveReadingSecrets`).
+    private func libraryStore(for id: String) async throws -> LibraryStore {
         if let s = openStores[id] { return s }
-        let s = try libraryDirectory.map { try LibraryStore.make(url: $0.appending(path: Self.libraryFileName(id))) }
-            ?? LibraryStore.make(inMemory: true)
-        openStores[id] = s
-        return s
+        let url = libraryDirectory?.appending(path: Self.libraryFileName(id))
+        let opened = try await Task.detached(priority: .userInitiated) {
+            try url.map { try LibraryStore.make(url: $0) } ?? LibraryStore.make(inMemory: true)
+        }.value
+        // Two switches to the same profile at once share whichever opened first.
+        if let s = openStores[id] { return s }
+        openStores[id] = opened
+        return opened
     }
 
     /// A profile's store file. Opening and deleting must agree on it.
@@ -1116,8 +1140,16 @@ public final class AppModel {
         // party's title (opened paused), stay here.
         if preferred == nil, startAt == nil, external == nil, autoplay,
            remote.playOnTarget(RemotePlay(key: item.key, title: item.title, subtitle: item.subtitle, resume: resume)) { return }
+        playRequest &+= 1
+        let request = playRequest
+        // The launch surface (with Cancel) is up from the tap, not only once a
+        // release is being opened: learning the rating and asking the sources
+        // can take seconds. A newer Play, or Cancel, owns it from then on.
+        preparingItem = item
+        defer { if request == playRequest, preparingItem == item { preparingItem = nil } }
         // A maturity limit: titles rated above it, or unrated ones on Kids, don't play on this profile.
         await learnCertificationIfNeeded(for: item.key)
+        guard request == playRequest else { return }
         if let reason = maturityBlock(for: item.key) {
             alert = AppAlert(title: "Not available on this profile", message: reason)
             return
@@ -1129,6 +1161,7 @@ public final class AppModel {
             variant = saved  // offline copies play at once, without asking other sources
         } else {
             let availability = await registry.availability(for: item.key)
+            guard request == playRequest else { return }
             guard let first = chooseVariant(availability.variants, for: item.key) else {
                 if settings.isOffline {
                     alert = AppAlert(title: "You're offline",
@@ -1143,14 +1176,12 @@ public final class AppModel {
         }
         if let reason = settings.streamingBlockedReason(for: variant) { alert = AppAlert(title: "Not on Wi‑Fi", message: reason); return }
         // Settings › Mobile Data: torrent rules and "You're on mobile data" (MobileData.swift).
-        guard await mobileDataAllowsPlaying(item, variant: variant) else { return }
+        guard await mobileDataAllowsPlaying(item, variant: variant), request == playRequest else { return }
         // Add-on releases need the internet; say so now rather than after the searches time out.
         if variant.sourceID == addons.id, settings.isOffline {
             alert = AppAlert(title: "You're offline", message: "Connect to the internet to stream “\(item.title)”. Downloaded titles still play.")
             return
         }
-        playRequest &+= 1
-        let request = playRequest
         // One video at a time: what's playing ends (and saves its place) before the next opens.
         if activePlayer != nil { await closePlayer() }
         await endExternalHandoff()
@@ -1158,8 +1189,6 @@ public final class AppModel {
         resolvedNext = nil
         pickedNext = nil
         await holdTorrentDownloads(before: variant, key: item.key)
-        preparingItem = item
-        defer { if preparingItem == item { preparingItem = nil } }
         do {
             let resource = try await resolveCancellably(variant)
             // Cancelled, or another Play came after this one: it opens nothing.
@@ -1336,7 +1365,10 @@ public final class AppModel {
             Task { await self.reportServerPlayback(session, stopped: false) }
         }
         session.onNearEnd = { [weak self] key in self?.prepareNextEpisode(after: key) }
+        keepShowTracks(on: session)
         session.subtitleStyle = subtitleStyle
+        session.defaultSubtitleDelay = settings.defaultSubtitleDelay
+        session.subtitleTimings = subtitleTimingMemory()
         session.setAudioEffects(AudioEffects(dialogueBoost: settings.dialogueBoost, nightMode: settings.nightMode, equalizer: equalizer))
         // Defaults for every item the session starts, Up Next and Next Episode included.
         session.onItemStarted = { [weak self, weak session] _ in
@@ -1555,6 +1587,9 @@ extension AppModel {
     /// Stops finding or buffering a release.
     public func cancelPreparing() {
         preparing?.cancel()
+        // A Play still asking its sources (before any release is opened) stops here too.
+        playRequest &+= 1
+        preparingItem = nil
         addonStatus = nil
         Task { await addons.stopStreaming() }
     }
@@ -1771,7 +1806,8 @@ extension AppModel {
         PreferenceKey.addons, PreferenceKey.downloadSettings, PreferenceKey.playbackSpeed,
         PreferenceKey.playbackEngine, PreferenceKey.resumeBehavior, PreferenceKey.skipBackSeconds,
         PreferenceKey.skipForwardSeconds, PreferenceKey.upNextCountdown, PreferenceKey.defaultSubtitleDelay,
-        PreferenceKey.autoSearchSubtitles, PreferenceKey.allowCellularStreaming, PreferenceKey.mobileData,
+        PreferenceKey.autoSearchSubtitles, PreferenceKey.offersGeneratedSubtitles, PreferenceKey.allowsWhisper, PreferenceKey.offersAudioSync,
+        PreferenceKey.allowCellularStreaming, PreferenceKey.mobileData,
         PreferenceKey.pictureDefaults, PreferenceKey.launchIntro,
         PlayerFeatureKey.skipIntro, PlayerFeatureKey.skipCredits, PlayerFeatureKey.skipDisabledShows,
         PlayerFeatureKey.crowdSkipDisabledShows, PlayerFeatureKey.scrubThumbnails, PlayerFeatureKey.dialogueBoost,

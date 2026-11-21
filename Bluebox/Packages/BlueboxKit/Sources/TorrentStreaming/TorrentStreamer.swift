@@ -439,9 +439,13 @@ public actor TorrentStreamer {
     private static let raceGrace: TimeInterval = 1.0
 
     static let maxSubtitleFiles = 40
+    /// Subtitle files copied at once. Each copy reads through its own stream,
+    /// which keeps whole pieces (4–16 MiB) in memory while it runs, so a
+    /// `Subs/` folder of 30 files read all at once could hold hundreds of MB.
+    static let subtitleCopiesAtOnce = 3
 
     /// Copies the stream's bundled subtitle files out of the torrent as their
-    /// pieces arrive (each read waits for its piece, with a deadline).
+    /// pieces arrive (each read waits for its piece, with a deadline), a few at a time.
     static func fetchSubtitles(for stream: TorrentStream) async -> [TorrentSubtitleFile] {
         let files = stream.subtitleFiles
         guard !files.isEmpty else { return [] }
@@ -451,7 +455,10 @@ public actor TorrentStreamer {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let videoStem = (stream.fileName as NSString).deletingPathExtension
         return await withTaskGroup(of: TorrentSubtitleFile?.self) { group in
+            var out: [TorrentSubtitleFile] = []
             for (i, f) in files.enumerated() {
+                // One finishes before the next starts: `next()` waits, and a file that failed is just skipped.
+                if i >= subtitleCopiesAtOnce, case let finished?? = await group.next() { out.append(finished) }
                 group.addTask {
                     let part = TorrentStream(handle: stream.handle, file: f.entry, offset: f.offset)
                     let reader = UUID()
@@ -470,7 +477,6 @@ public actor TorrentStreamer {
                                                format: f.entry.fileExtension)
                 }
             }
-            var out: [TorrentSubtitleFile] = []
             for await file in group { if let file { out.append(file) } }
             return out.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         }

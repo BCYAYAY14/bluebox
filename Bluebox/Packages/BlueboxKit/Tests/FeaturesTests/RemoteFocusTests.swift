@@ -106,14 +106,15 @@ import Testing
         #expect(pressed.items.isEmpty)  // shown, not pressed: you hadn't seen it
         focus.select(driver: "iPhone")
         #expect(pressed.items == ["play"])
-        // Someone used the Mac's mouse: the ring hides, and the next tap brings it back first.
+        // Someone used the Mac's mouse: the ring hides, and the next tap brings it back and presses
+        // too: the phone had already answered the tap, and the item was where you left it.
         focus.hide()
         focus.select(driver: "iPhone")
-        #expect(pressed.items == ["play"] && focus.visible)
-        // A swipe while hidden only shows it too.
+        #expect(pressed.items == ["play", "play"] && focus.visible)
+        // A swipe after the Mac's own mouse moves on from it as well.
         focus.hide()
         focus.move(.down, driver: "iPhone")
-        #expect(focus.focusedID == "play")
+        #expect(focus.focusedID != "play" && focus.focusedID != nil)
     }
 
     @Test func theHighlightStartsUnderTheMacsPointer() {
@@ -392,9 +393,9 @@ import Testing
 
     /// A slow finger moves the pointer finely; a quick one crosses the window.
     @Test func thePointerSpeedsUpWithTheFinger() {
-        #expect(RemoteFocus.pointerScale(for: 5) == RemoteFocus.pointerScale)
-        #expect(RemoteFocus.pointerScale(for: 80) == RemoteFocus.pointerScale * RemoteFocus.pointerBoost)
-        #expect(RemoteFocus.pointerScale(for: 30) > RemoteFocus.pointerScale(for: 15))
+        #expect(RemoteFocus.pointerScale(speed: 100) == RemoteFocus.pointerScale)
+        #expect(RemoteFocus.pointerScale(speed: 1600) == RemoteFocus.pointerScale * RemoteFocus.pointerBoost)
+        #expect(RemoteFocus.pointerScale(speed: 600) > RemoteFocus.pointerScale(speed: 300))
     }
 
     /// Hold: the right-click a poster's quick actions open on.
@@ -430,7 +431,7 @@ import Testing
 
 /// The Mac's windows, in memory.
 @MainActor final class FakeWindow: RemoteWindowing {
-    struct Item { var label: String; var kind: RemoteScreenItem.Kind; var frame: CGRect; var isOn: Bool? = nil }
+    struct Item { var label: String; var kind: RemoteScreenItem.Kind; var frame: CGRect; var isOn: Bool? = nil; var value: String? = nil }
     var items: [Item] = []
     var log: [String] = []
     var ring: CGRect?
@@ -440,7 +441,14 @@ import Testing
     var activeKind: RemoteWindowKind? { .main }
     var bounds: CGRect { CGRect(x: 0, y: 0, width: 1000, height: 700) }
     var mousePointer: CGPoint? { nil }
-    func elements() -> [RemoteFocus.Element] { items.map { .init(label: $0.label, kind: $0.kind, frame: $0.frame, isOn: $0.isOn) } }
+    /// Walks of the window (`elements`).
+    var walks = 0
+    func elements() -> [RemoteFocus.Element] {
+        walks += 1
+        return items.map { .init(label: $0.label, kind: $0.kind, frame: $0.frame, isOn: $0.isOn, value: $0.value) }
+    }
+    func canScrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool { canScroll }
+    func type(_ text: String, at point: CGPoint?) { log.append("type \(text)\(point.map { " at \(Int($0.x)),\(Int($0.y))" } ?? "")") }
     func press(_ element: RemoteFocus.Element) { log.append("press \(element.label)") }
     func click(at point: CGPoint, right: Bool) { log.append("\(right ? "right-click" : "click") \(Int(point.x)),\(Int(point.y))") }
     func scroll(at point: CGPoint, dx: CGFloat, dy: CGFloat) -> Bool { log.append("scroll \(Int(dx)),\(Int(dy))"); return true }

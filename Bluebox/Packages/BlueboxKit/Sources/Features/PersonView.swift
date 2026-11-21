@@ -185,7 +185,7 @@ public struct PersonView: View {
 
     private func load() async {
         guard app.hasPersonPages, personID > 0 else {
-            error = "Pages for people need a TMDB key (Settings › Catalog)."
+            error = "Pages for people need a TMDB key (Settings › Catalog & Ratings)."
             return
         }
         do {

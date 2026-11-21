@@ -79,6 +79,34 @@ import Testing
         #expect(!RemoteCommand.Action.move(.left).needsVersion4)
     }
 
+    /// Protocol 5 (the quicker remote): typing, a held edge, the pointer's timing and the
+    /// screen's new fields read back; a screen or pointer move from an older build still reads;
+    /// and the new commands are only for a Mac that knows them.
+    @Test func protocolFiveRoundTripsAndOlderMessagesStillRead() throws {
+        let id = UUID()
+        let messages: [RemoteMessage] = [
+            .command(RemoteCommand(target: mac, action: .text("sever"))),
+            .command(RemoteCommand(target: mac, action: .text(""))),
+            .command(RemoteCommand(target: mac, action: .repeatMove(.right))),
+            .command(RemoteCommand(target: mac, action: .repeatMove(nil))),
+            .command(RemoteCommand(target: mac, action: .pointer(RemotePointerMove(dx: 3, dy: 1, dt: 0.033)))),
+            .screen(RemoteScreen(deviceID: mac, title: "Search", focused: RemoteScreenItem(label: "Search", kind: .field, value: "dune"),
+                                 answers: id, edges: [.left, .up])),
+        ]
+        for m in messages { #expect(try RemoteMessage.decode(jsonObject: m.jsonObject()) == m) }
+        let old: [String: Any] = ["type": "command", "command": ["id": UUID().uuidString, "target": mac,
+                                                                 "action": ["kind": "pointer", "value": ["dx": 2, "dy": 3]]]]
+        guard case .command(let c) = try RemoteMessage.decode(jsonObject: old), case .pointer(let m) = c.action else {
+            Issue.record("not a pointer move"); return
+        }
+        #expect(m.dt == nil)
+        #expect(RemoteCommand.Action.text("x").needsVersion5 && RemoteCommand.Action.repeatMove(nil).needsVersion5)
+        #expect(!RemoteCommand.Action.jump(RemoteJump(.left, count: 2)).needsVersion5)
+        #expect(RemoteDevice.currentVersion >= 5)
+        // A scrub is sent many times a second: never acknowledged or retried; its closing seek is.
+        #expect(RemoteCommand.Action.scrub(10).isContinuous && !RemoteCommand.Action.seek(10).isContinuous)
+    }
+
     @Test func wireFormatIsStable() throws {
         let command = RemoteMessage.command(RemoteCommand(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                                                           target: mac, action: .seek(10)))

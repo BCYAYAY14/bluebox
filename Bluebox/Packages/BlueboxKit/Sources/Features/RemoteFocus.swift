@@ -24,8 +24,9 @@ import AppKit
 /// after `fadeAfter` without input the ring dims to an outline rather than
 /// vanishing, and a new page starts on its first item, so every swipe moves
 /// and every tap presses something you can see. Using the Mac's own mouse or
-/// keyboard hides it; the next touch on the phone only shows it again, where
-/// it was. A screen with nothing to highlight switches the pad to a pointer.
+/// keyboard hides it; the next touch on the phone shows it again, where it
+/// was, and does what it asked too (the phone has already answered it with
+/// a haptic). A screen with nothing to highlight switches the pad to a pointer.
 ///
 /// Sheets and overlays mark themselves `.remoteModal()`: each is a layer, and
 /// only the top layer's items are reachable, even when it has none of its own
@@ -70,6 +71,8 @@ public final class RemoteFocus {
         /// In the window's coordinates, top-left origin, as SwiftUI's global frames are.
         var frame: CGRect
         var isOn: Bool?
+        /// A text field's text.
+        var value: String? = nil
         /// The accessibility node, to press it.
         var node: AnyObject?
 
@@ -106,6 +109,9 @@ public final class RemoteFocus {
     public private(set) var covered = false
     /// Moves that hit the end of a row: the phone bumps when it goes up.
     private(set) var bumps = 0
+    /// The ring went because someone used the Mac itself (`hide`), not because
+    /// it was never shown: the next touch from the phone shows it and acts.
+    @ObservationIgnored private var hiddenByMac = false
     /// The page the Mac is on, for `RemoteScreen` (RootView keeps it up to date).
     public var screenTitle = "Home" { didSet { if screenTitle != oldValue { pageChanged(); onChange?() } } }
 
@@ -123,6 +129,11 @@ public final class RemoteFocus {
     @ObservationIgnored private var coast: Task<Void, Never>?
     @ObservationIgnored private var follow: Task<Void, Never>?
     @ObservationIgnored private var relocate: Task<Void, Never>?
+    /// Held at the pad's edge (`repeatMove`): a step this often until it's let go.
+    @ObservationIgnored private var repeating: Task<Void, Never>?
+    /// The candidates the last move picked from, for the screen that goes out
+    /// after it (`screen`): one walk of the window per move, not two.
+    @ObservationIgnored private var moveCandidates: (at: Date, list: [Candidate])?
     @ObservationIgnored private var lastScrollRefresh = Date.distantPast
     /// The window's elements as last walked (`elements()`).
     @ObservationIgnored private var cachedElements: (at: Date, kind: RemoteWindowKind?, list: [Element])?
@@ -145,6 +156,9 @@ public final class RemoteFocus {
     /// A slow pointer move from the pad is this much bigger on the Mac; a fast one up to `pointerBoost` times more.
     nonisolated static let pointerScale: CGFloat = 1.6
     nonisolated static let pointerBoost: CGFloat = 2.5
+    /// Held at the edge: a step this often, at most `repeatLimit` of them (a lost "let go" can't run on for ever).
+    @ObservationIgnored var repeatInterval: Duration = .milliseconds(250)
+    nonisolated static let repeatLimit = 40
 
     public init() {
         BlueboxMenuRemote.onChange = { [weak self] in self?.menuChanged() }
@@ -284,7 +298,7 @@ public final class RemoteFocus {
             for e in elements() where !covered.contains(where: { $0.contains(CGPoint(x: e.frame.midX, y: e.frame.midY)) }) {
                 if let overlay, !overlay.contains(CGPoint(x: e.frame.midX, y: e.frame.midY)) { continue }
                 out.append(Candidate(ref: .element(e), id: "element:\(e.label)", frame: e.frame,
-                                     item: RemoteScreenItem(label: e.label, kind: e.kind, isOn: e.isOn), section: nil))
+                                     item: RemoteScreenItem(label: e.label, kind: e.kind, isOn: e.isOn, value: e.value), section: nil))
             }
         }
         return out
@@ -322,6 +336,7 @@ public final class RemoteFocus {
 
     /// Highlight the item with this ID (the first on screen, top to bottom), e.g. what was tapped on the phone.
     func focus(id: String, driver: String) {
+        stopRepeating()
         let matches = reachable.filter { $0.1.id == id }
         let area = window()?.bounds
         let onScreen = area.map { a in matches.filter { a.intersects($0.1.frame) } } ?? matches
@@ -332,6 +347,12 @@ public final class RemoteFocus {
     /// The nearest item that way. While the highlight is hidden, only shows it.
     /// At the edge of what's showing, the page scrolls on and the move carries on there.
     func move(_ direction: RemoteDirection, driver: String) {
+        stopRepeating()
+        step(direction, driver: driver)
+    }
+
+    /// One step, for `move` and for each of a held edge's repeats.
+    private func step(_ direction: RemoteDirection, driver: String) {
         if let menu = BlueboxMenuRemote.current {
             switch direction {
             case .up: menu.step(-1)
@@ -353,7 +374,8 @@ public final class RemoteFocus {
             return
         }
         let all = candidates()
-        guard visible, let here = currentCandidate(in: all) else { reveal(driver: driver, in: all); return }
+        moveCandidates = (Date(), all)
+        guard let here = shownOrRevealed(driver: driver, in: all) else { return }
         if let next = Self.step(from: here, toward: direction, in: all) {
             setFocus(next.ref, driver: driver)
         } else if let platform, platform.scrollPage(at: CGPoint(x: here.frame.midX, y: here.frame.midY), toward: direction) {
@@ -379,15 +401,65 @@ public final class RemoteFocus {
 
     /// Several steps one way: a fast swipe.
     func jump(_ direction: RemoteDirection, count: Int, driver: String) {
-        for _ in 0..<max(1, min(count, 12)) { move(direction, driver: driver) }
+        stopRepeating()
+        for _ in 0..<max(1, min(count, 12)) { step(direction, driver: driver) }
+    }
+
+    /// Held at the phone's edge: step that way every `repeatInterval` until
+    /// nil, the end of the row (a bump), any other command, or `repeatLimit` steps.
+    func repeatMove(_ direction: RemoteDirection?, driver: String) {
+        stopRepeating()
+        guard let direction else { return }
+        repeating = Task { [weak self] in
+            for _ in 0..<Self.repeatLimit {
+                guard let self else { return }
+                try? await Task.sleep(for: self.repeatInterval)
+                guard !Task.isCancelled else { return }
+                let bumped = self.bumps
+                self.step(direction, driver: driver)
+                if self.bumps != bumped { return }
+            }
+        }
+    }
+
+    private func stopRepeating() {
+        repeating?.cancel()
+        repeating = nil
+    }
+
+    /// The text typed on the phone, into the highlighted field (or, with the
+    /// pointer, the one with the cursor): its whole text, replaced.
+    func type(_ text: String, driver: String) {
+        stopRepeating()
+        guard let platform else { return }
+        let point: CGPoint?
+        if pointerMode { point = nil } else {
+            let here = currentCandidate(in: candidates())
+            point = here.flatMap { $0.item.kind == .field ? CGPoint(x: $0.frame.midX, y: $0.frame.midY) : nil }
+        }
+        platform.type(text, at: point)
+        show(driver: driver)
+        invalidate()
+    }
+
+    /// The highlighted candidate, once the highlight shows. Hidden because the
+    /// Mac's own mouse or keyboard was used, it comes back and the touch goes
+    /// on to act; never shown yet, the touch only shows it, since you hadn't seen where it would land.
+    private func shownOrRevealed(driver: String, in all: [Candidate]) -> Candidate? {
+        if visible, let here = currentCandidate(in: all) { return here }
+        let act = hiddenByMac
+        reveal(driver: driver, in: all)
+        guard act, visible, !pointerMode else { return nil }
+        return currentCandidate(in: all)
     }
 
     /// Press the highlighted item, as a click would. While the highlight is hidden, only shows it.
     func select(driver: String) {
+        stopRepeating()
         if let menu = BlueboxMenuRemote.current { menu.activateHighlighted(); show(driver: driver); return }
         if pointerMode { click(driver: driver); return }
         let all = candidates()
-        guard visible, let here = currentCandidate(in: all) else { reveal(driver: driver, in: all); return }
+        guard let here = shownOrRevealed(driver: driver, in: all) else { return }
         show(driver: driver)
         press(here)
         // A press usually changes the page (a title opens, a switch flips): look again.
@@ -397,11 +469,12 @@ public final class RemoteFocus {
 
     /// Hold: the highlighted item's menu, as a right-click opens it (a poster's quick actions).
     func openMenu(driver: String) {
+        stopRepeating()
         guard BlueboxMenuRemote.current == nil else { return }
         let point: CGPoint?
         if pointerMode { point = pointer } else {
             let all = candidates()
-            guard visible, let here = currentCandidate(in: all) else { reveal(driver: driver, in: all); return }
+            guard let here = shownOrRevealed(driver: driver, in: all) else { return }
             point = CGPoint(x: here.frame.midX, y: here.frame.midY)
         }
         show(driver: driver)
@@ -417,6 +490,7 @@ public final class RemoteFocus {
 
     /// The pad drives a pointer (or the highlight again). The pointer starts on the highlight.
     func setPointer(_ on: Bool, driver: String) {
+        stopRepeating()
         guard on != pointerMode else { show(driver: driver); return }
         pointerMode = on
         if on {
@@ -436,21 +510,22 @@ public final class RemoteFocus {
         onChange?()
     }
 
-    func movePointer(dx: CGFloat, dy: CGFloat, driver: String) {
+    /// `dt`: the seconds of finger travel it covers (nil from older phones: a twentieth).
+    func movePointer(dx: CGFloat, dy: CGFloat, dt: TimeInterval? = nil, driver: String) {
         if !pointerMode { setPointer(true, driver: driver) }
         let bounds = platform?.bounds ?? window()?.bounds ?? CGRect(x: 0, y: 0, width: 1000, height: 700)
         let p = pointer ?? CGPoint(x: bounds.midX, y: bounds.midY)
-        let scale = Self.pointerScale(for: hypot(dx, dy))
+        let scale = Self.pointerScale(speed: hypot(dx, dy) / CGFloat(max(dt ?? 1.0 / 20, 1.0 / 240)))
         pointer = CGPoint(x: min(max(p.x + dx * scale, bounds.minX + 2), bounds.maxX - 2),
                           y: min(max(p.y + dy * scale, bounds.minY + 2), bounds.maxY - 2))
         show(driver: driver)
     }
 
     /// Pointer acceleration, as a trackpad's: a slow finger moves it finely,
-    /// a quick one crosses the window. `distance` is one message's worth (a
-    /// twentieth of a second of finger travel on the phone).
-    nonisolated static func pointerScale(for distance: CGFloat) -> CGFloat {
-        let quick = min(max((distance - 10) / 40, 0), 1)
+    /// a quick one crosses the window. By the finger's speed on the phone, in
+    /// points a second, so it's the same however the messages were spaced.
+    nonisolated static func pointerScale(speed: CGFloat) -> CGFloat {
+        let quick = min(max((speed - 200) / 800, 0), 1)
         return pointerScale * (1 + (pointerBoost - 1) * quick)
     }
 
@@ -466,6 +541,7 @@ public final class RemoteFocus {
     /// last message carries the fingers' speed, and the page coasts on, as
     /// on a trackpad; then the highlight moves onto what's showing.
     func scroll(_ s: RemoteScroll, driver: String) {
+        stopRepeating()
         guard let platform else { return }
         // Where the gesture began scrolls for all of it: no walk of the window per message.
         let point: CGPoint
@@ -562,7 +638,8 @@ public final class RemoteFocus {
     /// Someone used the Mac itself: hide the ring now.
     func hide() {
         fade?.cancel()
-        if visible { visible = false }
+        stopRepeating()
+        if visible { visible = false; hiddenByMac = true }
         if pointerMode { pointerMode = false; pointer = nil }
         redraw()
     }
@@ -580,13 +657,17 @@ public final class RemoteFocus {
         case .target(let id): targets[id].flatMap { self.frame(of: $0) }
         case .element(let e): e.frame
         }
+        var scrolled = false
         if let frame, let platform, platform.scrollIntoView(frame) {
+            scrolled = true
             invalidate()
             _ = currentCandidate(in: candidates())
         }
         show(driver: driver)
         onChange?()
-        relocateSoon()
+        // Only a ring drawn over the window can be left behind by a page still
+        // moving; a marked item draws its own ring and goes where it goes.
+        if scrolled || { if case .element = ref { true } else { false } }() { relocateSoon() }
     }
 
     /// The page may still be moving under the ring (a row scrolling the item
@@ -616,6 +697,7 @@ public final class RemoteFocus {
     private func show(driver: String) {
         self.driver = driver
         visible = true
+        hiddenByMac = false
         dimmed = false
         startWatchingLocalInput()
         fade?.cancel()
@@ -667,17 +749,28 @@ public final class RemoteFocus {
                              pointer: pointerMode ? true : nil, bumps: bumps)
         s.menu = menuSnapshot()
         guard !pointerMode else { return s }
-        let all = candidates()
-        guard let here = currentCandidate(in: all) else { return s }
+        // Just after a move: what it walked, unless the page has moved since (`invalidate`).
+        let reuse = moveCandidates.flatMap { m in
+            cachedElements.map { $0.at <= m.at && Date().timeIntervalSince(m.at) < elementsLifetime } == true ? m.list : nil
+        }
+        moveCandidates = nil
+        var all = reuse ?? candidates()
+        var found = currentCandidate(in: all)
+        if found == nil, reuse != nil { all = candidates(); found = currentCandidate(in: all) }
+        guard let here = found else { return s }
         s.focused = here.item
         s.section = here.section
         let left = Self.step(from: here, toward: .left, in: all), right = Self.step(from: here, toward: .right, in: all)
+        let up = Self.step(from: here, toward: .up, in: all), down = Self.step(from: here, toward: .down, in: all)
         if left != nil || right != nil {
             s.horizontal = true; s.before = left?.item; s.after = right?.item
         } else {
-            s.horizontal = false
-            s.before = Self.step(from: here, toward: .up, in: all)?.item
-            s.after = Self.step(from: here, toward: .down, in: all)?.item
+            s.horizontal = false; s.before = up?.item; s.after = down?.item
+        }
+        // The ways a move bumps: nothing there, and nothing to scroll on to. The phone feels it at once.
+        let point = CGPoint(x: here.frame.midX, y: here.frame.midY)
+        s.edges = [(RemoteDirection.left, left), (.right, right), (.up, up), (.down, down)].compactMap { d, next in
+            next == nil && !(platform?.canScrollPage(at: point, toward: d) ?? false) ? d : nil
         }
         return s
     }
@@ -769,8 +862,12 @@ public final class RemoteFocus {
     func scroll(at point: CGPoint, dx: CGFloat, dy: CGFloat) -> Bool
     /// Scrolls most of a screen that way, for a move at the edge; false when it can't go further.
     func scrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool
+    /// Whether `scrollPage` would move anything, without moving it.
+    func canScrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool
     /// Scrolls whatever holds the rectangle until all of it shows; false when nothing had to move.
     func scrollIntoView(_ frame: CGRect) -> Bool
+    /// Puts the cursor in the field at `point` (nil: the one it's in) and replaces its text.
+    func type(_ text: String, at point: CGPoint?)
     func draw(ring: CGRect?, driver: String, dimmed: Bool, pointer: CGPoint?)
 }
 

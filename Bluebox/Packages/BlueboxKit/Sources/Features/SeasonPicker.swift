@@ -52,7 +52,7 @@ struct SeasonPickerButton: View {
             .padding(.horizontal, 14)
             .frame(minHeight: 36)
             .background(Palette.elevated, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .contentShape(Rectangle())
+            .hitTarget(height: 36)
         }
         .buttonStyle(PressableStyle())
         .disabled(!enabled)

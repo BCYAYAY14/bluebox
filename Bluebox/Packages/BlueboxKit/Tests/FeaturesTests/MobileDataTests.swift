@@ -162,15 +162,15 @@ import Testing
             .appending(path: "Sources/Features")
         let files = try FileManager.default.contentsOfDirectory(at: features.appending(path: "Settings"), includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "swift" }
-        // Settings › About's update row is drawn by the updater itself.
-        let source = try (files + [features.appending(path: "AppUpdater.swift")]).map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        // Settings › About's update row is drawn by the updater itself; Downloads' menu bar switch by the menu bar item.
+        let source = try (files + [features.appending(path: "AppUpdater.swift"), features.appending(path: "MenuBarDownloads.swift")]).map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         // Account & Sync is its own screen; Switch Profile is the Profiles list itself.
         // Storage's cache rows are tagged "Clear \(title)" by one helper.
         let cacheRows: Set = ["Clear Artwork", "Clear Catalog Data", "Clear Downloaded Subtitles"]
         let missing = SettingsSearchIndex.entries
             .filter { $0.page != .account && !cacheRows.contains($0.title) }
-            // Tagged from data: profile rows by state, sources by their names.
-            .filter { !["Switch Profile", "Edit Profile", "Open Movies"].contains($0.title) }
+            // Tagged from data: profile rows by state, sources and add-ons by their names.
+            .filter { !["Switch Profile", "Edit Profile", "Open Movies", "Torrentio", "StremThru Torz", "Comet"].contains($0.title) }
             .filter { !source.contains(".settingsRow(\"\($0.title)\")") }
         #expect(missing.map(\.title) == [])
         #expect(source.contains(".settingsRow(\"Clear \\(title)\")"))

@@ -30,6 +30,8 @@ struct PlayerView: View {
     @State private var toast: PlayerNotice?
     /// Sync to the Audio, here rather than in its page so it outlives the card.
     @State private var audioSync = SubtitleAudioSync()
+    /// Generated subtitles, here so the writing outlives the card.
+    @State private var generator = SubtitleGenerator()
     /// The toast's button (Undo), when it has one.
     @State private var toastAction: (() -> Void)?
     /// The card open over the video (Audio & Subtitles, Episodes, Speed, Tools, Chapters).
@@ -342,7 +344,11 @@ struct PlayerView: View {
                     .accessibilityHidden(true)
             }
             if controlsShown {
+                // Faded while subtitles are dragged or pinched, so the guides
+                // and the line's real place show (hover would keep them up).
                 controls.transition(.opacity)
+                    .opacity(subtitleEditing ? 0 : 1)
+                    .animation(Motion.standard(reduceMotion), value: subtitleEditing)
             }
             if let party = app.party, !locked {
                 PartyOverlay(party: party, controlsShown: controlsShown,
@@ -397,11 +403,24 @@ struct PlayerView: View {
                     ProgressView().controlSize(.small).tint(Palette.brandBright)
                     Text(switchingTo.map { k in k.episodeNumbers.map { "Opening S\($0.season)·E\($0.episode)…" } ?? "Opening…" }
                          ?? "Finding the next episode…").font(.callout.weight(.semibold))
+                        .accessibilityAddTraits(.isStaticText)
+                    // Stop looking: the episode you're on carries on where it was.
+                    Divider().frame(height: 20).overlay(Palette.edge)
+                    Button { session.cancelSwitch() } label: {
+                        Text("Cancel")
+                            .font(.callout.weight(.bold))
+                            .foregroundStyle(Palette.brandBright)
+                            .padding(.horizontal, 6)
+                            .frame(minHeight: 32)
+                            .hitTarget(height: 32)
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityIdentifier("cancelSwitch")
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+                .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 6)
                 .playerNoticeSurface()
                 .transition(.opacity)
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
             }
             if let error = session.error { errorOverlay(error).zIndex(4) }
             else if showsEndCard { endCard.zIndex(4) }
@@ -466,6 +485,11 @@ struct PlayerView: View {
                 guard !locked, !subtitleEditing else { return }
                 let base = zoomBase ?? session.videoFraming.zoom
                 zoomBase = base
+                #if os(iOS)
+                // A swipe the pinch began as is dropped, so letting go doesn't seek.
+                swipe = nil
+                swipeSeekTarget = nil
+                #endif
                 session.videoFraming.setZoom(base * v.magnification)
             }
             .onEnded { _ in zoomBase = nil })
@@ -489,8 +513,9 @@ struct PlayerView: View {
         .onChange(of: audioSync.phase) { _, phase in
             guard panel != .tracks else { return }
             switch phase {
-            case .done(let offset, _, let drift):
-                flash("Synced to the audio · \(offset.label)" + (drift ? ", drift fixed" : ""), symbol: "waveform", action: "Undo") {
+            case .done(let offset, _, let drift, let here):
+                flash("Synced to the audio · \(offset.label)" + (drift ? ", drift fixed" : here ? ", for this part of the video" : ""),
+                      symbol: "waveform", action: "Undo") {
                     audioSync.undo(session)
                 }
             case .failed(let message): flash(message, symbol: "waveform.slash", style: .warning)
@@ -498,7 +523,7 @@ struct PlayerView: View {
             }
         }
         .onDisappear {
-            audioSync.cancel(); app.noteAirPlayingVideo(false)
+            audioSync.cancel(); generator.stop(); app.noteAirPlayingVideo(false)
             #if os(iOS)
             ScreenBrightness.restore()
             #endif
@@ -595,6 +620,18 @@ struct PlayerView: View {
         .onChange(of: session.slowSnapshot.status) {
             app.updateNowPlaying()
             advertiseHandoff(force: true)
+        }
+        // Generated subtitles belong to one video: a new one starts afresh, with
+        // any saved for it at an earlier viewing, and the offer if it has none.
+        .modifier(GeneratedSubtitleHooks(session: session, generator: generator, offer: offerGeneratedSubtitles) { message in
+            guard panel != .tracks else { return }
+            flash(message, symbol: "exclamationmark.bubble", style: .warning)
+        })
+        // Next Episode or an episode from the list that couldn't be opened (not
+        // found, or too slow): the one you're on carries on, and says so.
+        .onChange(of: session.switchFailures) {
+            switchingTo = nil
+            flash("Couldn't open that episode", symbol: "exclamationmark.triangle.fill", style: .warning)
         }
         .onChange(of: session.item?.key) {
             rightArrowDown = nil; endBoost()
@@ -830,7 +867,8 @@ struct PlayerView: View {
     private var swipeGesture: some Gesture {
         DragGesture(minimumDistance: 16, coordinateSpace: .local)
             .onChanged { v in
-                guard !locked, !subtitleEditing, panel == nil, scrubFraction == nil,
+                // A pinch's fingers also drag: while one is under way they neither seek nor set volume.
+                guard !locked, !subtitleEditing, panel == nil, scrubFraction == nil, zoomBase == nil,
                       session.videoFraming.zoom <= 1 else { return }
                 if swipe == nil {
                     // A 2× hold that then moves stays a hold.
@@ -1095,6 +1133,34 @@ struct PlayerView: View {
         let i = steps.firstIndex { abs($0 - session.videoFraming.zoom) < 0.01 } ?? 0
         session.videoFraming.setZoom(steps[(i + 1) % steps.count])
         flash(String(format: "Zoom %.2g×", session.videoFraming.zoom), symbol: "plus.magnifyingglass")
+    }
+
+    /// Saved generated subtitles for this video join the track list; then, if
+    /// nothing is on and nothing is in your language (and you don't hear it
+    /// either), a notice offers to generate them, which opens Generate Subtitles.
+    private func offerGeneratedSubtitles() async {
+        guard let duration = session.slowSnapshot.duration else { return }
+        SubtitleGenerator.addSaved(to: session)
+        // Long enough to be worth it, and only when asked for in Settings.
+        guard app.settings.offersGeneratedSubtitles, duration > 600 else { return }
+        // The preferred track (or one carried over from the last episode) is chosen in the first seconds.
+        try? await Task.sleep(for: .seconds(6))
+        guard !Task.isCancelled, session.subtitleSelection == .off, !generator.isRunning, panel == nil else { return }
+        let wanted = TrackChoice.normalized(app.subtitleStyle.preferredLanguage ?? Locale.current.language.languageCode?.identifier ?? "en")
+        guard !session.allSubtitleTracks.contains(where: { $0.languageCode.map(TrackChoice.normalized) == wanted }) else { return }
+        let audio = session.slowSnapshot.audioTracks.first { $0.id == session.slowSnapshot.selectedAudioID }?.languageCode
+        guard audio.map(TrackChoice.normalized) != wanted else { return }
+        flash("No \(SubtitleGenerator.name(wanted)) subtitles · make them from the audio?", symbol: "sparkles", kind: "generate",
+              action: "Generate") {
+            tracksStartPage = .generate
+            panel = .tracks
+        }
+    }
+
+    /// Where generated subtitles have been written, as fractions of the video, while they're being written.
+    private func writtenFractions(duration: TimeInterval) -> [ClosedRange<Double>] {
+        guard generator.isRunning, duration > 0 else { return [] }
+        return generator.covered.ranges.map { min(1, $0.lowerBound / duration)...min(1, $0.upperBound / duration) }
     }
 
     /// A short message at the top. With an action (Undo) it stays longer and can
@@ -1393,6 +1459,7 @@ struct PlayerView: View {
                      buffered: timeline.fraction(at: session.bufferedUntil),
                      duration: duration,
                      available: available,
+                     written: writtenFractions(duration: duration),
                      loop: session.loopStart.map { a in (a / max(duration, 1), session.loopEnd.map { $0 / max(duration, 1) }) },
                      chapterMarks: duration > 0 ? s.chapters.map { $0.start / duration } : [],
                      stalled: showsWaiting,
@@ -1629,6 +1696,7 @@ struct PlayerView: View {
 
     private func closePanel() {
         panel = nil
+        tracksStartPage = nil
         focused = true
         poke()
     }
@@ -1680,6 +1748,7 @@ struct PlayerView: View {
                         onSearch: { closePanel(); searchingSubtitles = true },
                         onStyle: openStyle)
                 .environment(audioSync)
+                .environment(generator)
         case .speed:
             // Its time left follows the playhead: only the card redraws for it.
             PlayheadReader(session: session) { position in
@@ -1708,10 +1777,8 @@ struct PlayerView: View {
         switchingTo = key
         Task {
             await session.switchItem { await app.resolveEpisode(key) }
-            if session.item?.key != key {
-                switchingTo = nil
-                flash("Couldn't open that episode", symbol: "exclamationmark.triangle.fill", style: .warning)
-            }
+            // Not opened: a failure flashes (`switchFailures`); Cancel just clears the notice.
+            if session.item?.key != key { switchingTo = nil }
         }
     }
 
@@ -1956,7 +2023,26 @@ private struct LiveSubtitleLines<Content: View>: View {
 /// `content` in a view of its own. The position changes several times a
 /// second while playing: read in the player's body, it redrew the whole
 /// player each time, controls hidden or not; here only `content` follows it.
-private struct PlayheadReader<Content: View>: View {
+/// The player's hooks for generated subtitles, apart from its long chain of
+/// modifiers: a new video starts afresh and offers them; a failure with the
+/// card closed is said.
+private struct GeneratedSubtitleHooks: ViewModifier {
+    let session: PlayerSession
+    let generator: SubtitleGenerator
+    let offer: () async -> Void
+    let failed: (String) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: session.currentResource?.url) { generator.reset() }
+            .task(id: "\(session.currentResource?.url.absoluteString ?? "")|\(session.slowSnapshot.duration != nil)") { await offer() }
+            .onChange(of: generator.phase) { _, phase in
+                if case .failed(let message) = phase { failed(message) }
+            }
+    }
+}
+
+struct PlayheadReader<Content: View>: View {
     let session: PlayerSession
     @ViewBuilder let content: (_ position: TimeInterval) -> Content
 
@@ -2017,6 +2103,22 @@ struct PlayerKeys: ViewModifier {
 
     let actions: Actions
 
+    /// The subtitle delay step for a key: { and } a tenth of a second, ⌥{ and
+    /// ⌥} a second ({ is already ⇧[, so Shift can't mark the bigger step).
+    /// Some keyboards hand over ⌥⇧[ and ⌥⇧] as the characters Option types
+    /// with them (” and ’ on a US layout) rather than { and }, so those count too.
+    static func subtitleStep(_ characters: String, modifiers: EventModifiers) -> Double? {
+        if characters == "”" { return -1 }
+        if characters == "’" { return 1 }
+        guard characters == "{" || characters == "}" else { return nil }
+        let sign: Double = characters == "{" ? -1 : 1
+        switch modifiers.subtracting(.shift) {
+        case []: return sign * 0.1
+        case .option: return sign
+        default: return nil
+        }
+    }
+
     func body(content: Content) -> some View {
         content
             .onKeyPress(.space) { actions.playPause(); return .handled }
@@ -2036,13 +2138,15 @@ struct PlayerKeys: ViewModifier {
             #if os(iOS)
             .onKeyPress(.escape) { actions.close(); return .handled }
             #endif
-            .onKeyPress(characters: .init(charactersIn: "[]{}-=_+vbacCzrlstjnpmeNP,.<>0123456789"), phases: .down) { press in
+            .onKeyPress(characters: .init(charactersIn: "[]{}”’-=_+vbacCzrlstjnpmeNP,.<>0123456789"), phases: .down) { press in
+                if let step = Self.subtitleStep(press.characters, modifiers: press.modifiers) {
+                    actions.nudgeSubtitles(step)
+                    return .handled
+                }
                 guard press.modifiers.subtracting(.shift).isEmpty else { return .ignored }
                 switch press.characters {
                 case "[": actions.stepSpeed(-1)
                 case "]": actions.stepSpeed(1)
-                case "{": actions.nudgeSubtitles(-0.1)
-                case "}": actions.nudgeSubtitles(0.1)
                 case "-", "_": actions.subtitleSize(-0.0045)
                 case "=", "+": actions.subtitleSize(0.0045)
                 case "v": actions.cycleSubtitles()
@@ -2201,7 +2305,7 @@ struct SubtitleSearchSheet: View {
             Group {
                 if let results, results.isEmpty {
                     ContentUnavailableView("No subtitles found", systemImage: "captions.bubble",
-                                           description: Text("Try another preferred language, or turn on more sites, in Settings › Subtitles."))
+                                           description: Text("Try another preferred language in Settings › Languages, or turn on more sites in Settings › Subtitles."))
                 } else if let results {
                     List(results) { r in
                         Button { Task { await pick(r) } } label: {

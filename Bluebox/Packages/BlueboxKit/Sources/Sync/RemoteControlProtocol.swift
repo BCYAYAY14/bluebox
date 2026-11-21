@@ -126,7 +126,11 @@ public struct RemoteScroll: Codable, Hashable, Sendable {
 public struct RemotePointerMove: Codable, Hashable, Sendable {
     public var dx: Double
     public var dy: Double
-    public init(dx: Double, dy: Double) { self.dx = dx; self.dy = dy }
+    /// The seconds of finger travel it covers, so the Mac's acceleration
+    /// follows the finger's speed, not how often messages happen to go out.
+    /// nil from phones before protocol 5: a twentieth of a second.
+    public var dt: Double?
+    public init(dx: Double, dy: Double, dt: Double? = nil) { self.dx = dx; self.dy = dy; self.dt = dt }
 }
 
 /// A fast swipe: several steps one way, in one message.
@@ -173,6 +177,12 @@ public struct RemoteCommand: Codable, Hashable, Sendable {
         case menuPick(Int)
         /// The player's skip button (`RemoteNowPlaying.skipOffer`).
         case acceptSkip
+        // Protocol 5: the quicker remote (21 Nov 2026).
+        /// The whole text of the highlighted (or focused) field, as typed on the phone so far.
+        /// The whole text rather than keys, so a resend can't type it twice.
+        case text(String)
+        /// Held at the pad's edge: keep stepping that way on the Mac until nil (the finger lifted or moved off).
+        case repeatMove(RemoteDirection?)
     }
 
     public var id: UUID
@@ -214,6 +224,8 @@ extension RemoteCommand.Action: Codable {
         case "menu": self = .menu
         case "menuPick": self = .menuPick(try c.decode(Int.self, forKey: .value))
         case "acceptSkip": self = .acceptSkip
+        case "text": self = .text(try c.decode(String.self, forKey: .value))
+        case "repeatMove": self = .repeatMove(try c.decodeIfPresent(RemoteDirection.self, forKey: .value))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown remote action \(other)")
         }
@@ -243,6 +255,8 @@ extension RemoteCommand.Action: Codable {
         case .menu: try c.encode("menu", forKey: .kind)
         case .menuPick(let i): try c.encode("menuPick", forKey: .kind); try c.encode(i, forKey: .value)
         case .acceptSkip: try c.encode("acceptSkip", forKey: .kind)
+        case .text(let t): try c.encode("text", forKey: .kind); try c.encode(t, forKey: .value)
+        case .repeatMove(let d): try c.encode("repeatMove", forKey: .kind); try c.encodeIfPresent(d, forKey: .value)
         }
     }
 
@@ -252,6 +266,15 @@ extension RemoteCommand.Action: Codable {
         switch self {
         case .go, .focus, .move, .select, .play: true
         case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: true
+        case .text, .repeatMove: true
+        default: false
+        }
+    }
+
+    /// Needs a device on protocol 5 (`RemoteDevice.version`): an older Mac would drop it unread.
+    public var needsVersion5: Bool {
+        switch self {
+        case .text, .repeatMove: true
         default: false
         }
     }
@@ -264,13 +287,14 @@ extension RemoteCommand.Action: Codable {
         }
     }
 
-    /// Sent many times a second while a finger moves (a scroll or the pointer):
-    /// not acknowledged or retried, since a lost one only means a little less
-    /// movement, and acks would double the traffic. A scroll's last message
-    /// (with its speed) is, so the page always coasts.
+    /// Sent many times a second while a finger moves (a scroll, the pointer, a
+    /// scrub): not acknowledged or retried, since a lost one only means a
+    /// little less movement, and acks would double the traffic. A scroll's
+    /// last message (with its speed) is, so the page always coasts, and a
+    /// scrub always ends with a `seek`, which is.
     public var isContinuous: Bool {
         switch self {
-        case .pointer: true
+        case .pointer, .scrub: true
         case .scroll(let s): !s.ends
         default: false
         }
@@ -316,13 +340,14 @@ public struct RemoteDevice: Codable, Hashable, Sendable, Identifiable {
     public var playing: String?
     /// 3: takes app commands (go, focus, move, select, play) as well as the player's.
     /// 4: also jumps, scrolls, the pointer, menus and the skip button.
+    /// 5: also typing into a field (`text`) and holding at the edge (`repeatMove`).
     public var version: Int
 
     public static let announceInterval: TimeInterval = 20
     /// Not heard from for this long: off the list.
     public static let goneAfter: TimeInterval = 50
 
-    public static let currentVersion = 4
+    public static let currentVersion = 5
 
     public init(id: String, name: String, kind: Kind, controllable: Bool, playing: String? = nil, version: Int = RemoteDevice.currentVersion) {
         self.id = id; self.name = name; self.kind = kind; self.controllable = controllable; self.playing = playing; self.version = version
@@ -338,9 +363,11 @@ public struct RemoteScreenItem: Codable, Hashable, Sendable {
     public var image: URL?
     /// A switch's state.
     public var isOn: Bool?
+    /// A text field's text, so the phone's keyboard opens on it (protocol 5).
+    public var value: String?
 
-    public init(label: String, kind: Kind = .button, image: URL? = nil, isOn: Bool? = nil) {
-        self.label = label; self.kind = kind; self.image = image; self.isOn = isOn
+    public init(label: String, kind: Kind = .button, image: URL? = nil, isOn: Bool? = nil, value: String? = nil) {
+        self.label = label; self.kind = kind; self.image = image; self.isOn = isOn; self.value = value
     }
 }
 
@@ -399,14 +426,22 @@ public struct RemoteScreen: Codable, Hashable, Sendable {
     /// The open player, as `RemoteMessage.state` carries it: with the screen
     /// too, so a remote that missed the states still shows the player's controls.
     public var playing: RemoteNowPlaying?
+    // Protocol 5.
+    /// The last command applied before this screen was worked out: the phone
+    /// keeps the strip it moved itself until the screen answering its newest move arrives.
+    public var answers: UUID?
+    /// The ways a move from here hits the end (nothing that way, and nothing
+    /// to scroll on to): the phone bumps at once rather than a round trip later.
+    public var edges: [RemoteDirection]?
 
     public init(deviceID: String, title: String, focusedID: String? = nil, focusedLabel: String? = nil,
                 focused: RemoteScreenItem? = nil, before: RemoteScreenItem? = nil, after: RemoteScreenItem? = nil,
                 horizontal: Bool? = nil, section: String? = nil, pointer: Bool? = nil, bumps: Int? = nil, menu: RemoteMenu? = nil,
-                playing: RemoteNowPlaying? = nil) {
+                playing: RemoteNowPlaying? = nil, answers: UUID? = nil, edges: [RemoteDirection]? = nil) {
         self.deviceID = deviceID; self.title = title; self.focusedID = focusedID; self.focusedLabel = focusedLabel
         self.focused = focused; self.before = before; self.after = after; self.horizontal = horizontal
         self.section = section; self.pointer = pointer; self.bumps = bumps; self.menu = menu; self.playing = playing
+        self.answers = answers; self.edges = edges
     }
 }
 
@@ -523,7 +558,7 @@ public struct RemoteReconciler: Sendable {
         pending.removeAll { Self.kind($0.action) == Self.kind(action) }
         switch action {
         case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
-             .click, .menu, .menuPick, .acceptSkip: return  // nothing to draw on the player
+             .click, .menu, .menuPick, .acceptSkip, .text, .repeatMove: return  // nothing to draw on the player
         default: break
         }
         pending.append(Pending(id: id, action: action, at: now, deadline: now.addingTimeInterval(timeout)))
@@ -580,7 +615,7 @@ public struct RemoteReconciler: Sendable {
             case .subtitle(let id): s.subtitleID = id
             case .volume(let v): s.volume = v
             case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
-                 .click, .menu, .menuPick, .acceptSkip: break
+                 .click, .menu, .menuPick, .acceptSkip, .text, .repeatMove: break
             }
         }
         var position = fix.position + (playing ? max(now.timeIntervalSince(fix.at), 0) : 0)
@@ -599,17 +634,19 @@ public struct RemoteReconciler: Sendable {
         case .volume: 5
         case .closePlayer: 6
         // Each press counts: never replaced by the next one.
-        case .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: 100
+        case .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip,
+             .text, .repeatMove: 100
         }
     }
 
-    /// A published state that shows the command took effect.
-    static func confirms(_ s: RemoteNowPlaying, _ a: RemoteCommand.Action) -> Bool {
+    /// A published state that shows the command took effect. The Mac uses it
+    /// too, to publish as soon as its player shows a command, not after a fixed wait.
+    public static func confirms(_ s: RemoteNowPlaying, _ a: RemoteCommand.Action) -> Bool {
         switch a {
         case .setPaused(let p): s.paused == p
         case .seek(let t), .scrub(let t): abs(s.position - t) < 3
         case .nextEpisode, .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer,
-             .click, .menu, .menuPick, .acceptSkip: true
+             .click, .menu, .menuPick, .acceptSkip, .text, .repeatMove: true
         case .audio(let id): s.audioID == id
         case .subtitle(let id): s.subtitleID == id
         case .volume(let v): abs(s.volume - v) < 0.02

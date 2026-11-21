@@ -19,7 +19,8 @@ import SystemConfiguration
     func remoteFocus(_ id: String, driver: String)
     func remoteMove(_ direction: RemoteDirection, driver: String)
     func remoteSelect(driver: String)
-    /// Protocol 4: jumps, scrolling, the pointer, menus and the skip button.
+    /// Protocol 4: jumps, scrolling, the pointer, menus and the skip button;
+    /// protocol 5: typing into a field and holding at the edge.
     func remote4(_ action: RemoteCommand.Action, driver: String)
     /// Where the app is and what's highlighted (`deviceID` is filled in by `RemoteControl`).
     func remoteScreen() -> RemoteScreen
@@ -59,11 +60,22 @@ public extension RemoteAppHandler {
 /// command (`RemoteAck`) and the phone sends it again until it does, a few
 /// times; the Mac applies each command ID once. Messages leave in the order
 /// they were made, through one outbox per channel.
+///
+/// Feeling quick (the quicker remote, 21 Nov 2026): the phone keeps its Mac,
+/// its screen and its player through a trip to the background and says
+/// hello on its way back, which the Mac always answers, so it can be used
+/// again within one round trip. A move, the pointer switch, a bump at the
+/// end of a row and a menu pick show on the phone at once (`predict`) and the
+/// Mac's screen corrects them. The Mac publishes a player command as soon as
+/// its player shows it, with `Timing.settle` only as the longest wait.
 @MainActor @Observable
 public final class RemoteControl {
     /// What the remote says about the link to the Mac.
     public enum Connection: Sendable, Equatable {
         case off, connecting, connected
+        /// Joined, and the last command has gone unanswered for a while (two
+        /// sends): amber, while it's still being sent.
+        case lagging
         /// Joined, but the Mac didn't acknowledge the last command.
         case notAnswering
     }
@@ -74,6 +86,11 @@ public final class RemoteControl {
     /// The last command's retries all went unanswered. Cleared by the next ack:
     /// the Mac's states can keep coming while it doesn't hear us.
     public private(set) var macNotAnswering = false
+    /// The last command has been sent twice without an answer (`Connection.lagging`).
+    public private(set) var macLagging = false
+    /// Back from the background (or just joined) and not yet heard from the
+    /// Mac: the remote says Reconnecting… rather than No Mac to Control.
+    public private(set) var reconnecting = false
     /// Devices that take commands, online now (not this one): playing first, then by name.
     public private(set) var devices: [RemoteDevice] = []
     /// "Play on": the device chosen to control. nil is This iPhone (the remote
@@ -92,7 +109,7 @@ public final class RemoteControl {
         switch channelState {
         case .stopped: .off
         case .connecting: .connecting
-        case .joined: macNotAnswering ? .notAnswering : .connected
+        case .joined: macNotAnswering ? .notAnswering : macLagging ? .lagging : .connected
         }
     }
 
@@ -119,9 +136,22 @@ public final class RemoteControl {
         /// The Mac's clock while it's idle (`isIdle`): often enough to announce
         /// itself every 20 to 30 s, well inside `RemoteDevice.goneAfter`.
         var idleTick: Duration = .seconds(10)
+        /// While a remote is about, the screen goes out again this often even
+        /// unchanged, so a lost one can't leave the phone's strip stale for long.
+        var screenResend: TimeInterval = 10
+        /// Back from the background, the devices it knew are kept this long
+        /// for their own announce to arrive (one round trip, usually).
+        var rejoinGrace: TimeInterval = 10
+        /// Heard from the Mac this recently: the channel works, and a command
+        /// it didn't answer is no reason to reconnect.
+        var heardRecently: TimeInterval = 5
+        /// A move drawn on the phone gives way to the Mac's screen after this, answered or not.
+        var predictionHold: TimeInterval = 1.5
     }
 
     @ObservationIgnored private var channel: (any RemoteTransport)?
+    /// Counts the channels made, so only the current one's state counts.
+    @ObservationIgnored private var channelGeneration = 0
     @ObservationIgnored private var outbox: AsyncStream<RemoteMessage>.Continuation?
     @ObservationIgnored private var outboxTask: Task<Void, Never>?
     @ObservationIgnored private var reconciler = RemoteReconciler()
@@ -136,6 +166,15 @@ public final class RemoteControl {
     /// Commands the Mac hasn't acknowledged yet, with their retry loops.
     @ObservationIgnored private var unacked: [UUID: (action: RemoteCommand.Action, retry: Task<Void, Never>)] = [:]
     @ObservationIgnored private var lastScrubSent: Date?
+    /// The last time anything came from the controlled device (`Timing.heardRecently`).
+    @ObservationIgnored private var lastHeardFromMac: Date?
+    /// A state or screen has arrived since joining: the hellos can stop.
+    @ObservationIgnored private var heardSinceJoin = false
+    /// The Mac's own last screen, under one the phone drew ahead of it (`predict`).
+    @ObservationIgnored private var macScreen: RemoteScreen?
+    /// The newest command drawn ahead on the strip, and when: the Mac's screens
+    /// that don't answer it yet are held back, so the strip doesn't step back and forth.
+    @ObservationIgnored private var predicted: (id: UUID, at: Date)?
     @ObservationIgnored let deviceID: String
     @ObservationIgnored let now: () -> Date
     @ObservationIgnored let timing: Timing
@@ -156,6 +195,8 @@ public final class RemoteControl {
     @ObservationIgnored private var applying: Task<Void, Never>?
     /// A screen waiting to go out (`screenChanged`).
     @ObservationIgnored private var screenPending: Task<Void, Never>?
+    /// The last command applied (`RemoteScreen.answers`).
+    @ObservationIgnored private var lastApplied: UUID?
     #if DEBUG
     /// Showing `seedForReview`'s state: the channel is left alone.
     @ObservationIgnored private var seededForReview = false
@@ -202,13 +243,15 @@ public final class RemoteControl {
 
     /// Joins or leaves the channel. `controllable`: this device takes commands
     /// (the Mac with Allow Remote Control on). `player`: its open player.
-    func update(wanted: Bool, controllable: Bool, account: AccountModel, player: PlayerSession?) {
-        update(wanted: wanted, controllable: controllable, player: player) { onMessage, onState in
+    /// `away`: not wanted only because the app is in the background, so what
+    /// the remote showed is kept for its return (`disconnect`).
+    func update(wanted: Bool, away: Bool = false, controllable: Bool, account: AccountModel, player: PlayerSession?) {
+        update(wanted: wanted, away: away, controllable: controllable, player: player) { onMessage, onState in
             account.makeRemoteChannel(onMessage: onMessage, onState: onState)
         }
     }
 
-    func update(wanted: Bool, controllable: Bool = false, player: PlayerSession?,
+    func update(wanted: Bool, away: Bool = false, controllable: Bool = false, player: PlayerSession?,
                 makeChannel: (_ onMessage: @escaping @Sendable (RemoteMessage) -> Void,
                               _ onState: @escaping @Sendable (RemoteChannel.State) -> Void) -> (any RemoteTransport)?) {
         #if DEBUG
@@ -222,12 +265,18 @@ public final class RemoteControl {
         self.player = player
         self.controllable = controllable
         lastPublished = nil
-        guard wanted else { disconnect(); return }
+        guard wanted else { disconnect(keep: away && !controllable); return }
         if channel == nil {
+            // A channel left behind (the background) reports its stop late: it mustn't mark this one stopped.
+            channelGeneration += 1
+            let generation = channelGeneration
             channel = makeChannel({ [weak self] message in
                 Task { @MainActor in self?.receive(message) }
             }, { [weak self] state in
-                Task { @MainActor in self?.channelChanged(state) }
+                Task { @MainActor in
+                    guard let self, self.channelGeneration == generation else { return }
+                    self.channelChanged(state)
+                }
             })
             guard let channel else { return }
             let (stream, continuation) = AsyncStream<RemoteMessage>.makeStream()
@@ -258,11 +307,15 @@ public final class RemoteControl {
     /// Try Again: reconnect now, whatever the channel thinks, and ask the Mac to answer.
     public func retry() {
         macNotAnswering = false
+        macLagging = false
         guard let channel else { return }
         Task { await channel.reconnect() }
     }
 
-    private func disconnect() {
+    /// Leaves the channel. `keep`: a phone going into the background keeps
+    /// its devices, screen and player, drawn as reconnecting, so coming back
+    /// it has its Mac at once; switched off or signed out, it forgets them.
+    private func disconnect(keep: Bool = false) {
         ticker?.cancel(); ticker = nil
         tickingIdle = false
         for (_, u) in unacked { u.retry.cancel() }
@@ -284,11 +337,19 @@ public final class RemoteControl {
         channelState = .stopped
         joinedAt = nil
         macNotAnswering = false
+        macLagging = false
+        predicted = nil
+        if keep {
+            reconnecting = true
+            return
+        }
+        reconnecting = false
         reconciler.clear()
         nowPlaying = nil
         heard.removeAll()
         devices = []
         screen = nil
+        macScreen = nil
     }
 
     private func channelChanged(_ state: RemoteChannel.State) {
@@ -296,6 +357,15 @@ public final class RemoteControl {
         channelState = state
         guard state == .joined else { return }
         joinedAt = now()
+        heardSinceJoin = false
+        if !controllable {
+            // Back from the background: what it knew gets `rejoinGrace` for its
+            // own announce to arrive, however long it was away.
+            let date = now()
+            let since = date.addingTimeInterval(timing.rejoinGrace - RemoteDevice.goneAfter)
+            for (id, h) in heard where h.at < since { heard[id] = (h.device, since) }
+            if devices.isEmpty { reconnecting = true }
+        }
         // A state resync: the Mac publishes in full, the phone asks for one; both say who they are.
         announce()
         if player != nil { publish(force: true) }
@@ -372,16 +442,28 @@ public final class RemoteControl {
             announce()
         }
         pruneDevices(at: date)
-        if player != nil {
-            publish(force: false)
-            // Now and then the screen as well, which carries the player too, while a remote is about to see it.
-            if remoteAbout, lastScreenAt.map({ date.timeIntervalSince($0) >= 10 }) ?? true { publishScreen(force: true) }
+        if player != nil { publish(force: false) }
+        // Now and then the screen again (it carries the player too) while a remote is
+        // about, playing or not: a lost one would leave the phone's strip stale.
+        if controllable, remoteAbout, lastScreenAt.map({ date.timeIntervalSince($0) >= timing.screenResend }) ?? true {
+            publishScreen(force: true)
         }
         if controllable { return }
+        // Joined a while ago and nobody answered: not reconnecting any more, just nothing there.
+        if reconnecting, channelState == .joined, let joinedAt, date.timeIntervalSince(joinedAt) >= timing.rejoinGrace {
+            reconnecting = false
+        }
+        // A drawn move nobody answered: the Mac's word again.
+        if let p = predicted, date.timeIntervalSince(p.at) >= timing.predictionHold {
+            predicted = nil
+            if let macScreen, macScreen != screen { screen = macScreen }
+        }
         if channelState == .joined, let lastHello {
             let since = date.timeIntervalSince(lastHello)
             let justJoined = joinedAt.map { date.timeIntervalSince($0) < timing.helloUntilHeardFor } ?? false
-            if reconciler.published == nil, screenOpen || justJoined, since >= timing.helloUntilHeard {
+            // Until a state or a screen answers (each hello costs the Mac a walk of its window). Not
+            // "until one is shown": back from the background the old ones still are.
+            if !heardSinceJoin, screenOpen || justJoined, since >= timing.helloUntilHeard {
                 sayHello()
             } else if screenOpen, since >= 15 {
                 sayHello()
@@ -391,10 +473,12 @@ public final class RemoteControl {
     }
 
     private func receive(_ message: RemoteMessage) {
+        if !controllable, let from = message.sender, from == (target ?? controlled?.id) { lastHeardFromMac = now() }
         switch message {
         case .state(let s):
             guard player == nil, !controllable else { return }
             if let target, s.deviceID != target { return }  // the remote follows the device chosen
+            heardSinceJoin = true
             reconciler.receive(s, at: now())
             refreshDisplayed()
         case .stopped(let id):
@@ -404,6 +488,7 @@ public final class RemoteControl {
             guard !controllable else { return }
             unacked.removeValue(forKey: ack.commandID)?.retry.cancel()
             macNotAnswering = false
+            macLagging = false
             reconciler.acknowledged(ack, at: now())
             refreshDisplayed()
         case .device(let d):
@@ -411,13 +496,25 @@ public final class RemoteControl {
             let new = heard[d.id] == nil
             heard[d.id] = (d, now())
             pruneDevices(at: now())
+            if d.controllable { reconnecting = false }
             // A device just joined (a phone opening Bluebox): it hears of this
             // Mac at once, rather than at the next announce, up to 30 s off while idle.
             if new, controllable { announce() }
         case .screen(let s):
             guard !controllable, s.deviceID == (target ?? controlled?.id) else { return }
+            reconnecting = false
+            heardSinceJoin = true
             let wasPlaying = screen?.playing != nil
-            if s != screen { screen = s }
+            macScreen = s
+            // The strip was moved ahead of the Mac: an older screen (worked out before
+            // the newest drawn move landed) would step it back, so it waits for the answer.
+            if let p = predicted, s.answers != nil, s.answers != p.id, now().timeIntervalSince(p.at) < timing.predictionHold {
+                // Still take what isn't the highlight's: the player, a menu closing.
+                if var shown = screen, shown.playing != s.playing { shown.playing = s.playing; screen = shown }
+            } else {
+                predicted = nil
+                if s != screen { screen = s }
+            }
             if let playing = s.playing, playing.deviceID == s.deviceID {
                 reconciler.receive(playing, at: now())
                 refreshDisplayed()
@@ -426,10 +523,12 @@ public final class RemoteControl {
                 reconciler.stopped(deviceID: s.deviceID)
                 refreshDisplayed()
             }
-        case .hello(let from):
+        case .hello:
             guard controllable || player != nil else { return }
             heardRemote()
-            if heard[from] == nil { announce() }  // a remote that hasn't heard of us yet
+            // Always, not only to a remote new to us: a phone back from the background
+            // forgot nothing, but its devices are waiting on this to say we're still here.
+            announce()
             publish(force: true)
             publishScreen(force: true)
         case .command(let command):
@@ -440,17 +539,12 @@ public final class RemoteControl {
             guard !applied.contains(command.id) else { return }  // a retry of one already applied
             applied.append(command.id)
             if applied.count > 64 { applied.removeFirst(applied.count - 64) }
-            let settle = timing.settle
             let driver = command.from.flatMap { heard[$0]?.device.name } ?? String(localized: "Remote")
             let run = { [weak self] in
                 guard let self else { return }
                 await self.apply(command.action, driver: driver)
-                // Give the engine a moment to report the change, then tell the remote.
-                Task { [weak self] in
-                    try? await Task.sleep(for: settle)
-                    self?.publish(force: true)
-                    self?.publishScreen(force: false)
-                }
+                self.lastApplied = command.id
+                self.answer(command.action)
             }
             if Self.runsAlone(command.action) {
                 // Opening a stream can take a minute: the swipes and Back that follow mustn't queue behind it.
@@ -462,6 +556,42 @@ public final class RemoteControl {
                     await run()
                 }
             }
+        }
+    }
+
+    /// After applying a command, tell the remote what it did. A scrub or a
+    /// pointer move says nothing (dozens a second; the seek that ends a scrub
+    /// does). A move sends its own screen (`screenChanged`, from the
+    /// highlight's walk). A player command goes out as soon as the player shows
+    /// it, `settle` at the latest; the rest after `settle`, for the page to change.
+    private func answer(_ action: RemoteCommand.Action) {
+        if action.isContinuous { return }
+        let settle = timing.settle
+        switch action {
+        case .move, .jump, .focus, .setPointer, .repeatMove, .text:
+            // Under the player a move seeks: that still goes out (no walk of the window under it).
+            guard player != nil else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: settle)
+                self?.publish(force: true)
+                self?.publishScreen(force: false)
+            }
+            return
+        default: break
+        }
+        Task { [weak self] in
+            if !action.isAppCommand {
+                let deadline = ContinuousClock.now + settle
+                while ContinuousClock.now < deadline {
+                    guard let self else { return }
+                    if let player = self.player, let state = self.makeState(player), RemoteReconciler.confirms(state, action) { break }
+                    try? await Task.sleep(for: .milliseconds(15))
+                }
+            } else {
+                try? await Task.sleep(for: settle)
+            }
+            self?.publish(force: true)
+            self?.publishScreen(force: false)
         }
     }
 
@@ -485,6 +615,9 @@ public final class RemoteControl {
         // The remote follows the chosen device: forget what another one published.
         if let target, let shown = reconciler.published, shown.deviceID != target { reconciler.clear() }
         screen = nil
+        macScreen = nil
+        predicted = nil
+        heardSinceJoin = false
         refreshDisplayed()
         sayHello()
     }
@@ -510,7 +643,8 @@ public final class RemoteControl {
         enqueue(.hello(from: deviceID))
     }
 
-    /// Sends a command to the controlled device. Player commands draw at once.
+    /// Sends a command to the controlled device. Player commands draw at once,
+    /// and so do the moves the strip can show (`predict`).
     public func send(_ action: RemoteCommand.Action) {
         guard channel != nil, let device = controlled else { return }
         if action.isAppCommand, device.version < 3 { return }  // a build without app commands
@@ -519,7 +653,18 @@ public final class RemoteControl {
             if case .jump(let j) = action { for _ in 0..<j.count { send(.move(j.direction)) } }
             return
         }
+        if action.needsVersion5, device.version < 5 { return }  // the views send what such a Mac knows instead
         let command = RemoteCommand(target: device.id, action: action, from: deviceID)
+        if action.isAppCommand {
+            // On the strip at once; the Mac's screen answering this command settles it.
+            // Anything else the strip can't foresee lets the Mac's next screen through.
+            if let shown = screen, let next = Self.predict(action, on: shown) {
+                screen = next
+                predicted = (command.id, now())
+            } else {
+                predicted = nil
+            }
+        }
         if !action.isAppCommand {
             // A newer command of the same kind replaces an unanswered one: stop sending that.
             for (id, u) in unacked where !u.action.isAppCommand && RemoteReconciler.kind(u.action) == RemoteReconciler.kind(action) {
@@ -536,9 +681,11 @@ public final class RemoteControl {
         guard acknowledges else { return }
         let waits = timing.retries
         let retry = Task { [weak self] in
-            for wait in waits {
+            for (i, wait) in waits.enumerated() {
                 try? await Task.sleep(for: wait)
                 guard let self, !Task.isCancelled, self.unacked[command.id] != nil else { return }
+                // Sent and resent with no answer: amber now, rather than only once every retry has gone.
+                if i >= 1 { self.macLagging = true }
                 self.enqueue(.command(command))
             }
             try? await Task.sleep(for: waits.last ?? .seconds(1))
@@ -548,13 +695,61 @@ public final class RemoteControl {
         unacked[command.id] = (action, retry)
     }
 
-    /// No ack after every retry: show the Mac's word again, say so, and make sure our own socket isn't the problem.
+    /// No ack after every retry: show the Mac's word again and say so. The
+    /// socket is reconnected only if it has gone quiet too: still hearing the
+    /// Mac means the channel works, and otherwise a heartbeat finds out
+    /// (`RemoteTransport.checkAlive`), rather than dropping a good socket.
     private func gaveUp(on id: UUID) {
         unacked[id] = nil
         reconciler.abandon(id)
         refreshDisplayed()
+        if predicted?.id == id {
+            predicted = nil
+            if let macScreen { screen = macScreen }
+        }
+        macLagging = false
         macNotAnswering = true
-        if let channel { Task { await channel.reconnect() } }
+        if let last = lastHeardFromMac, now().timeIntervalSince(last) < timing.heardRecently { return }
+        if let channel { Task { await channel.checkAlive() } }
+    }
+
+    /// What the strip shows right after `action`, before the Mac answers, when
+    /// that can be told from the screen alone: a step to the neighbour it
+    /// already shows, a bump at an end (`RemoteScreen.edges`), the pointer
+    /// switch, a menu closing on a pick. nil: wait for the Mac.
+    nonisolated static func predict(_ action: RemoteCommand.Action, on s: RemoteScreen) -> RemoteScreen? {
+        var p = s
+        switch action {
+        case .setPointer(let on):
+            p.pointer = on ? true : nil
+            return p
+        case .menuPick:
+            guard s.menu != nil else { return nil }
+            p.menu = nil
+            return p
+        case .move(let d):
+            guard s.pointer != true, s.menu == nil, let focused = s.focused, let horizontal = s.horizontal else { return nil }
+            if s.edges?.contains(d) == true {
+                p.bumps = (s.bumps ?? 0) + 1
+                return p
+            }
+            let forward: Bool
+            switch (horizontal, d) {
+            case (true, .right), (false, .down): forward = true
+            case (true, .left), (false, .up): forward = false
+            default: return nil  // off the row: only the Mac knows what's there
+            }
+            // At the end of what it shows, the Mac may scroll on or bump: its call.
+            guard let next = forward ? s.after : s.before else { return nil }
+            p.focused = next
+            p.focusedLabel = next.label
+            p.focusedID = nil
+            if forward { p.before = focused; p.after = nil } else { p.after = focused; p.before = nil }
+            p.edges = nil
+            return p
+        default:
+            return nil
+        }
     }
 
     /// ±10 s from what the remote shows, so quick taps add up.
@@ -616,7 +811,8 @@ public final class RemoteControl {
         case .select: handler?.remoteSelect(driver: driver)
         case .play(let p): await handler?.remotePlay(p)
         case .closePlayer: await handler?.remoteClosePlayer()
-        case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip: handler?.remote4(action, driver: driver)
+        case .jump, .scroll, .setPointer, .pointer, .click, .menu, .menuPick, .acceptSkip, .text, .repeatMove:
+            handler?.remote4(action, driver: driver)
         default:
             guard let player else { return }
             await Self.apply(action, to: player)
@@ -656,17 +852,28 @@ public final class RemoteControl {
         guard controllable, channel != nil, channelState == .joined, remoteActive(at: now()), let handler else { return }
         var screen = handler.remoteScreen()
         screen.deviceID = deviceID
+        screen.answers = lastApplied
         if let player, var state = makeState(player) {
             state.seq = seq
             screen.playing = state
         }
-        // The clock moving isn't a new screen.
+        guard force || !Self.sameScreen(screen, lastScreen) else { return }
         var compared = screen
         compared.playing?.position = 0
-        guard force || compared != lastScreen else { return }
         lastScreen = compared
         lastScreenAt = now()
         enqueue(.screen(screen))
+    }
+
+    /// Equal apart from the clock: the player's position and its count of
+    /// states (which goes up every couple of seconds while it plays) aren't a
+    /// new screen, nor which command it answers. Compared with `lastScreen`, already cleared of those.
+    nonisolated static func sameScreen(_ a: RemoteScreen, _ last: RemoteScreen?) -> Bool {
+        guard let last else { return false }
+        var a = a, b = last
+        a.playing?.position = 0; a.playing?.seq = 0; a.answers = nil
+        b.playing?.position = 0; b.playing?.seq = 0; b.answers = nil
+        return a == b
     }
 
     private func publish(force: Bool) {
@@ -734,7 +941,7 @@ public final class RemoteControl {
             if s.isMuted, v > 0 { s.setMuted(false) }
             s.setVolume(v)
         case .closePlayer, .go, .focus, .move, .select, .play, .jump, .scroll, .setPointer, .pointer, .click, .menu,
-             .menuPick, .acceptSkip:
+             .menuPick, .acceptSkip, .text, .repeatMove:
             break  // the app's, not the player's
         }
     }
@@ -792,5 +999,20 @@ public final class RemoteControl {
         #else
         .iPhone
         #endif
+    }
+}
+
+private extension RemoteMessage {
+    /// The device it came from, where it says.
+    var sender: String? {
+        switch self {
+        case .state(let s): s.deviceID
+        case .command(let c): c.from
+        case .hello(let from): from
+        case .stopped(let id): id
+        case .ack(let a): a.deviceID
+        case .device(let d): d.id
+        case .screen(let s): s.deviceID
+        }
     }
 }

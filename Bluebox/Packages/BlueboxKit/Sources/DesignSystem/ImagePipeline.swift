@@ -14,12 +14,22 @@ import ImageIO
 /// - Disk: HTTP responses in a dedicated `URLCache` (respects server cache headers).
 /// - Downloading and decoding run off the actor, in parallel; concurrent
 ///   requests for the same image share one download.
+/// - A download everyone has stopped waiting for (posters flung past, whose
+///   views' tasks are cancelled) is cancelled, so the ones you stop on load first.
 public actor ImagePipeline {
     public static let shared = ImagePipeline()
 
     private let session: URLSession
     private nonisolated let memory = MemoryCache()
-    private var inFlight: [String: Task<CGImage, Error>] = [:]
+    private var inFlight: [String: Loading] = [:]
+
+    /// One shared download, and who is waiting on it.
+    private struct Loading {
+        let task: Task<CGImage, Error>
+        var waiting: Set<UUID> = []
+        /// Waiters whose own task was cancelled; once that's all of them, the download stops.
+        var gaveUp: Set<UUID> = []
+    }
 
     public init(diskCapacity: Int = 300 * 1024 * 1024) {
         let config = URLSessionConfiguration.default
@@ -46,24 +56,54 @@ public actor ImagePipeline {
         let width = Self.bucket(maxPixelWidth)
         let key = Self.key(url, width)
         if let hit = memory.object(forKey: key) { return hit.image }
-        if let task = inFlight[key as String] { return try await task.value }
-        let session = session
-        // Detached: the download and the decode don't hold the actor, so a
-        // shelf's posters decode side by side instead of one after another.
-        let task = Task.detached(priority: .userInitiated) { () throws -> CGImage in
-            let (data, response) = try await session.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                throw URLError(.badServerResponse)
+        let slot = key as String
+        if inFlight[slot] == nil {
+            let session = session
+            // Detached: the download and the decode don't hold the actor, so a
+            // shelf's posters decode side by side instead of one after another.
+            let task = Task.detached(priority: .userInitiated) { () throws -> CGImage in
+                let (data, response) = try await session.data(from: url)
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    throw URLError(.badServerResponse)
+                }
+                try Task.checkCancellation()
+                guard let image = Self.downsample(data, maxPixelWidth: width) else { throw URLError(.cannotDecodeContentData) }
+                return image
             }
-            try Task.checkCancellation()
-            guard let image = Self.downsample(data, maxPixelWidth: width) else { throw URLError(.cannotDecodeContentData) }
-            return image
+            inFlight[slot] = Loading(task: task)
         }
-        inFlight[key as String] = task
-        defer { inFlight[key as String] = nil }
-        let image = try await task.value
+        let id = UUID()
+        inFlight[slot]?.waiting.insert(id)
+        guard let task = inFlight[slot]?.task else { throw CancellationError() }
+        defer { stopWaiting(slot, id, task) }
+        let image = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            Task { await self.giveUp(slot, id, task) }
+        }
         memory.setObject(CGImageBox(image), forKey: key, cost: image.bytesPerRow * image.height)
         return image
+    }
+
+    /// A waiter's view went away. When nobody still wants the image, the
+    /// download stops and leaves the table, so a later look starts afresh
+    /// instead of joining the cancelled one.
+    private func giveUp(_ slot: String, _ id: UUID, _ task: Task<CGImage, Error>) {
+        guard var loading = inFlight[slot], loading.task == task, loading.waiting.contains(id) else { return }
+        loading.gaveUp.insert(id)
+        if loading.gaveUp.isSuperset(of: loading.waiting) {
+            task.cancel()
+            inFlight[slot] = nil
+        } else {
+            inFlight[slot] = loading
+        }
+    }
+
+    private func stopWaiting(_ slot: String, _ id: UUID, _ task: Task<CGImage, Error>) {
+        guard var loading = inFlight[slot], loading.task == task else { return }
+        loading.waiting.remove(id)
+        loading.gaveUp.remove(id)
+        inFlight[slot] = loading.waiting.isEmpty ? nil : loading
     }
 
     /// Starts loading images a screen is about to show (ignored when cached or loading).

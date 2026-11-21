@@ -74,7 +74,9 @@ public enum PreferenceKey {
     public static let playbackSpeed = "bluebox.playbackSpeed"
     /// [media key raw value: LastPlayedSource] for movies, episodes and series.
     public static let lastPlayedSources = "bluebox.lastPlayedSources"
-    /// Per-show subtitle language/offset, keyed by series or movie key.
+    /// [subtitle track: SubtitleOffset]: the subtitle timing fixed for a movie
+    /// or episode, by track (`PlayerSession.timingKey`). Not synced: the
+    /// tracks are this device's files.
     public static func subtitlePreference(_ key: MediaKey) -> String { "bluebox.subs.\(key.rawValue)" }
 
     // MARK: Settings › Playback
@@ -98,6 +100,11 @@ public enum PreferenceKey {
     public static let defaultSubtitleDelay = "bluebox.subtitles.defaultDelay"
     /// Bool: search OpenSubtitles when nothing in your language is available.
     public static let autoSearchSubtitles = "bluebox.subtitles.autoSearch"
+    public static let offersGeneratedSubtitles = "bluebox.subtitles.offerGenerated"
+    /// Bool: Whisper may listen to (and be downloaded for) languages Apple's speech recognition doesn't know.
+    public static let allowsWhisper = "bluebox.ai.allowWhisper"
+    /// Bool: Sync to the Audio is offered on the player's Timing page.
+    public static let offersAudioSync = "bluebox.ai.audioSync"
     /// Search Online sites turned off (`SubtitleSite` raw values).
     public static let subtitleSitesOff = "bluebox.subtitles.sitesOff"
 

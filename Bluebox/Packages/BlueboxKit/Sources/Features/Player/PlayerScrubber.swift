@@ -18,6 +18,9 @@ struct Scrubber: View {
     /// What's downloaded of a streamed torrent, as fractions of the file (gaps
     /// and all). Drawn lighter than played; empty for other sources.
     var available: [ClosedRange<Double>] = []
+    /// Where generated subtitles have been written, as fractions, while they're
+    /// being written: a thin line just above the track.
+    var written: [ClosedRange<Double>] = []
     /// Loop start and end as fractions.
     var loop: (Double, Double?)?
     /// Where chapters begin, as fractions: drawn as gaps in the track.
@@ -58,6 +61,18 @@ struct Scrubber: View {
                     .offset(x: w * shown)
             }
             .frame(maxHeight: .infinity)
+            .overlay(alignment: .leading) {
+                ZStack(alignment: .leading) {
+                    ForEach(Array(written.enumerated()), id: \.offset) { _, r in
+                        Capsule().fill(Palette.brandBright.opacity(0.8))
+                            .frame(width: max(1, w * (clamp(r.upperBound) - clamp(r.lowerBound))), height: 2)
+                            .offset(x: w * clamp(r.lowerBound))
+                    }
+                }
+                .offset(y: active ? -8 : -6)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .overlay(alignment: .topLeading) {
                 // "0:20 / 0:52": where you'd land and the length, both counted from the start.
                 bubble(Formatters.duration((bubbleFraction ?? shown) * duration) + " / " + Formatters.duration(duration))

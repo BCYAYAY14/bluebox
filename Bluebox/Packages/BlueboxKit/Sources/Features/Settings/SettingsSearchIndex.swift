@@ -10,6 +10,8 @@ enum SettingsSearchIndex {
         var keywords: [String] = []
         /// iPhone and iPad only (hidden from the Mac's search).
         var phoneOnly = false
+        /// Mac only (hidden from iPhone and iPad's search).
+        var macOnly = false
         /// A page one level down from `page` that holds the row ("Torrent Engine").
         var subpage: String?
         var id: String { "\(page.rawValue)/\(subpage.map { $0 + "/" } ?? "")\(section)/\(title)" }
@@ -20,12 +22,14 @@ enum SettingsSearchIndex {
     }
 
     private static let engine = TorrentEngineSettingsPage.title
+    private static let addons = AddonsSettingsPage.title
 
     static let entries: [Entry] = [
         // Account & Sync
         .init(title: "Supabase Project", page: .account, section: "Account", keywords: ["server", "sync", "url", "anon key", "backend"]),
         .init(title: "Sign In", page: .account, section: "Account", keywords: ["email", "code", "apple", "sign out", "login"]),
         .init(title: "Sync Now", page: .account, section: "Account", keywords: ["cloud", "icloud"]),
+        .init(title: "Sync API Keys", page: .account, section: "Account", keywords: ["keychain", "keys", "tokens", "debrid", "add-on links"]),
         .init(title: "Change Server", page: .account, section: "Server", keywords: ["disconnect", "project"]),
         .init(title: "Trakt", page: .account, section: "Trakt", keywords: ["watchlist", "history", "scrobble"]),
         .init(title: "Sync Lists with Trakt", page: .account, section: "Trakt", keywords: ["custom lists", "lists", "trakt"]),
@@ -39,12 +43,13 @@ enum SettingsSearchIndex {
         // Appearance
         .init(title: "Theme Colour", page: .appearance, section: "Theme Colour",
               keywords: ["theme", "color", "colour", "accent", "tint", "app icon", "logo", "dock", "purple", "pink", "red", "orange", "green", "appearance"]),
-        // Language
-        .init(title: "App Language", page: .languages, section: "Bluebox",
+        // Appearance › App Language (the device's); Languages (the profile's audio and subtitles)
+        .init(title: "App Language", page: .appearance, section: "Bluebox",
               keywords: ["language", "translate", "english", "español", "français", "deutsch", "日本語", "locale", "region"]),
         .init(title: "Audio Language", page: .languages, section: "Audio", keywords: ["dub", "track", "language"]),
         .init(title: "Preferred Language", page: .languages, section: "Subtitles", keywords: ["captions", "subtitle language"]),
         .init(title: "Second Language", page: .languages, section: "Subtitles", keywords: ["dual subtitles", "learn"]),
+        .init(title: "Turn On Subtitles", page: .languages, section: "Subtitles", keywords: ["forced", "foreign audio", "automatic", "when"]),
         // Playback
         .init(title: "Autoplay Next Episode", page: .playback, section: "Only for You", keywords: ["up next", "binge", "auto play"]),
         .init(title: "Player", page: .playback, section: "Player", keywords: ["engine", "vlc", "avplayer", "mkv", "picture in picture", "airplay"]),
@@ -54,13 +59,12 @@ enum SettingsSearchIndex {
         .init(title: "Skip Forward", page: .playback, section: "Controls", keywords: ["fast forward", "interval", "seconds", "arrow"]),
         .init(title: "Swipe Gestures", page: .playback, section: "Controls", keywords: ["swipe", "seek", "brightness", "volume", "gesture", "drag"], phoneOnly: true),
         .init(title: "Countdown", page: .playback, section: "Episodes", keywords: ["up next", "timer", "autoplay"]),
-        .init(title: "Stream over Cellular", page: .playback, section: "Network", keywords: ["wifi", "wi-fi", "mobile data", "network"], phoneOnly: true),
         .init(title: "Skip Intro", page: .playback, section: "Skipping", keywords: ["recap", "opening", "automatic", "button"]),
         .init(title: "Skip Credits", page: .playback, section: "Skipping", keywords: ["end credits", "next episode", "outro"]),
         .init(title: "Skip Recap", page: .playback, section: "Skipping", keywords: ["previously on", "recap", "automatic"]),
-        .init(title: "Always Skipping", page: .playback, section: "Skipping", keywords: ["always for this show", "skip intro", "skip credits", "per show"]),
+        .init(title: "Always Skipping", page: .playback, section: "Always Skipping", keywords: ["always for this show", "skip intro", "skip credits", "per show", "profile"]),
         .init(title: "Shows with Skipping Off", page: .playback, section: "Skipping", keywords: ["skip intro", "don't skip", "list"]),
-        .init(title: "Community Intro Timestamps", page: .playback, section: "Skipping", keywords: ["theintrodb", "introdb", "crowd", "wrong time", "ignoring community times"]),
+        .init(title: "Shows Ignoring Community Times", page: .playback, section: "Skipping", keywords: ["theintrodb", "introdb", "crowd", "wrong time", "community intro timestamps"]),
         .init(title: "Dialogue Boost", page: .playback, section: "Audio", keywords: ["speech", "voices", "centre", "center", "clarity"]),
         .init(title: "Equaliser", page: .playback, section: "Equaliser", keywords: ["equalizer", "eq", "bass", "treble", "sound", "audio", "preset"]),
         .init(title: "Night Mode", page: .playback, section: "Audio", keywords: ["loud", "quiet", "compressor", "volume", "late"]),
@@ -81,6 +85,10 @@ enum SettingsSearchIndex {
         .init(title: "Second Language Size", page: .subtitles, section: "Second Language", keywords: ["dual subtitles", "colour", "color", "learn"]),
         .init(title: "OpenSubtitles API Key", page: .subtitles, section: "OpenSubtitles", keywords: ["search", "download", "sign in"]),
         .init(title: "Search Automatically", page: .subtitles, section: "OpenSubtitles", keywords: ["opensubtitles", "auto"]),
+        .init(title: "Include OpenSubtitles in Search Online", page: .subtitles, section: "OpenSubtitles", keywords: ["include in search online", "subtitle sites"]),
+        .init(title: "Include Subdl in Search Online", page: .subtitles, section: "Subdl", keywords: ["include in search online", "subtitle sites"]),
+        .init(title: "AI and Whisper", page: .subtitles, section: "Generated Subtitles", keywords: ["ai", "whisper", "generate", "privacy"]),
+        .init(title: "Saved Subtitles", page: .subtitles, section: "Generated Subtitles", keywords: ["generated", "storage", "delete", "space"]),
         .init(title: "Subdl API Key", page: .subtitles, section: "Subdl", keywords: ["subdl", "subtitle sites", "search"]),
         .init(title: "Search Online Sites", page: .subtitles, section: "Search Online",
               keywords: ["opensubtitles", "subdl", "podnapisi", "jellyfin", "subtitle sites"]),
@@ -89,7 +97,8 @@ enum SettingsSearchIndex {
         .init(title: "Contrast", page: .picture, section: "Every Video Starts With", keywords: ["picture", "video"]),
         .init(title: "Saturation", page: .picture, section: "Every Video Starts With", keywords: ["picture", "video", "colour", "color", "vivid"]),
         // Mobile Data (iPhone and iPad)
-        .init(title: "Streaming on Mobile Data", page: .mobileData, section: "Streaming", keywords: ["cellular", "ask first", "wifi", "wi-fi", "4g", "5g"], phoneOnly: true),
+        .init(title: "Streaming on Mobile Data", page: .mobileData, section: "Streaming",
+              keywords: ["cellular", "ask first", "wifi", "wi-fi", "4g", "5g", "stream over cellular", "network"], phoneOnly: true),
         .init(title: "Video Quality on Mobile Data", page: .mobileData, section: "Streaming", keywords: ["data saver", "cellular", "720p", "1080p", "resolution"], phoneOnly: true),
         .init(title: "Torrents on Mobile Data", page: .mobileData, section: "Torrents", keywords: ["cellular", "debrid only", "peer to peer", "p2p"], phoneOnly: true),
         .init(title: "Downloads on Wi‑Fi Only", page: .mobileData, section: "Downloads", keywords: ["cellular", "wifi", "wi-fi", "mobile data", "downloads"], phoneOnly: true),
@@ -98,7 +107,13 @@ enum SettingsSearchIndex {
         .init(title: "Find Releases with Add-ons", page: .torrents, section: "", keywords: ["stremio", "torrentio", "stremthru", "comet"]),
         .init(title: "Add-ons", page: .torrents, section: "Add-ons", keywords: ["stremio", "manifest", "add by link", "install", "order", "priority", "health", "torrentio", "stremthru", "comet"]),
         .init(title: "Test Add-ons", page: .torrents, section: "Add-ons"),
-        .init(title: "Add-on Catalogs on Home", page: .torrents, section: "Add-ons", keywords: ["catalog", "lists", "rows", "home", "board", "trakt", "stremio"]),
+        .init(title: "Add-on Catalogs on Home", page: .torrents, section: "Rows on Home", keywords: ["catalog", "lists", "rows", "home", "board", "trakt", "stremio"],
+              subpage: addons),
+        .init(title: "Add Add-on by Link", page: .torrents, section: "Add by Link", keywords: ["stremio", "manifest", "url", "install", "custom"], subpage: addons),
+        .init(title: "Add-on Order", page: .torrents, section: "Your Add-ons", keywords: ["order", "priority", "remove", "reorder"], subpage: addons),
+        .init(title: "Torrentio", page: .torrents, section: "Your Add-ons", keywords: ["add-on", "turn on", "turn off"], subpage: addons),
+        .init(title: "StremThru Torz", page: .torrents, section: "Your Add-ons", keywords: ["stremthru", "add-on", "turn on", "turn off"], subpage: addons),
+        .init(title: "Comet", page: .torrents, section: "Your Add-ons", keywords: ["add-on", "turn on", "turn off", "debrid"], subpage: addons),
         .init(title: "Debrid Service", page: .torrents, section: "Debrid", keywords: ["real-debrid", "realdebrid", "premiumize", "alldebrid", "torbox", "debridlink", "api key"]),
         .init(title: "Debrid API Key", page: .torrents, section: "Debrid", keywords: ["key", "token", "real-debrid", "premiumize", "alldebrid", "torbox", "debridlink", "remove"]),
         .init(title: "Share Key with Community Add-ons", page: .torrents, section: "Debrid", keywords: ["stremthru", "comet", "api key"]),
@@ -145,6 +160,7 @@ enum SettingsSearchIndex {
         .init(title: "Download Audio", page: .downloads, section: "Quality", keywords: ["language", "dub"]),
         .init(title: "Keep Downloading in the Background", page: .downloads, section: "Downloading", keywords: ["background", "battery", "torrent", "lock"], phoneOnly: true),
         .init(title: "Keep Screen Awake While Downloading", page: .downloads, section: "Downloading", keywords: ["sleep", "lock", "torrent"], phoneOnly: true),
+        .init(title: "Always Show in Menu Bar", page: .downloads, section: "", keywords: ["menu bar", "status item", "mac"], macOnly: true),
         // Sources
         .init(title: "Add Folder", page: .sources, section: "Sources", keywords: ["local", "files"]),
         .init(title: "Add Jellyfin Server", page: .sources, section: "Sources", keywords: ["media server", "watched sync"]),
@@ -155,15 +171,24 @@ enum SettingsSearchIndex {
         .init(title: "Open Movies", page: .sources, section: "Sources", keywords: ["blender", "creative commons"]),
         .init(title: "Test All Sources", page: .sources, section: "Sources", keywords: ["connection"]),
         .init(title: "Add Link", page: .sources, section: "Direct Links", keywords: ["url", "hls", "m3u8", "mp4"]),
+        .init(title: "Match to Catalog by Title", page: .sources, section: "Direct Links", keywords: ["add link", "match", "catalog", "poster"]),
         .init(title: "Add Torrent", page: .sources, section: "Your Torrents", keywords: ["magnet", ".torrent"]),
         .init(title: "Debrid Library", page: .sources, section: "Debrid Library", keywords: ["real-debrid", "premiumize", "alldebrid", "torbox", "debridlink", "cloud", "saved"]),
         // Catalog & Ratings
         .init(title: "TMDB Token", page: .catalog, section: "Catalog", keywords: ["api key", "themoviedb", "metadata", "sample"]),
         .init(title: "OMDb API Key", page: .catalog, section: "Ratings", keywords: ["imdb", "rotten tomatoes", "metacritic"]),
+        // Features (the profile's)
+        .init(title: "Statistics", page: .profileFeatures, section: "", keywords: ["my bluebox", "year in bluebox", "hours watched", "stats", "history", "privacy"]),
+        .init(title: "My Bluebox", page: .profileFeatures, section: "", keywords: ["statistics", "year in bluebox", "hours watched", "stats"]),
+        .init(title: "Spoiler Guard", page: .profileFeatures, section: "", keywords: ["spoilers", "blur", "synopsis", "hide", "privacy"]),
+        .init(title: "Rows Based on Your Taste", page: .profileFeatures, section: "", keywords: ["top picks", "because you watched", "personalised", "personalized", "recommendations", "privacy"]),
         // Privacy & Features
-        .init(title: "Statistics", page: .privacy, section: "Only for You", keywords: ["my bluebox", "year in bluebox", "hours watched", "stats", "history"]),
-        .init(title: "Spoiler Guard", page: .privacy, section: "Only for You", keywords: ["spoilers", "blur", "synopsis", "hide"]),
-        .init(title: "Rows Based on Your Taste", page: .privacy, section: "Only for You", keywords: ["top picks", "because you watched", "personalised", "personalized", "recommendations"]),
+        .init(title: "What Bluebox's AI Does", page: .privacy, section: "AI", keywords: ["ai", "artificial intelligence", "machine learning", "privacy", "transparency", "on device"]),
+        .init(title: "Offer to Generate Subtitles", page: .privacy, section: "AI",
+              keywords: ["ai", "generate", "transcribe", "speech", "translate", "audio", "captions", "subtitles"]),
+        .init(title: "Allow Whisper", page: .privacy, section: "AI", keywords: ["ai", "whisper", "openai", "speech", "model", "languages"]),
+        .init(title: "Whisper Model", page: .privacy, section: "AI", keywords: ["ai", "whisper", "speech", "model", "download", "delete", "storage"]),
+        .init(title: "Sync to the Audio", page: .privacy, section: "AI", keywords: ["ai", "subtitle timing", "sync", "speech", "out of sync"]),
         .init(title: "Release Alerts", page: .privacy, section: "Your Account", keywords: ["notify", "notifications", "my list", "available", "digital release", "debrid", "cached"]),
         .init(title: "What Smart Downloads Does on Its Own", page: .privacy, section: "Your Account", keywords: ["delete", "smart downloads", "other devices"]),
         .init(title: "Downloads Live Activity", page: .privacy, section: "This Device", keywords: ["lock screen", "dynamic island"], phoneOnly: true),
@@ -196,7 +221,7 @@ enum SettingsSearchIndex {
 
     static func isAvailable(_ e: Entry) -> Bool {
         #if os(iOS)
-        true
+        !e.macOnly
         #else
         !e.phoneOnly
         #endif
@@ -204,12 +229,19 @@ enum SettingsSearchIndex {
 
     /// Entries matching every word of `query`, by title first, then by keyword.
     static func search(_ query: String) -> [Entry] {
-        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        let words = folded(query).split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return [] }
-        func haystack(_ e: Entry) -> String { ([e.title, e.section, e.page.title] + e.keywords).joined(separator: " ").lowercased() }
+        func haystack(_ e: Entry) -> String { folded(([e.title, e.section, e.page.title] + e.keywords).joined(separator: " ")) }
         let hits = entries.filter { e in isAvailable(e) && words.allSatisfy { haystack(e).contains($0) } }
         // Title matches first, keeping the index order within each group.
-        let inTitle = hits.filter { e in words.allSatisfy { e.title.lowercased().contains($0) } }
+        let inTitle = hits.filter { e in words.allSatisfy { folded(e.title).contains($0) } }
         return inTitle + hits.filter { !inTitle.contains($0) }
+    }
+
+    /// Lowercased, with the non-breaking hyphen of "Wi‑Fi" (U+2011) and other
+    /// dashes as a plain one, so "wi-fi" finds it.
+    static func folded(_ s: String) -> String {
+        s.lowercased().replacingOccurrences(of: "\u{2011}", with: "-").replacingOccurrences(of: "\u{2010}", with: "-")
+            .replacingOccurrences(of: "\u{2013}", with: "-")
     }
 }

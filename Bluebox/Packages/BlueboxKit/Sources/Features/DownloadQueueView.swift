@@ -122,7 +122,8 @@ struct DownloadQueueRow: View {
                     }
                 }
                 .blueboxMenu(isPresented: $menuOpen, title: record.title) {
-                    DownloadActions.menu(record, app: app, details: DownloadRowModel(record: record, stats: manager.liveStats(id), wait: nil).speedLine)
+                    DownloadActions.menu(record, app: app, details: DownloadRowModel(record: record, stats: manager.liveStats(id), wait: nil).speedLine,
+                                         stalled: DownloadStall.reason(record, stats: manager.liveStats(id), idle: manager.idleSeconds(id)) != nil)
                 }
                 .opensMenuOnHold($menuOpen)
                 .accessibilityElement(children: .combine)
@@ -145,13 +146,17 @@ struct DownloadQueueRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                        .lineLimit(1)
                     Text(m.progressLine).font(.caption.monospacedDigit()).foregroundStyle(Palette.textSecondary)
                         .contentTransition(.numericText())
+                        .lineLimit(1)
+                    // A failure's reason is the one thing worth reading in full, so it wraps.
                     Text(m.sourceLine).font(.caption)
                         .foregroundStyle(m.tone == .stalled ? SwarmHealth.fair : Palette.textTertiary)
+                        .lineLimit(m.record.isFailed ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: m.record.isFailed)
                     bar(m).padding(.top, 5)
                 }
-                .lineLimit(1)
                 Image(systemName: "line.3.horizontal")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Palette.textTertiary)
@@ -225,7 +230,7 @@ struct DownloadQueueRowModel {
     /// Where it comes from, or why it's stuck: "Torrent · 42 peers",
     /// "Real-Debrid", "Direct", "No peers for 2 min", a failure's reason.
     var sourceLine: String {
-        if let message = record.failureMessage { return message + " · Retry" }
+        if let message = record.failureMessage { return message }
         if let stall { return stall }
         let source: String
         if record.isTorrent {

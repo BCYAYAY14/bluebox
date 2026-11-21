@@ -147,7 +147,8 @@ public final class CachedMetadataProvider: MetadataProvider, @unchecked Sendable
         return TitleDetail(title: detail.title, tagline: detail.tagline, runtimeMinutes: detail.runtimeMinutes, genres: detail.genres,
                            cast: detail.cast, crew: detail.crew, logo: detail.logo, seasons: detail.seasons,
                            related: detail.related.filter { filter.allows($0, certification: known[$0.key]) },
-                           certification: detail.certification, imdbID: detail.imdbID, collection: detail.collection)
+                           certification: detail.certification, imdbID: detail.imdbID, collection: detail.collection,
+                           originalLanguage: detail.originalLanguage)
     }
 
     /// A title's detail still in memory, without asking (Home's next-episode
@@ -357,7 +358,7 @@ extension TitleDetail {
                             genreIDs: t.genreIDs, voteAverage: t.voteAverage, poster: t.poster, backdrop: t.backdrop)
         return TitleDetail(title: renamed, tagline: tagline, runtimeMinutes: runtimeMinutes, genres: genres, cast: cast,
                            crew: crew, logo: logo, seasons: seasons, related: related, certification: certification,
-                           imdbID: imdbID ?? key.imdbID, collection: collection)
+                           imdbID: imdbID ?? key.imdbID, collection: collection, originalLanguage: originalLanguage)
     }
 }
 

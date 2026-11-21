@@ -24,6 +24,9 @@ struct EpisodeRow: View {
     let episode: Episode
     let progress: WatchProgress?
     let isPlayable: Bool
+    /// Its sources haven't answered yet: drawn and tappable as usual (Play
+    /// finds out), never as "Not in your sources".
+    var isChecking = false
     /// The episode Play would start: outlined in blue, with the time left.
     let isNext: Bool
     let canDownload: Bool
@@ -98,9 +101,9 @@ struct EpisodeRow: View {
         .remoteFocusable("episode:\(episode.key)", label: "\(episode.number) · \(episode.name)", cornerRadius: Radius.control, kind: .row) {
             actions.play()
         }
-        .disabled(!isPlayable)
+        .disabled(!isPlayable && !isChecking)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(isPlayable ? "Plays the episode" : "Not available in your sources")
+        .accessibilityHint(isPlayable || isChecking ? "Plays the episode" : "Not available in your sources")
         .accessibilityIdentifier("episode.\(episode.seasonNumber).\(episode.number)")
         .overlay(alignment: .topTrailing) {
             if showsDownloadButton {
@@ -122,7 +125,7 @@ struct EpisodeRow: View {
         }
         .onHover { hovering = $0 }
         .animation(Motion.hover, value: hovering)
-        .opacity(isPlayable || download?.state == .completed ? 1 : 0.55)
+        .opacity(isPlayable || isChecking || download?.state == .completed ? 1 : 0.55)
         .blueboxContextMenu("\(episode.number). \(episode.name)", gate: gate) { menu }
     }
 
@@ -147,7 +150,9 @@ struct EpisodeRow: View {
             }
             .font(large ? .subheadline : .caption)
             .foregroundStyle(Palette.textSecondary)
-            if !isPlayable && download?.state != .completed {
+            if isChecking && !isPlayable && download?.state != .completed {
+                Text("Checking your sources…").font(.caption).foregroundStyle(Palette.textTertiary)
+            } else if !isPlayable && download?.state != .completed {
                 Text("Not in your sources").font(.caption).foregroundStyle(Palette.textTertiary)
             }
         }
@@ -245,10 +250,12 @@ private struct EpisodeRowButtonStyle: ButtonStyle {
 }
 
 /// The round download control at the end of an episode row: an outlined ↓,
-/// a progress ring with a stop square while downloading, ⋯ while queued, and a
-/// blue check once it's saved. Anything but ↓ opens a small menu.
+/// a progress ring with ⋯ while downloading (a tap opens its options, it
+/// doesn't stop it), ⋯ in a plain ring while queued, and a blue check once
+/// it's saved. Anything but ↓ opens a small menu.
 struct EpisodeDownloadButton: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let record: DownloadRecord?
     let canDownload: Bool
     var isPreparing = false
@@ -291,8 +298,8 @@ struct EpisodeDownloadButton: View {
                 .transition(.opacity)
             }
         }
-        .animation(Motion.snappy(false), value: isPreparing)
-        .animation(Motion.snappy(false), value: record?.state)
+        .animation(Motion.snappy(reduceMotion), value: isPreparing)
+        .animation(Motion.snappy(reduceMotion), value: record?.state)
         .foregroundStyle(Palette.textPrimary)
         .help(record.map(label(for:)) ?? "Download")
         .accessibilityIdentifier("episodeDownload.\(episodeNumber)")
@@ -308,12 +315,14 @@ struct EpisodeDownloadButton: View {
                 .background(Palette.brand, in: Circle())
         case .downloading:
             ProgressRing(fraction: r.fraction ?? 0)
-                .overlay(RoundedRectangle(cornerRadius: 1.5).fill(.white).frame(width: 9, height: 9))
+                .overlay(Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold)))
                 .frame(width: size, height: size)
         case .queued:
+            // Waiting for Wi‑Fi says so: its menu has Download Now.
             Circle()
                 .strokeBorder(Palette.textTertiary, lineWidth: 1.5)
-                .overlay(Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.textSecondary))
+                .overlay(Image(systemName: app.downloads.wait(r.id) == .wifi ? "wifi" : "ellipsis")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.textSecondary))
                 .frame(width: size, height: size)
         case .paused:
             ProgressRing(fraction: r.fraction ?? 0, tint: Palette.textSecondary)
@@ -339,6 +348,7 @@ struct EpisodeDownloadButton: View {
                 BlueboxMenuButton("Download First", systemImage: "arrow.up.to.line") { app.prioritizeDownload(r) }
             }
             BlueboxMenuButton("Pause Download", systemImage: "pause.fill") { app.pauseDownload(r) }
+            DownloadActions.mobileData(r, app: app)
             BlueboxMenuSection {
                 BlueboxMenuButton("Cancel Download", systemImage: "xmark", role: .destructive) { delete(r) }
             }
@@ -348,8 +358,9 @@ struct EpisodeDownloadButton: View {
                 BlueboxMenuButton("Cancel Download", systemImage: "xmark", role: .destructive) { delete(r) }
             }
         case .failed(let message):
-            BlueboxMenuNote(message)
+            BlueboxMenuAlertBlock(BlueboxMenuAlert(title: String(localized: "Download failed"), message: message))
             BlueboxMenuSection {
+                if r.suggestsAnotherRelease { DownloadActions.tryAnotherRelease(r, app: app) }
                 BlueboxMenuButton("Try Again", systemImage: "arrow.clockwise") { Task { await app.resumeDownload(r) } }
                 BlueboxMenuButton("Remove", systemImage: "trash", role: .destructive) { delete(r) }
             }
@@ -360,7 +371,7 @@ struct EpisodeDownloadButton: View {
         switch r.state {
         case .completed: "Downloaded"
         case .downloading: "Downloading, \(Int((r.fraction ?? 0) * 100)) percent"
-        case .queued: "Download queued"
+        case .queued: app.downloads.wait(r.id) == .wifi ? "Download waiting for Wi‑Fi" : "Download queued"
         case .paused: "Download paused at \(Int((r.fraction ?? 0) * 100)) percent"
         case .failed: "Download failed"
         }

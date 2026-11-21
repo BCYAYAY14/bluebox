@@ -44,6 +44,22 @@ import TestingSupport
         #expect(a.isPlayable)
     }
 
+    @Test func aSourcePastItsDeadlineIsReportedAndTheOthersDontWait() async {
+        let v1 = MockMediaSource.variant("1", source: "fast", key: key)
+        let v2 = MockMediaSource.variant("2", source: "patient", key: key)
+        let registry = MediaSourceRegistry(sources: [
+            MockMediaSource(id: "fast", variantsByKey: [key: [v1]]),
+            MockMediaSource(id: "offline", variantsByKey: [key: [v1]], delay: .seconds(30), answersWithin: 0.1),
+            // No deadline: waited for, like the add-ons, which pace themselves.
+            MockMediaSource(id: "patient", variantsByKey: [key: [v2]], delay: .milliseconds(300), answersWithin: nil),
+        ])
+        let started = ContinuousClock.now
+        let a = await registry.availability(for: key)
+        #expect(ContinuousClock.now - started < .seconds(5))
+        #expect(a.variants.map(\.id) == ["1", "2"])
+        #expect(a.failures == [SourceID("offline"): .timedOut])
+    }
+
     @Test func noSourceMeansNotPlayable() async {
         let registry = MediaSourceRegistry(sources: [MockMediaSource(id: "empty")])
         #expect(await !registry.availability(for: key).isPlayable)

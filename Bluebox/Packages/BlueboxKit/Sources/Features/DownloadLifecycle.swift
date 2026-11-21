@@ -7,6 +7,8 @@ import TorrentStreaming
 import BackgroundTasks
 import UIKit
 import UserNotifications
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// Keeps torrent downloads going after you leave Bluebox on iPhone and iPad.
@@ -25,7 +27,8 @@ import UserNotifications
 ///   stopped cleanly (libtorrent saves resume data) and a notification says so.
 /// - A processing task (`AppModel.downloadResumeTaskID`) is scheduled for when
 ///   the device charges on a network; it resumes torrents until iOS ends it.
-/// - A torrent finishing in the background posts a notification.
+/// - A download finishing or failing while Bluebox isn't in front posts a
+///   notification (on the Mac too, when another app is in front).
 /// With the setting off, Bluebox asks for iOS's ~30 seconds, downloads for
 /// most of it, then stops torrents until it's open again.
 /// While an external player (Infuse, VLC…) streams from Bluebox (a torrent or a download over localhost),
@@ -100,9 +103,23 @@ final class DownloadLifecycle {
         #endif
     }
 
-    /// Says a torrent finished while Bluebox was in the background.
-    static func notifyFinished(_ record: DownloadRecord) {
+    /// True when Bluebox isn't what you're looking at: in the background on
+    /// iPhone and iPad (a background launch for download events included),
+    /// or behind another app on the Mac. Finishes and failures then post a
+    /// notification as well as the in-app notice.
+    static var isOutOfSight: Bool {
         #if os(iOS)
+        UIApplication.shared.applicationState != .active
+        #elseif os(macOS)
+        // No app object (tests): nobody to tell.
+        NSApp.map { !$0.isActive } ?? false
+        #else
+        false
+        #endif
+    }
+
+    /// Says a download finished while Bluebox was out of sight.
+    static func notifyFinished(_ record: DownloadRecord) {
         let name = record.subtitle.map { "\(record.title) · \($0)" } ?? record.title
         let key = record.mediaKey
         Task {
@@ -110,7 +127,17 @@ final class DownloadLifecycle {
                                             body: "“\(name)” is ready to watch offline.", key: key, series: key?.seriesKey,
                                             category: notificationCategory, thread: notificationCategory)
         }
-        #endif
+    }
+
+    /// Says a download failed while Bluebox was out of sight, and why.
+    static func notifyFailed(_ record: DownloadRecord, message: String) {
+        let name = record.subtitle.map { "\(record.title) · \($0)" } ?? record.title
+        let key = record.mediaKey
+        Task {
+            await EpisodeNotifications.post(id: "bluebox.downloads.failed.\(record.id)", title: "Download failed",
+                                            body: "“\(name)”: \(message)", key: key, series: key?.seriesKey,
+                                            category: notificationCategory, thread: notificationCategory)
+        }
     }
 
     #if os(iOS)

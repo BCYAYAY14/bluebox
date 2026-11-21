@@ -77,6 +77,9 @@ public struct ExternalSubtitle: Hashable, Codable, Sendable, Identifiable {
     /// Ids of subtitle files bundled in a torrent start with this.
     public static let torrentPrefix = "torrent-"
     public var isFromTorrent: Bool { id.hasPrefix(Self.torrentPrefix) }
+    /// Ids of subtitles Bluebox wrote itself from the soundtrack start with this.
+    public static let generatedPrefix = "generated-"
+    public var isGenerated: Bool { id.hasPrefix(Self.generatedPrefix) }
 }
 
 /// Everything a player needs to start playback. URLs may expire; callers must
@@ -171,10 +174,18 @@ public protocol MediaSource: Sendable {
     func resolve(_ variant: MediaVariant) async throws -> PlaybackResource
     /// Verifies the source is configured and reachable.
     func testConnection() async -> SourceHealth
+    /// How long a title page waits for this source's variants before going
+    /// on without them (`MediaSourceRegistry.availability`); nil waits for
+    /// as long as it takes, for a source that paces itself.
+    var answersWithin: TimeInterval? { get }
 }
 
 public extension MediaSource {
     func supports(_ capability: SourceCapabilities) -> Bool { capabilities.contains(capability) }
+    /// Libraries and servers answer from a cache or a quick request, or
+    /// they're unreachable; 4 s is long enough for the first and short
+    /// enough not to stall Play on the second.
+    var answersWithin: TimeInterval? { 4 }
 }
 
 /// Supplies bytes for playback URLs that aren't plain files or HTTP, such as

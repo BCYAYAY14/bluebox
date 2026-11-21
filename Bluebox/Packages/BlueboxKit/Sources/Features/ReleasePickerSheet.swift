@@ -450,7 +450,7 @@ struct ReleasePickerSheet: View {
             BlueboxMenuButton("Play", systemImage: "play.fill") { choose(r) }
             if r.isDebrid || app.addonsCanStreamTorrents {
                 BlueboxMenuButton("Download", systemImage: "arrow.down.circle") {
-                    Task { await app.download(r, for: downloadItem) }
+                    Task { await app.downloadPicked(r, for: downloadItem) }
                 }
             }
             BlueboxMenuButton("Copy Name", systemImage: "doc.on.doc") { copy(r.fileName) }

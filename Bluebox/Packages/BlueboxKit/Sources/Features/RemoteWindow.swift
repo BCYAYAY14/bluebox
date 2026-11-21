@@ -121,13 +121,14 @@ import SwiftUI
             label = AX.descendantText(node)
         }
         let isOn = kind == .toggle ? (AX.object(node, "accessibilityValue") as? NSNumber)?.boolValue : nil
+        let value = kind == .field ? AX.string(node, "accessibilityValue") : nil
         let fallback = switch kind {
         case .toggle: String(localized: "Switch")
         case .field: String(localized: "Text Field")
         case .row: String(localized: "Row")
         default: String(localized: "Button")
         }
-        return RemoteFocus.Element(label: label ?? fallback, kind: kind, frame: frame, isOn: isOn, node: node)
+        return RemoteFocus.Element(label: label ?? fallback, kind: kind, frame: frame, isOn: isOn, value: value, node: node)
     }
 
     /// Whether the element is what a click at its centre would reach.
@@ -184,6 +185,24 @@ import SwiftUI
         }
     }
 
+    // MARK: Typing
+
+    /// Clicks into the field (as the mouse would), then replaces what's in it
+    /// through its field editor, as typing would, so the app hears every change.
+    func type(_ text: String, at point: CGPoint?) {
+        guard let (w, _) = active else { return }
+        if let point, !(w.firstResponder is NSTextView && fieldEditorContains(point, in: w)) { click(at: point, right: false) }
+        guard let editor = w.firstResponder as? NSTextView, editor.isEditable else { return }
+        editor.selectAll(nil)
+        if text.isEmpty { editor.deleteBackward(nil) } else { editor.insertText(text, replacementRange: editor.selectedRange()) }
+    }
+
+    /// The cursor is already in the field at `point`: a second click would only move it.
+    private func fieldEditorContains(_ point: CGPoint, in w: NSWindow) -> Bool {
+        guard let editor = w.firstResponder as? NSView, let content = w.contentView else { return false }
+        return topLeft(editor, in: content).insetBy(dx: -8, dy: -8).contains(point)
+    }
+
     // MARK: Scrolling
 
     func scroll(at point: CGPoint, dx: CGFloat, dy: CGFloat) -> Bool {
@@ -195,6 +214,14 @@ import SwiftUI
     }
 
     func scrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool {
+        pageScroll(at: point, toward: direction, dryRun: false)
+    }
+
+    func canScrollPage(at point: CGPoint, toward direction: RemoteDirection) -> Bool {
+        pageScroll(at: point, toward: direction, dryRun: true)
+    }
+
+    private func pageScroll(at point: CGPoint, toward direction: RemoteDirection, dryRun: Bool) -> Bool {
         let horizontal = direction == .left || direction == .right
         for sv in scrollViews(at: point) where canScroll(sv, horizontal: horizontal) {
             let size = sv.contentView.bounds.size
@@ -205,7 +232,7 @@ import SwiftUI
             case .up: CGVector(dx: 0, dy: -amount)
             case .down: CGVector(dx: 0, dy: amount)
             }
-            if move(sv, dx: d.dx, dy: d.dy) { return true }
+            if move(sv, dx: d.dx, dy: d.dy, dryRun: dryRun) { return true }
         }
         return false
     }
@@ -282,7 +309,8 @@ import SwiftUI
     }
 
     /// Positive `dy` shows what's further down, whichever way the document is drawn.
-    private func move(_ sv: NSScrollView, dx: CGFloat, dy: CGFloat) -> Bool {
+    /// `dryRun`: only whether it would move.
+    private func move(_ sv: NSScrollView, dx: CGFloat, dy: CGFloat, dryRun: Bool = false) -> Bool {
         guard let doc = sv.documentView else { return false }
         let clip = sv.contentView
         let insets = sv.contentInsets
@@ -293,6 +321,7 @@ import SwiftUI
         o.x = min(max(o.x + dx, minX), maxX)
         o.y = min(max(o.y + (doc.isFlipped ? dy : -dy), minY), maxY)
         guard abs(o.x - clip.bounds.origin.x) > 0.5 || abs(o.y - clip.bounds.origin.y) > 0.5 else { return false }
+        if dryRun { return true }
         clip.scroll(to: o)
         sv.reflectScrolledClipView(clip)
         return true

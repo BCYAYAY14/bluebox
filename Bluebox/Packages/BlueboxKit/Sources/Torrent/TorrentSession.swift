@@ -102,6 +102,12 @@ public actor TorrentSession {
         connected = []
         inFlight = [:]
         storage?.saveState()
+        // A stopped session fetches nothing more: a reader waiting on a piece
+        // (the player, after a pause or a removal) hears so instead of spinning.
+        let pending = waiters; waiters = [:]
+        for c in pending.values.flatMap(\.values) { c.resume(throwing: TorrentError.cancelled) }
+        let infoPending = infoWaiters; infoWaiters = [:]
+        for c in infoPending.values { c.resume(throwing: TorrentError.cancelled) }
     }
 
     public func status() -> TorrentStatus {
@@ -198,9 +204,25 @@ public actor TorrentSession {
         for p in r { wanted[p] = true }
     }
 
+    /// How long a read waits with nothing at all arriving before it gives up
+    /// with "nobody sharing", as `TorrentStream.read` does. A slow swarm that's
+    /// still sending something keeps the read waiting.
+    static let stallTimeout: TimeInterval = 60
+
     private func waitForPiece(_ p: Int) async throws {
         if storage?.have[p] == true { return }
         let id = UUID()
+        let timer = Task { [weak self] in
+            var seen = await self?.downloadedBytes ?? 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.stallTimeout))
+                guard let self, !Task.isCancelled else { return }
+                let now = await self.downloadedBytes
+                if now == seen { await self.failWaiter(p, id, TorrentError.noPeers); return }
+                seen = now
+            }
+        }
+        defer { timer.cancel() }
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
                 if storage?.have[p] == true { c.resume() } else { waiters[p, default: [:]][id] = c }
@@ -211,7 +233,11 @@ public actor TorrentSession {
     }
 
     private func cancelWaiter(_ p: Int, _ id: UUID) {
-        waiters[p]?.removeValue(forKey: id)?.resume(throwing: CancellationError())
+        failWaiter(p, id, CancellationError())
+    }
+
+    private func failWaiter(_ p: Int, _ id: UUID, _ error: Error) {
+        waiters[p]?.removeValue(forKey: id)?.resume(throwing: error)
     }
 
     // MARK: Metadata

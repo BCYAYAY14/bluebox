@@ -128,8 +128,14 @@ struct SettingsKeyField: View {
         .accessibilityValue(working ? "Checking" : "")
         .padding(.vertical, Spacing.xs)
         // Pasting into the field (rather than with the button) saves too: a key arrives all at once.
+        // Typing never does (autocorrect can add a word at a time), and the save checks the key first.
         .onChange(of: text) { old, new in
-            if new.count - old.count >= 6 { Task { await save() } }
+            if Self.looksPasted(old: old, new: new) { Task { await save() } }
         }
+    }
+
+    /// A paste: the field went from empty to a whole key (no key is shorter than OMDb's 8 characters).
+    static func looksPasted(old: String, new: String) -> Bool {
+        old.isEmpty && new.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8
     }
 }

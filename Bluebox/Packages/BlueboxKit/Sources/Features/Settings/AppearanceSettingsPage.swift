@@ -13,7 +13,7 @@ import UIKit
 
 /// Settings › Appearance: the theme colour, which recolours the accent
 /// everywhere (selection, progress, links), the wordmark, and the app icon.
-/// The app's language is on Settings › Language.
+/// The app's language is here too; audio and subtitle languages are each profile's (Languages).
 struct AppearanceSettingsPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -40,11 +40,8 @@ struct AppearanceSettingsPage: View {
                 Text("Colours highlights, progress, the Bluebox logo and the app icon on your Home Screen.")
                 #endif
             }
-            Section {
-                SettingsPageLink("Language", page: .languages, value: AppLanguage.current.title)
-            } footer: {
-                Text("The app's language, and the audio and subtitle languages you prefer.")
-            }
+            // The app's own language is the device's; audio and subtitle languages are each profile's.
+            AppLanguageSection()
         }
     }
 }
@@ -155,12 +152,27 @@ private struct ThemeSwatches: View {
 public enum ThemeIcon {
     public static func apply(_ accent: ThemeAccent) {
         #if os(macOS)
-        NSApp.applicationIconImage = accent == .blue ? nil : tintedDockIcon(accent)
+        // Blue puts the bundle's own icon back by name: handing the Dock nil
+        // left the last colour showing on recent macOS.
+        NSApp.applicationIconImage = accent == .blue ? blueIcon : tintedDockIcon(accent)
         #else
         let app = UIApplication.shared
-        guard app.supportsAlternateIcons, app.alternateIconName != accent.alternateIconName else { return }
+        guard app.supportsAlternateIcons else { return }
+        // Blue is asked for even when iOS already reports the main icon: after
+        // an earlier change failed (the app went to the background mid-alert,
+        // or two taps overlapped) that answer can be stale.
+        if accent != .blue, app.alternateIconName == accent.alternateIconName { return }
         app.setAlternateIconName(accent.alternateIconName) { error in
-            if let error { Logger(subsystem: Log.subsystem, category: "appearance").error("Couldn't change the app icon: \(error.localizedDescription, privacy: .public)") }
+            guard let error else { return }
+            Logger(subsystem: Log.subsystem, category: "appearance").error("Couldn't change the app icon: \(error.localizedDescription, privacy: .public)")
+            // One retry for the main icon a moment later, once a change still in flight has finished.
+            if accent.alternateIconName == nil {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1))
+                    guard ThemeStore.shared.accent == accent, UIApplication.shared.alternateIconName != nil else { return }
+                    UIApplication.shared.setAlternateIconName(nil) { _ in }
+                }
+            }
         }
         #endif
     }
@@ -174,8 +186,18 @@ public enum ThemeIcon {
     }
 
     #if os(macOS)
+    /// The blue icon as it is in the app bundle, which a Dock change never
+    /// touches, so every colour is drawn from the blue and never from the last tint.
+    private static let blueIcon: NSImage? = {
+        guard let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconName") as? String
+                ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
+              let icon = Bundle.main.image(forResource: name) ?? NSImage(named: name)
+        else { return NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath) }
+        return icon
+    }()
+
     private static func tintedDockIcon(_ accent: ThemeAccent) -> NSImage? {
-        guard let icon = NSImage(named: NSImage.applicationIconName),
+        guard let icon = blueIcon,
               let cg = icon.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         var image = CIImage(cgImage: cg)
             .applyingFilter("CIHueAdjust", parameters: [kCIInputAngleKey: accent.iconHueRotation * .pi / 180])
@@ -252,7 +274,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Settings › Language › App Language. Choosing one asks straight away
+/// Settings › Appearance › App Language. Choosing one asks straight away
 /// whether to relaunch (Mac) or says when it takes effect (iPhone, iPad);
 /// "Later" leaves the button below for when it suits.
 struct AppLanguageSection: View {

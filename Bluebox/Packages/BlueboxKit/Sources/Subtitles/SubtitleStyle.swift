@@ -63,6 +63,17 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     public var secondaryColor: RGBA = .yellow
     public var preferredLanguage: String? = nil
     public var secondaryLanguage: String? = nil
+    /// When subtitles in the preferred language come on by themselves.
+    public enum TurnOn: String, Codable, Sendable, CaseIterable {
+        /// Whatever the audio.
+        case always
+        /// When the audio is in another language; with audio in yours, only a
+        /// Forced track (signs, the odd foreign line).
+        case foreignAudio
+        /// Only Forced tracks, whatever the audio.
+        case forcedOnly
+    }
+    public var turnsOn: TurnOn = .always
     /// Hide Sound Cues: [bracketed] and (parenthesised) cues, ♪ lyrics and
     /// "NAME:" labels left out of the lines Bluebox draws (see `SoundCues`).
     public var hidesSoundCues = false
@@ -100,8 +111,20 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     }
 
     /// Applies where a dragged subtitle block was dropped (see `SubtitlePlacement`).
+    /// Only the position: the Left/Centre/Right alignment stays the user's.
     public mutating func place(_ p: SubtitlePlacement) {
         anchor = p.anchor; verticalMargin = p.verticalMargin; horizontalOffset = p.horizontalOffset
+    }
+
+    /// The distance from the anchored edge that fits the stage as it is now.
+    /// The position is one per profile for every video, so a line dropped in
+    /// the black bar of one film (a negative margin) would land off the window
+    /// on the next one without bars, or after a phone turns: it goes no further
+    /// past the picture's edge than the bar there (`barBelow`/`barAbove`, a
+    /// fraction of the picture's height, 0 for none). Nothing is saved.
+    public func fittedMargin(barBelow: Double = .infinity, barAbove: Double = .infinity) -> Double {
+        let bar = anchor == .top ? barAbove : barBelow
+        return max(verticalMargin, -max(bar, 0))
     }
 
     /// How far (a fraction of the picture's height) the edge of bottom subtitles
@@ -109,11 +132,14 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     /// player's bar): its own distance when that already clears it, else just
     /// above. Top subtitles likewise under `coveredTop`. Middle never moves. One
     /// rule for every renderer, so nothing jumps as a margin crosses a threshold.
-    public func restingMargin(coveredBottom: Double, coveredTop: Double = 0) -> Double {
-        switch anchor {
+    /// The margin is first fitted to the bars there are now (`fittedMargin`).
+    public func restingMargin(coveredBottom: Double, coveredTop: Double = 0,
+                              barBelow: Double = .infinity, barAbove: Double = .infinity) -> Double {
+        let margin = fittedMargin(barBelow: barBelow, barAbove: barAbove)
+        return switch anchor {
         case .middle: 0
-        case .bottom: avoidControls ? max(verticalMargin, coveredBottom) : verticalMargin
-        case .top: avoidControls ? max(verticalMargin, coveredTop) : verticalMargin
+        case .bottom: avoidControls ? max(margin, coveredBottom) : margin
+        case .top: avoidControls ? max(margin, coveredTop) : margin
         }
     }
 
@@ -210,7 +236,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case design, fontName, relativeSize, weight, italic, textColor, outlineWidth, outlineColor, shadow, shadowOpacity
         case backgroundColor, backgroundOpacity, alignment, anchor, verticalMargin, horizontalMargin, horizontalOffset, lineSpacing
-        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage, hidesSoundCues, savedLooks
+        case avoidControls, secondaryScale, secondaryColor, preferredLanguage, secondaryLanguage, hidesSoundCues, savedLooks, turnsOn
         case size, color, background, position
     }
 
@@ -232,6 +258,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         preferredLanguage = v(.preferredLanguage, base.preferredLanguage); secondaryLanguage = v(.secondaryLanguage, base.secondaryLanguage)
         hidesSoundCues = v(.hidesSoundCues, base.hidesSoundCues)
         savedLooks = v(.savedLooks, base.savedLooks)
+        turnsOn = v(.turnsOn, base.turnsOn)
         // Legacy presets.
         if let size: String = v(.size, nil) {
             relativeSize = ["small": 0.035, "medium": 0.045, "large": 0.055, "extraLarge": 0.07][size] ?? relativeSize
@@ -264,6 +291,7 @@ public struct SubtitleStyle: Hashable, Codable, Sendable {
         try c.encodeIfPresent(preferredLanguage, forKey: .preferredLanguage); try c.encodeIfPresent(secondaryLanguage, forKey: .secondaryLanguage)
         try c.encode(hidesSoundCues, forKey: .hidesSoundCues)
         if !savedLooks.isEmpty { try c.encode(savedLooks, forKey: .savedLooks) }
+        if turnsOn != .always { try c.encode(turnsOn, forKey: .turnsOn) }
     }
 }
 

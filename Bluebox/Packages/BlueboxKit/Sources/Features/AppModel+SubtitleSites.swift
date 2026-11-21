@@ -126,11 +126,20 @@ extension AppModel {
         }
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "Subtitles", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let safe = result.release.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" ? String($0) : "_" }.joined().prefix(80)
-        let tag = String(abs(result.id.hashValue) % 1_000_000)
-        let url = dir.appending(path: "\(safe)-\(result.site.rawValue)\(tag).\(result.language ?? "und").\(format)")
+        let url = dir.appending(path: Self.subtitleFileName(result, format: format))
         try data.write(to: url, options: .atomic)
         return url
+    }
+
+    /// "Movie.2019.WEB-opensubtitles123456.en.srt": the release, the site and a
+    /// tag from the result's ID, the same on every launch (Swift's `hashValue`
+    /// isn't), so the same subtitle lands in the same file.
+    nonisolated static func subtitleFileName(_ result: OnlineSubtitle, format: String) -> String {
+        let safe = result.release.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" ? String($0) : "_" }.joined().prefix(80)
+        var hash = HomeHistory.FNV()
+        hash.add(result.id)
+        let tag = String(hash.value % 1_000_000)
+        return "\(safe)-\(result.site.rawValue)\(tag).\(result.language ?? "und").\(format)"
     }
 
     // MARK: Subdl key

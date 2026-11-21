@@ -13,7 +13,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
     case account, profiles
     /// Theme colour and the app's language (AppearanceSettingsPage).
     case appearance
-    /// Languages: the app's, then the profile's audio and subtitles.
+    /// Languages: the profile's audio and subtitles (the app's own is on Appearance).
     /// myPlayback: the profile's old Playback page, now a section of Playback
     /// (kept so stored selections and links still open somewhere).
     case languages, myPlayback, hiddenTitles
@@ -24,6 +24,8 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
     /// Privacy & Features (PrivacySettingsPage); My Bluebox (StatisticsPage,
     /// reached from the profile menu and Profiles, not the sidebar).
     case privacy, statistics
+    /// The profile's own feature switches: Statistics, Spoiler Guard, taste rows (ProfileFeaturesSettingsPage).
+    case profileFeatures
     case storage, advanced
     case about
     public var id: String { rawValue }
@@ -33,7 +35,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .account: "Account & Sync"
         case .profiles: "Profiles"
         case .appearance: "Appearance"
-        case .languages: "Language"
+        case .languages: "Languages"
         case .myPlayback: "Playback"
         case .hiddenTitles: "Hidden Titles"
         case .playback: "Playback"
@@ -47,6 +49,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .notifications: "Notifications"
         case .privacy: "Privacy & Features"
         case .statistics: "My Bluebox"
+        case .profileFeatures: "Features"
         case .storage: "Storage"
         case .advanced: "Advanced"
         case .about: "About"
@@ -73,6 +76,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .notifications: "bell"
         case .privacy: "hand.raised"
         case .statistics: "chart.bar"
+        case .profileFeatures: "sparkles"
         case .storage: "internaldrive"
         case .advanced: "wrench.and.screwdriver"
         case .about: "info.circle"
@@ -85,8 +89,8 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         switch self {
         case .account: "Sign in, sync your library between devices, and connect Trakt."
         case .profiles: "Who's watching: add, edit and switch profiles."
-        case .appearance: "The accent colour, which also colours the logo and app icon."
-        case .languages: "The app's language, and the audio and subtitle languages you prefer."
+        case .appearance: "The accent colour, which also colours the logo and app icon, and the app's language."
+        case .languages: "The audio and subtitle languages this profile prefers."
         case .myPlayback, .playback: "Autoplay, where videos start, skipping, the player and sound."
         case .hiddenTitles: "Titles you've hidden from Home's recommendations."
         case .subtitles: "How subtitles look, their timing, and searching for them online."
@@ -97,8 +101,9 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
         case .catalog: "Where titles, artwork and ratings come from."
         case .mobileData: "What may use mobile data, and how much it has used."
         case .notifications: "Alerts for new episodes."
-        case .privacy: "Statistics, Spoiler Guard, search history, remote control and more."
+        case .privacy: "Release alerts, AI, search history, remote control and more."
         case .statistics: "Hours watched, top shows and genres."
+        case .profileFeatures: "Statistics, Spoiler Guard and Home rows from what this profile watches."
         case .storage: "Space used, caches, and resetting Bluebox."
         case .advanced: "Diagnostics, logs and the launch intro."
         case .about: "Version, updates and acknowledgements."
@@ -115,12 +120,12 @@ public enum SettingsPage: String, CaseIterable, Identifiable, Hashable, Sendable
     }
 
     /// The current profile's own pages, at the top of Settings under its avatar and name.
-    static let profileGroup: [SettingsPage] = [.profiles, .subtitles, .hiddenTitles]
+    static let profileGroup: [SettingsPage] = [.profiles, .languages, .subtitles, .profileFeatures, .hiddenTitles]
 
     /// Pages that are the same for every profile, each group under its own heading.
     @MainActor static var groups: [(title: String, pages: [SettingsPage])] {
         [
-            ("General", [.appearance, .languages, .account, .notifications]),
+            ("General", [.appearance, .account, .notifications]),
             ("Watching", [.playback, .picture]),
             ("Finding Things to Watch", [.torrents, .sources, .catalog]),
             ("Data & Storage", [.mobileData, .downloads, .storage]),
@@ -582,7 +587,7 @@ struct SettingsCategoryRow: View {
         case .account: app.account.isSignedIn ? "Signed In" : "Off"
         case .profiles: "\(app.profiles.count)"
         case .appearance: ThemeStore.shared.accent.title
-        case .languages: AppLanguage.current.title
+        case .languages: app.subtitleStyle.preferredLanguage.flatMap { Locale.current.localizedString(forLanguageCode: $0) }
         case .myPlayback: app.settings.autoplayNextEpisode ? "Autoplay On" : "Autoplay Off"
         case .hiddenTitles: nil
         case .catalog: switch app.catalogMode {
@@ -590,14 +595,14 @@ struct SettingsCategoryRow: View {
             case .cinemeta: "Cinemeta"
             case .sample: "Sample"
             }
-        case .subtitles: app.subtitleStyle.preferredLanguage.flatMap { Locale.current.localizedString(forLanguageCode: $0) } ?? "Off"
+        case .subtitles: nil
         case .playback: app.settings.autoplayNextEpisode ? "Autoplay On" : "Autoplay Off"
         case .picture: app.settings.pictureDefaults.isDefault ? "Original" : "Adjusted"
         case .torrents:
             !app.addonSettings.isEnabled ? "Off" : app.addonSettings.debrid == .none ? "P2P" : app.addonSettings.debrid.title
         case .mobileData: app.settings.mobileData.streaming.title
         case .notifications: app.newEpisodeSettings.notify ? "On" : "Off"
-        case .privacy, .statistics: nil
+        case .privacy, .statistics, .profileFeatures: nil
         case .downloads: app.downloadSettings.wifiOnly ? "Wi‑Fi Only" : nil
         case .about: AppUpdater.shared.hasUnseenUpdate ? "Update Available" : nil
         case .sources, .storage, .advanced: nil
@@ -698,6 +703,7 @@ struct SettingsPageView: View {
         case .notifications: NotificationsSettingsPage()
         case .privacy: PrivacySettingsPage()
         case .statistics: StatisticsPage()
+        case .profileFeatures: ProfileFeaturesSettingsPage()
         case .storage: StorageSettingsPage()
         case .advanced: AdvancedSettingsPage()
         case .about: AboutSettingsPage()

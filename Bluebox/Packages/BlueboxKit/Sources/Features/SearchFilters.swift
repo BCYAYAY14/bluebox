@@ -150,19 +150,30 @@ struct SearchAvailability: Equatable, Sendable {
 }
 
 extension AppModel {
+    /// How long "Playable now" and "4K" wait for the debrid cloud's list.
+    static let searchCloudLimit: TimeInterval = 4
+
     /// See `SearchAvailability`. The debrid cloud is only read when a service
-    /// with a library is set up (and comes from its own cache when fresh).
-    func searchAvailability() async -> SearchAvailability {
+    /// with a library is set up (and comes from its own cache when fresh),
+    /// and only `includingCloud`: Search first shows what downloads and found
+    /// releases say, then adds the cloud if it answers within `searchCloudLimit`.
+    func searchAvailability(includingCloud: Bool = true) async -> SearchAvailability {
         let done = downloads.all().compactMap { r -> (MediaKey, String?)? in
             guard r.state == .completed, let key = r.mediaKey else { return nil }
             return (key, r.origin.resolution)
         }
         var cloud: [(MediaKey, String?)] = []
-        if debridLibraryService != nil, let entries = try? await features.debridLibrary.library() {
-            cloud = entries.compactMap { e in e.key.map { ($0, e.parsed.resolution) } }
+        if includingCloud, debridLibraryService != nil {
+            let library = features.debridLibrary
+            if let entries = await Deadline.value(within: Self.searchCloudLimit, { try? await library.library() }) {
+                cloud = entries.compactMap { e in e.key.map { ($0, e.parsed.resolution) } }
+            }
         }
         return SearchAvailability.make(downloads: done, cloud: cloud, offers: await addons.cachedOffers())
     }
+
+    /// Whether "Playable now" has a debrid cloud to ask after the first answer.
+    var searchHasCloud: Bool { debridLibraryService != nil }
 }
 
 // MARK: - Recent searches

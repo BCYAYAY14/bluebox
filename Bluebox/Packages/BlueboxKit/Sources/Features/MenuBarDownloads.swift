@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import DesignSystem
 import Downloads
 import SwiftUI
@@ -79,7 +80,7 @@ public struct MenuBarDownloadsView: View {
             Toggle("Always Show in Menu Bar", isOn: $alwaysShow)
                 .toggleStyle(.checkbox)
                 .padding(.horizontal, Spacing.l)
-            Button("Quit Bluebox") { NSApp.terminate(nil) }
+            Button("Quit Bluebox") { quit() }
                 .buttonStyle(.borderless)
                 .foregroundStyle(Palette.textSecondary)
                 .padding(.horizontal, Spacing.l).padding(.top, Spacing.s).padding(.bottom, Spacing.m)
@@ -87,6 +88,20 @@ public struct MenuBarDownloadsView: View {
         .frame(width: 320)
         .background(Palette.background)
         .preferredColorScheme(.dark)
+    }
+
+    /// Quitting stops downloads, so with any running it asks first.
+    private func quit() {
+        let running = app.downloads.queue().filter { $0.state == .downloading }.count
+        guard running > 0 else { NSApp.terminate(nil); return }
+        let alert = NSAlert()
+        alert.messageText = running == 1 ? String(localized: "Quit while a download is running?")
+                                         : "Quit while \(running) downloads are running?"
+        alert.informativeText = String(localized: "They stop now and continue the next time you open Bluebox.")
+        alert.addButton(withTitle: String(localized: "Quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn { NSApp.terminate(nil) }
     }
 }
 

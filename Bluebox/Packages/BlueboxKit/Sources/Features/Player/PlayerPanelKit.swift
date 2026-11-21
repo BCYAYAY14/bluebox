@@ -300,7 +300,12 @@ struct ValueDial: View {
     let meaning: (Double) -> String
     /// Mac keys for the fine steps ("{" and "}").
     var keys: (String, String)? = nil
+    /// Mac keys for the coarse steps ("⌥{" and "⌥}").
+    var coarseKeys: (String, String)? = nil
     var stepLabel: (Double) -> String = { String(format: "%+g", $0) }
+    /// How far the steps go, when further than the slider's `range`: a step
+    /// from outside the range used to jump to its end (+0.1 at +20 s gave +10).
+    var limit: ClosedRange<Double>? = nil
     let set: (Double) -> Void
 
     private var isDefault: Bool { abs(value - defaultValue) < 0.0005 }
@@ -320,12 +325,12 @@ struct ValueDial: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(title)
             .accessibilityValue("\(format(value)), \(meaning(value))")
-            .accessibilityAdjustableAction { d in set(clamp(value + (d == .increment ? fine : -fine))) }
+            .accessibilityAdjustableAction { d in set(clampStep(value + (d == .increment ? fine : -fine))) }
             HStack(spacing: 6) {
-                step(-coarse, key: nil)
+                step(-coarse, key: coarseKeys?.0)
                 step(-fine, key: keys?.0)
                 step(fine, key: keys?.1)
-                step(coarse, key: nil)
+                step(coarse, key: coarseKeys?.1)
             }
             HStack(spacing: Spacing.s) {
                 // No fill (a delay of zero sits in the middle, not at the start), with a tick at the default.
@@ -360,6 +365,10 @@ struct ValueDial: View {
     }
 
     private func clamp(_ v: Double) -> Double { min(max(v, range.lowerBound), range.upperBound) }
+    private func clampStep(_ v: Double) -> Double {
+        let bounds = limit ?? range
+        return min(max(v, bounds.lowerBound), bounds.upperBound)
+    }
     /// The slider lands on fine steps, and on the default when near it.
     private func snap(_ v: Double) -> Double {
         let s = (v / fine).rounded() * fine
@@ -367,7 +376,7 @@ struct ValueDial: View {
     }
 
     private func step(_ d: Double, key: String?) -> some View {
-        let next = clamp(value + d)
+        let next = clampStep(value + d)
         return Button { set(next) } label: {
             VStack(spacing: 2) {
                 Text(stepLabel(d)).font(PanelMetrics.chipFont).monospacedDigit()

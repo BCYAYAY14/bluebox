@@ -37,7 +37,7 @@ import Testing
             .frame(width: 320, height: 640).playerCardSurface().padding(30).background(Color(white: 0.1)).environment(app)
             try write(card, size: NSSize(width: 380, height: 700), name: "tools-\(page?.rawValue ?? "grid")")
         }
-        for page in [nil, TracksPage.timing, .lines, .secondLine] {
+        for page in [nil, TracksPage.timing, .lines, .secondLine, .generate] {
             let card = ScrollView {
                 TracksPanel(session: session, width: 340, canSearch: true, initialPage: page, onAddFile: {}, onSearch: {}, onStyle: {})
                     .padding(PlayerCardMetrics.padding)

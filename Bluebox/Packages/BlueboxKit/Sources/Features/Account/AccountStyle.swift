@@ -32,7 +32,13 @@ struct AccountScreen<Content: View>: View {
     var card = true
     @ViewBuilder let content: Content
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.settingsReveal) private var reveal
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scrolled = false
+    /// A Settings search hit on this page: scrolled to and flashed, as on the other pages.
+    @State private var highlighted: String?
+    @State private var position = ScrollPosition(edge: .top)
+    @State private var rowFrames = SettingsRowFrames()
 
     private var compact: Bool {
         #if os(iOS)
@@ -72,7 +78,11 @@ struct AccountScreen<Content: View>: View {
             .padding(.horizontal, compact ? 24 : 40)
             .padding(.top, Spacing.l)
             .padding(.bottom, Spacing.xxxl)
+            .coordinateSpace(.named(SettingsRowFrames.space))
         }
+        .scrollPosition($position)
+        .environment(\.accountRowMarks, AccountRowMarks(highlighted: highlighted, frames: rowFrames))
+        .task(id: reveal?.target?.id) { await revealTarget() }
         .scrollDismissesKeyboard(.interactively)
         #if DEBUG
         // Screenshots: `-account-scroll-bottom` opens the page scrolled to the end.
@@ -92,6 +102,59 @@ struct AccountScreen<Content: View>: View {
         .toolbarBackground(Palette.background, for: .navigationBar)
         .toolbarBackgroundVisibility(scrolled ? .visible : .hidden, for: .navigationBar)
         #endif
+    }
+}
+
+extension AccountScreen {
+    /// As `SettingsForm` does: scroll to the row a search hit named and flash it.
+    private func revealTarget() async {
+        guard let reveal, let target = reveal.target, target.page == .account else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(350))
+            if let y = rowFrames.minY[target.title] {
+                withAnimation(Motion.spatial(reduceMotion)) { position.scrollTo(y: max(0, y - 160)) }
+            }
+            withAnimation(Motion.snappy(reduceMotion)) { highlighted = target.title }
+            try await Task.sleep(for: .seconds(1.6))
+        } catch {}
+        withAnimation(Motion.standard(reduceMotion)) { highlighted = nil }
+        if reveal.target == target { reveal.target = nil }
+    }
+}
+
+/// What the Account page's searchable rows need: which one is flashing, and where to note their place.
+struct AccountRowMarks {
+    var highlighted: String?
+    var frames: SettingsRowFrames?
+}
+
+extension EnvironmentValues {
+    @Entry var accountRowMarks = AccountRowMarks()
+}
+
+extension View {
+    /// Names a row on the Account page for Settings search, which isn't a
+    /// `SettingsForm` (`settingsRow` does this on the other pages).
+    func accountRow(_ title: String) -> some View { modifier(AccountRowMark(title: title)) }
+}
+
+private struct AccountRowMark: ViewModifier {
+    let title: String
+    @Environment(\.accountRowMarks) private var marks
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if marks.highlighted == title {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Palette.wash)
+                        .padding(.horizontal, -Spacing.s)
+                        .transition(.opacity)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(SettingsRowFrames.space)).minY } action: { y in
+                marks.frames?.minY[title] = y
+            }
     }
 }
 

@@ -39,6 +39,7 @@ struct AccountOverview: View {
             Task { await account.syncNow() }
         }
         .accessibilityIdentifier("syncNowButton")
+        .accountRow("Sync Now")
         AccountActionRow(title: "Sign out", detail: "Your library stays on this device.") { confirmSignOut = true }
             .accessibilityIdentifier("signOutButton")
             .confirmationDialog("Sign out of sync?", isPresented: $confirmSignOut, titleVisibility: .visible) {
@@ -104,6 +105,7 @@ struct AccountKeySyncRows: View {
             .tint(Palette.brand)
             .accessibilityIdentifier("syncKeysSwitch")
         }
+        .accountRow("Sync API Keys")
         .alert("Store Your API Keys on Your Server?", isPresented: $confirmOn) {
             Button("Sync Keys") { account.setSyncsKeys(true) }
             Button("Cancel", role: .cancel) {}
@@ -153,6 +155,7 @@ struct AccountServerRows: View {
             AccountInfoRow(title: "Supabase project", detail: app.hasCustomServer ? nil : "Built into this copy of Bluebox.") {
                 Text(server.host() ?? server.absoluteString).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
             }
+            .accountRow("Supabase Project")
             AccountActionRow(title: "Check setup", detail: "Reachable, key accepted, tables present.",
                              working: account.setupCheck == .checking) {
                 Task { await account.checkSetup() }
@@ -162,6 +165,7 @@ struct AccountServerRows: View {
             if app.hasCustomServer {
                 AccountActionRow(title: "Change server", detail: "Signs you out on this device.") { confirmDisconnect = true }
                     .accessibilityIdentifier("changeServerButton")
+                    .accountRow("Change Server")
                     .confirmationDialog("Disconnect from this project?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
                         Button("Disconnect", role: .destructive) { app.disconnectSupabase() }
                     } message: {
@@ -211,6 +215,7 @@ struct TraktRows: View {
         let trakt = app.trakt
         if trakt.isConfigured {
             AccountSectionHeader(title: "Trakt")
+                .accountRow("Trakt")
             Hairline()
             switch trakt.phase {
             case .disconnected:
@@ -245,7 +250,7 @@ struct TraktRows: View {
                         .tint(Palette.brand)
                         .accessibilityIdentifier("traktSyncListsSwitch")
                 }
-                .settingsRow("Sync Lists with Trakt")
+                .accountRow("Sync Lists with Trakt")
                 AccountActionRow(title: "Sync now", working: trakt.status == .syncing) { Task { await trakt.syncNow(force: true) } }
                 AccountActionRow(title: "Disconnect Trakt") { Task { await trakt.disconnect() } }
             }

@@ -18,6 +18,8 @@ struct RemoteControlHost: ViewModifier {
 
     private struct Want: Hashable {
         let wanted: Bool
+        /// Not wanted only because Bluebox is in the background: the remote keeps its Mac for the way back.
+        var away = false
         let controllable: Bool
         let player: ObjectIdentifier?
     }
@@ -29,8 +31,8 @@ struct RemoteControlHost: ViewModifier {
         return Want(wanted: allowed, controllable: allowed, player: app.activePlayer.map(ObjectIdentifier.init))
         #else
         // Stays joined while merely inactive (Control Center, a notification pulled down), so the remote doesn't blank and rejoin.
-        return Want(wanted: app.featureSwitches.useAsRemote && app.account.isSignedIn && scenePhase != .background,
-                    controllable: false, player: nil)
+        let on = app.featureSwitches.useAsRemote && app.account.isSignedIn
+        return Want(wanted: on && scenePhase != .background, away: on && scenePhase == .background, controllable: false, player: nil)
         #endif
     }
 
@@ -56,7 +58,7 @@ struct RemoteControlHost: ViewModifier {
                 if app.remoteFocus.platform == nil { app.remoteFocus.platform = RemoteWindow(main: nil) }
                 app.remote.update(wanted: want.wanted, controllable: want.controllable, account: app.account, player: app.activePlayer)
                 #else
-                app.remote.update(wanted: want.wanted, controllable: false, account: app.account, player: nil)
+                app.remote.update(wanted: want.wanted, away: want.away, controllable: false, account: app.account, player: nil)
                 #endif
             }
             #if os(iOS)
@@ -177,7 +179,7 @@ struct RemoteDevicePill: View {
                         switch remote.connection {
                         case .connected: Text(verbatim: name)
                         case .connecting, .off: Text("Reconnecting…")
-                        case .notAnswering: Text("Not answering")
+                        case .lagging, .notAnswering: Text("Not answering")
                         }
                     }
                     .font(.subheadline.weight(.semibold))
@@ -204,7 +206,7 @@ struct RemoteDevicePill: View {
     private func dot(_ c: RemoteControl.Connection) -> Color {
         switch c {
         case .connected: .green
-        case .connecting, .off: .orange
+        case .connecting, .off, .lagging: .orange
         case .notAnswering: .red
         }
     }
@@ -319,16 +321,22 @@ struct RemoteControlScreen: View {
                     PlayingRemote(state: s, showsTracks: $showsTracks)
                 } else if remote.controlled != nil {
                     BrowseRemote()
+                } else if remote.reconnecting || remote.connection == .connecting || remote.connection == .off {
+                    // Back from the background, or just joined: its Mac hasn't answered yet.
+                    Spacer()
+                    ContentUnavailableView("Reconnecting…", systemImage: "laptopcomputer",
+                                           description: Text("Finding your Mac."))
+                    Spacer()
                 } else {
                     Spacer()
                     ContentUnavailableView("No Mac to Control", systemImage: "laptopcomputer",
-                                           description: Text("Open Bluebox on your Mac, with Allow Remote Control on in Settings › Privacy."))
+                                           description: Text("Open Bluebox on your Mac, with Allow Remote Control on in Settings › Privacy & Features."))
                     Spacer()
                 }
             }
-            // A tap that can't land shouldn't look like it did.
-            .opacity(remote.connection == .connected ? 1 : 0.45)
-            .disabled(remote.connection != .connected && remote.connection != .notAnswering)
+            // A tap that can't land shouldn't look like it did. Amber still takes taps: they're being sent.
+            .opacity(remote.connection == .connected || remote.connection == .lagging ? 1 : 0.45)
+            .disabled(remote.connection != .connected && remote.connection != .lagging && remote.connection != .notAnswering)
         }
         .background(Palette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -358,10 +366,15 @@ struct RemoteControlScreen: View {
 /// Getting around the Mac (questions 1 to 7): the highlight and its row
 /// above the pad, the pad, and the buttons.
 private struct BrowseRemote: View {
+    /// What the keyboard types into: the Mac's Search, or the field highlighted there.
+    enum Typing { case search, field }
+
     @Environment(AppModel.self) private var app
-    @State private var searching = false
+    @State private var typing: Typing?
     @State private var query = ""
-    @FocusState private var searchFocused: Bool
+    /// What last went to the Mac, so Return (or the same words again) doesn't resend it.
+    @State private var sent: String?
+    @FocusState private var keyboardUp: Bool
 
     var body: some View {
         let remote = app.remote
@@ -373,19 +386,21 @@ private struct BrowseRemote: View {
             RemoteHighlightStrip(screen: screen, pointer: pointer)
                 .padding(.horizontal, Spacing.xl).padding(.top, Spacing.m)
 
-            if searching {
-                TextField("Search on \(remote.controlled?.name ?? "Mac")", text: $query)
+            if let typing {
+                let mac = remote.controlled?.name ?? "Mac"
+                let prompt: LocalizedStringKey = typing == .search ? "Search on \(mac)" : "Type on \(mac)"
+                TextField(prompt, text: $query)
                     .textFieldStyle(.roundedBorder)
-                    .focused($searchFocused)
-                    .submitLabel(.search)
-                    .onSubmit { remote.send(.go(.search(query))); searching = false }
+                    .focused($keyboardUp)
+                    .submitLabel(typing == .search ? .search : .done)
+                    .onSubmit { type(query, into: typing); self.typing = nil }
                     .padding(.horizontal, Spacing.xl).padding(.top, Spacing.m)
                     // Typed straight through to the Mac, a moment after you stop.
                     .task(id: query) {
-                        guard !query.isEmpty else { return }
-                        try? await Task.sleep(for: .milliseconds(600))
+                        guard typing == .field || !query.isEmpty else { return }
+                        try? await Task.sleep(for: .milliseconds(250))
                         guard !Task.isCancelled else { return }
-                        remote.send(.go(.search(query)))
+                        type(query, into: typing)
                     }
             }
 
@@ -401,8 +416,10 @@ private struct BrowseRemote: View {
                 RoundRemoteButton("Home", systemImage: "house") { remote.send(.go(.home)) }
                 Spacer()
                 RoundRemoteButton("Search", systemImage: "magnifyingglass") {
-                    searching = true
-                    searchFocused = true
+                    query = ""
+                    sent = ""
+                    typing = .search
+                    keyboardUp = true
                     remote.send(.go(.search("")))
                 }
                 Spacer()
@@ -428,10 +445,29 @@ private struct BrowseRemote: View {
         }
     }
 
+    /// Sends what's typed, once: Search's words, or the field's whole text (a Mac on protocol 5).
+    private func type(_ text: String, into typing: Typing) {
+        guard text != sent else { return }
+        sent = text
+        app.remote.send(typing == .search ? .go(.search(text)) : .text(text))
+    }
+
     private func padActions(full: Bool, pointer: Bool) -> RemotePad.Actions {
         let remote = app.remote
+        // A Mac that types what the phone sends (protocol 5), and a field highlighted there.
+        let typed = (remote.controlled?.version ?? 0) >= 5
+        let field = !pointer && remote.screen?.focused?.kind == .field ? remote.screen?.focused : nil
         return RemotePad.Actions(
-            tap: { remote.send(pointer ? .click : .select) },
+            tap: {
+                remote.send(pointer ? .click : .select)
+                // A text field: the Mac's click puts the cursor in it, and the keyboard comes up here.
+                if typed, let field {
+                    query = field.value ?? ""
+                    sent = query
+                    typing = .field
+                    keyboardUp = true
+                }
+            },
             step: { remote.send(.move($0)) },
             jump: { d, n in remote.send(.jump(RemoteJump(d, count: n))) },
             hold: { if full { remote.send(.menu) } },
@@ -442,7 +478,8 @@ private struct BrowseRemote: View {
             },
             twoFingerTap: { if full { remote.send(.setPointer(!pointer)) } },
             back: { remote.send(.go(.back)) },
-            pointer: { remote.send(.pointer(RemotePointerMove(dx: $0.dx, dy: $0.dy))) })
+            pointer: { move, dt in remote.send(.pointer(RemotePointerMove(dx: move.dx, dy: move.dy, dt: dt))) },
+            edgeHold: typed ? { remote.send(.repeatMove($0)) } : nil)
     }
 }
 
@@ -858,11 +895,15 @@ struct RemotePad: View {
         var scroll: (CGVector, CGVector?) -> Void = { _, _ in }
         var twoFingerTap: () -> Void = {}
         var back: () -> Void = {}
-        var pointer: (CGVector) -> Void = { _ in }
+        /// How far the finger moved the pointer, and over how many seconds.
+        var pointer: (CGVector, TimeInterval) -> Void = { _, _ in }
         /// Playing: the swipe's width as a fraction of the pad's, and whether it ended.
         var scrub: (CGFloat, Bool) -> Void = { _, _ in }
         /// Playing: how far round the edge the finger has gone, in radians, and whether it lifted.
         var ring: (Double, Bool) -> Void = { _, _ in }
+        /// Held at the edge after a swipe: one message starts the Mac stepping that way, nil stops it.
+        /// nil for a Mac before protocol 5, which is sent a step every `edgeRepeat` instead.
+        var edgeHold: ((RemoteDirection?) -> Void)?
     }
 
     let mode: Mode
@@ -977,6 +1018,10 @@ final class RemotePadTouchView: UIView {
     static let edgeBand: CGFloat = 28
     /// Two fingers move the Mac's page this much more than the fingers moved.
     static let scrollScale: CGFloat = 2.5
+    /// Two fingers' scroll goes out this often: often enough that the page glides rather than hops.
+    static let scrollRate: TimeInterval = 1.0 / 30
+    /// Held at the edge, a step (or, from protocol 5, a haptic for the Mac's step) this often.
+    static let edgeRepeat: TimeInterval = 0.25
 
     private var start: (point: CGPoint, time: TimeInterval)?
     private var last: (point: CGPoint, time: TimeInterval)?
@@ -990,6 +1035,8 @@ final class RemotePadTouchView: UIView {
     private var held = false
     private var holdTimer: Timer?
     private var repeatTimer: Timer?
+    /// The Mac is stepping on its own (`Actions.edgeHold`): told to stop when the finger lifts or moves off.
+    private var holdingEdge = false
     // Two fingers.
     private var twoFingers = false
     private var twoStart: (point: CGPoint, time: TimeInterval)?
@@ -1000,6 +1047,7 @@ final class RemotePadTouchView: UIView {
     private var lastScrollSent: TimeInterval = 0
     // Pointer.
     private var pendingPointer = CGVector.zero
+    /// When the travel in `pendingPointer` began: its last send, or the finger coming down.
     private var lastPointerSent: TimeInterval = 0
     // Playing.
     private var scrubbing = false
@@ -1019,6 +1067,7 @@ final class RemotePadTouchView: UIView {
         start = (p, now); last = (p, now); trail = [(p, now)]
         stepsTaken = .zero; lastDirection = nil; axis = nil; moved = false; held = false; scrubbing = false
         ringAngle = nil; ringTurned = 0
+        lastPointerSent = now; pendingPointer = .zero
         onFinger(p)
         if mode == .playing, nearEdge(p) { ringAngle = angle(of: p) }
         holdTimer?.invalidate()
@@ -1096,7 +1145,7 @@ final class RemotePadTouchView: UIView {
     }
 
     private func finish(_ touch: UITouch?, cancelled: Bool) {
-        holdTimer?.invalidate(); repeatTimer?.invalidate(); repeatTimer = nil
+        holdTimer?.invalidate(); stopEdgeRepeat()
         onFinger(nil)
         defer { start = nil; last = nil; trail = [] }
         guard let start, !held else { return }
@@ -1152,15 +1201,23 @@ final class RemotePadTouchView: UIView {
         case nil: false
         }
         if atEdge, repeatTimer == nil, let d = lastDirection {
-            repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            // One message for the whole hold, where the Mac takes it; the haptic still ticks here with its steps.
+            let oneMessage = actions.edgeHold != nil
+            if let edgeHold = actions.edgeHold { edgeHold(d); holdingEdge = true }
+            repeatTimer = Timer.scheduledTimer(withTimeInterval: Self.edgeRepeat, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.actions.step(d)
+                    if !oneMessage { self?.actions.step(d) }
                     self?.feedback(.step)
                 }
             }
         } else if !atEdge {
-            repeatTimer?.invalidate(); repeatTimer = nil
+            stopEdgeRepeat()
         }
+    }
+
+    private func stopEdgeRepeat() {
+        repeatTimer?.invalidate(); repeatTimer = nil
+        if holdingEdge { holdingEdge = false; actions.edgeHold?(nil) }
     }
 
     // MARK: Two fingers
@@ -1172,7 +1229,7 @@ final class RemotePadTouchView: UIView {
     }
 
     private func beginTwoFingers(_ touches: Set<UITouch>) {
-        holdTimer?.invalidate(); repeatTimer?.invalidate(); repeatTimer = nil
+        holdTimer?.invalidate(); stopEdgeRepeat()
         guard !twoFingers else { return }
         twoFingers = true
         let c = centroid(touches), now = touches.first?.timestamp ?? 0
@@ -1191,7 +1248,7 @@ final class RemotePadTouchView: UIView {
         self.twoLast = c
         twoTrail.append((c, now)); twoTrail.removeAll { now - $0.time > 0.12 }
         onFinger(c)
-        if twoMoved, now - lastScrollSent > 1.0 / 12 {
+        if twoMoved, now - lastScrollSent > Self.scrollRate {
             lastScrollSent = now
             actions.scroll(pendingScroll, nil)
             pendingScroll = .zero
@@ -1222,8 +1279,10 @@ final class RemotePadTouchView: UIView {
 
     private func flushPointer(_ now: TimeInterval) {
         guard pendingPointer != .zero else { return }
+        // The time the travel took, for the Mac's acceleration; a pause before it doesn't count as slow.
+        let dt = min(max(now - lastPointerSent, 1.0 / 120), 0.1)
         lastPointerSent = now
-        actions.pointer(pendingPointer)
+        actions.pointer(pendingPointer, dt)
         pendingPointer = .zero
     }
 

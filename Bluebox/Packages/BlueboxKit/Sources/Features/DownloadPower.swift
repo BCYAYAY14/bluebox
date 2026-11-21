@@ -31,6 +31,7 @@ final class DownloadPowerMonitor {
                 try? await Task.sleep(for: .seconds(60))
                 manager.setCharging(Self.isCharging)
                 manager.refreshWindow()
+                manager.resumeWhenSpaceReturns()
             }
         }
     }

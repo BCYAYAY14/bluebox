@@ -109,6 +109,8 @@ struct SearchResultsSections: View {
             }
             if results.isLoading && !results.isStale && !results.items.isEmpty {
                 ProgressView().frame(maxWidth: .infinity)
+            } else if results.moreError != nil, !results.items.isEmpty {
+                MoreResultsRetry(results: results)
             }
         }
     }

@@ -49,18 +49,38 @@ final class NewHotModel {
     }
 
     func load(_ app: AppModel) async {
+        let metadata = app.metadata
+        await load(new: { try await app.newReleases(limit: 12) },
+                   watching: { Array(try await metadata.list(.trending, page: 1).items.prefix(12)) },
+                   topShows: { try await app.topTen(.series) },
+                   topMovies: { try await app.topTen(.movie) })
+    }
+
+    /// The four sections are asked side by side and each fills in on its own:
+    /// one that fails keeps what it had (or stays hidden) while the others
+    /// show. The page fails only when all four do.
+    func load(new loadNew: @escaping @MainActor () async throws -> [Title],
+              watching loadWatching: @escaping @MainActor () async throws -> [Title],
+              topShows loadShows: @escaping @MainActor () async throws -> [Title],
+              topMovies loadMovies: @escaping @MainActor () async throws -> [Title]) async {
         error = nil
         if !hasContent { isLoading = true }
-        do {
-            async let n = app.newReleases(limit: 12)
-            async let w = app.metadata.list(.trending, page: 1)
-            async let s = app.topTen(.series)
-            async let m = app.topTen(.movie)
-            (new, watching, topShows, topMovies) = try await (n, Array(w.items.prefix(12)), s, m)
-        } catch {
-            self.error = error
-        }
+        async let n = Self.attempt(loadNew)
+        async let w = Self.attempt(loadWatching)
+        async let s = Self.attempt(loadShows)
+        async let m = Self.attempt(loadMovies)
+        let answers = await [n, w, s, m]
+        if case .success(let titles) = answers[0] { new = titles }
+        if case .success(let titles) = answers[1] { watching = titles }
+        if case .success(let titles) = answers[2] { topShows = titles }
+        if case .success(let titles) = answers[3] { topMovies = titles }
+        let failures = answers.compactMap { if case .failure(let e) = $0 { e } else { nil } }
+        if failures.count == answers.count { error = failures.first }
         isLoading = false
+    }
+
+    private static func attempt(_ load: @MainActor () async throws -> [Title]) async -> Result<[Title], any Error> {
+        do { return .success(try await load()) } catch { return .failure(error) }
     }
 }
 

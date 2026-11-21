@@ -60,6 +60,11 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     private var stoppedTasks: Set<Int> = []
     private var resumedTasks: Set<Int> = []
     private var autoRetries: [String: Int] = [:]
+    /// Free bytes when a download that failed for space was last put back by itself.
+    private var spaceRetriedAt: [String: Int64] = [:]
+    private var staleCheckPending = false
+    /// HTTP downloads whose expired link (403, 410) was already swapped for a fresh one this try.
+    private var relinked: Set<String> = []
     private var pendingResources: [String: PlaybackResource] = [:]
     private var pendingSubtitles: [String: [ExternalSubtitle]] = [:]
     private var live: [String: DownloadLiveStats] = [:]
@@ -104,6 +109,11 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     private let subtitleFetch: @Sendable (URL) async throws -> Data
     private let freeSpaceProvider: @Sendable (URL) -> Int64?
 
+    /// Each download's state as the saved index had it at launch (after
+    /// repairs). A background launch for finished transfers compares with
+    /// this, so a finish that lands before the app looks still counts as news.
+    public private(set) var launchStates: [String: DownloadRecord.State] = [:]
+
     /// Called on the main actor after any change.
     public var onChange: (@MainActor @Sendable () -> Void)?
     /// Fresh links for HTTP downloads that restart without resume data (debrid links expire).
@@ -145,6 +155,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             records = Dictionary(list.map { ($0.id, $0) }) { a, _ in a }
         }
         repairAfterLaunch()
+        launchStates = records.mapValues(\.state)
         let config = configuration ?? {
             let c = URLSessionConfiguration.background(withIdentifier: Self.backgroundIdentifier)
             c.sessionSendsLaunchEvents = true
@@ -257,8 +268,23 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// An HTTP transfer with no new bytes for this long shows no speed: its
+    /// last sample would otherwise stay on screen (the session only reports
+    /// when bytes arrive). Torrents report their own speed every second.
+    public static let speedGoesStaleAfter: TimeInterval = 5
+
     /// Speed and peers while transferring.
-    public func liveStats(_ id: String) -> DownloadLiveStats? { lock.withLock { live[id] } }
+    public func liveStats(_ id: String) -> DownloadLiveStats? { liveStats(id, now: Date()) }
+
+    public func liveStats(_ id: String, now: Date) -> DownloadLiveStats? {
+        lock.withLock {
+            guard var stats = live[id] else { return nil }
+            if records[id]?.isTorrent == false, let at = lastBytesAt[id], now.timeIntervalSince(at) > Self.speedGoesStaleAfter {
+                stats.bytesPerSecond = 0
+            }
+            return stats
+        }
+    }
 
     /// Why a queued download is waiting.
     public func wait(_ id: String) -> DownloadWait? { lock.withLock { waits[id] } }
@@ -409,21 +435,61 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     private func requeueLocked(_ id: String) -> Bool {
         guard let r = records[id], r.state == .paused || r.isFailed else { return false }
         records[id]?.state = .queued
+        records[id]?.failedForSpace = nil
+        records[id]?.needsAnotherRelease = nil
         autoRetries[id] = nil
+        relinked.remove(id)
         return true
     }
 
     /// Same as resume, for failed downloads.
     public func retry(_ id: String) { resume(id) }
 
+    /// Downloads that failed for want of space go back in the queue, in queue
+    /// order, as many as now fit with `reserveBytes` to spare (more than the
+    /// queue's own `lowSpaceBytes`, so one doesn't fail again at once). Called
+    /// every minute and after a delete. Returns the IDs it requeued.
+    @discardableResult
+    public func resumeWhenSpaceReturns() -> [String] {
+        guard let free = freeSpaceProvider(directory) else { return [] }
+        // One that was put back and failed again waits for space to grow
+        // past what it had then, so it doesn't fail (and say so) every minute.
+        let waiting = lock.withLock {
+            records.values.filter { r in
+                r.isFailed && r.failedForSpace == true && spaceRetriedAt[r.id].map { free > $0 + Self.reserveBytes } ?? true
+            }
+        }
+        guard !waiting.isEmpty else { return [] }
+        let fitting = Self.fitting(waiting.sorted { $0.sortOrder < $1.sortOrder }.map { ($0.id, $0.remainingBytes ?? 0) },
+                                   free: free - Self.reserveBytes)
+        guard !fitting.isEmpty else { return [] }
+        lock.withLock { for id in fitting { spaceRetriedAt[id] = free } }
+        resume(fitting)
+        return fitting
+    }
+
+    /// The IDs, in order, that fit in `free` bytes one after another; one that
+    /// doesn't fit is skipped and smaller ones after it may still fit.
+    public static func fitting(_ sizes: [(id: String, bytes: Int64)], free: Int64) -> [String] {
+        var left = free
+        var out: [String] = []
+        for (id, bytes) in sizes where bytes <= left && left >= 0 {
+            out.append(id)
+            left -= bytes
+        }
+        return out
+    }
+
     /// Moves a download to the front of the queue; it may take a running one's slot.
-    /// An automatic download asked for by hand stops waiting for the download window.
+    /// An automatic download asked for by hand stops waiting for the download window,
+    /// and a paused or failed one goes back in the queue: "Download First" means now.
     public func prioritize(_ id: String) {
         let known = lock.withLock { () -> Bool in
             guard records[id] != nil else { return false }
             let first = records.values.map(\.sortOrder).min() ?? 0
             records[id]?.order = first - 1
             records[id]?.isAutomatic = nil
+            _ = requeueLocked(id)
             return true
         }
         guard known else { return }
@@ -508,6 +574,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
                 starting.remove(id)
                 externalRunning.remove(id)
                 pendingResources[id] = nil; pendingSubtitles[id] = nil; live[id] = nil; waits[id] = nil; autoRetries[id] = nil
+                spaceRetriedAt[id] = nil; relinked.remove(id)
                 speedSamples[id] = nil
                 awaitingResumeData.remove(id); resumeDataReady[id] = nil; taskAllowsCellular[id] = nil
                 let record = records.removeValue(forKey: id)
@@ -525,6 +592,8 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: resumeURL(id))
         }
         pump(dirty: removed.contains { $0.record != nil })
+        // Deleting frees space: downloads that stopped for it may fit now.
+        if removed.contains(where: { $0.record != nil }) { resumeWhenSpaceReturns() }
     }
 
     /// Waits until queued deletes and stops of torrent downloads have finished (tests, teardown).
@@ -674,7 +743,8 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         guard let learnedSize else { return }
         // Torrent sizes are only certain once the file list arrives.
         if let total = learnedSize, let free = freeSpaceProvider(directory), total - receivedBytes > free - Self.lowSpaceBytes {
-            fail(id, DownloadError.insufficientSpace(needed: total - receivedBytes, free: free - Self.lowSpaceBytes).errorDescription!)
+            fail(id, DownloadError.insufficientSpace(needed: total - receivedBytes, free: free - Self.lowSpaceBytes).errorDescription!,
+                 forSpace: true)
             return
         }
         progressChanged()
@@ -700,10 +770,15 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         pump(dirty: true)
     }
 
-    public func externalFailed(_ id: String, message: String) {
+    /// - Parameter needsAnotherRelease: Retry won't help (nobody shares the
+    ///   torrent, it's damaged); the download offers Try Another Release.
+    public func externalFailed(_ id: String, message: String, needsAnotherRelease: Bool = false) {
         guard lock.withLock({ externalRunning.remove(id) != nil }) else { return }
         lock.withLock {
-            if records[id]?.state == .downloading { records[id]?.state = .failed(message) }
+            if records[id]?.state == .downloading {
+                records[id]?.state = .failed(message)
+                records[id]?.needsAnotherRelease = needsAnotherRelease ? true : nil
+            }
             live[id] = nil
         }
         pump(dirty: true)
@@ -753,6 +828,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
                 if let remaining = r.remainingBytes, remaining > 0, let available = free {
                     guard remaining <= available - Self.lowSpaceBytes else {
                         r.state = .failed(DownloadError.insufficientSpace(needed: remaining, free: available - Self.lowSpaceBytes).errorDescription!)
+                        r.failedForSpace = true
                         records[id] = r
                         refusedForSpace = true
                         continue
@@ -853,11 +929,15 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
     /// Tests: as if a transfer of `id` had just been stopped and its resume data is on the way.
     func expectResumeData(_ id: String) { lock.withLock { _ = awaitingResumeData.insert(id) } }
 
-    private func fail(_ id: String, _ message: String) {
+    private func fail(_ id: String, _ message: String, forSpace: Bool = false) {
         let wasRunning = lock.withLock { () -> Bool in
             let running = externalRunning.contains(id) || tasks[id] != nil || starting.contains(id)
             // A late failure doesn't turn a download you paused into a failed one.
-            if records[id]?.isActive == true { records[id]?.state = .failed(message) }
+            if records[id]?.isActive == true {
+                records[id]?.state = .failed(message)
+                records[id]?.needsAnotherRelease = nil
+                if forSpace { records[id]?.failedForSpace = true }
+            }
             live[id] = nil
             return running
         }
@@ -998,6 +1078,29 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         if let onChange { Task { @MainActor in onChange() } }
     }
 
+    /// A stalled HTTP transfer sends nothing, so nothing would redraw its
+    /// last speed away: a moment after bytes stop, observers hear once more
+    /// and `liveStats` says 0.
+    private func scheduleStaleSpeedCheck() {
+        let arm = lock.withLock { () -> Bool in
+            guard !staleCheckPending else { return false }
+            staleCheckPending = true
+            return true
+        }
+        guard arm else { return }
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.speedGoesStaleAfter + 0.5) { [weak self] in
+            guard let self else { return }
+            let stale = self.lock.withLock { () -> Bool in
+                self.staleCheckPending = false
+                let now = Date()
+                return self.tasks.keys.contains { id in
+                    self.lastBytesAt[id].map { now.timeIntervalSince($0) > Self.speedGoesStaleAfter } ?? false
+                }
+            }
+            if stale { self.notify() }
+        }
+    }
+
     /// Progress: tell observers at most twice a second, save every few seconds, watch free space.
     private func progressChanged() {
         let (shouldSave, shouldNotify, checkSpace) = lock.withLock { () -> (Bool, Bool, Bool) in
@@ -1010,9 +1113,9 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
         }
         if checkSpace, let free = freeSpaceProvider(directory), free < Self.lowSpaceBytes {
             let running = lock.withLock { Array(Set(tasks.keys).union(externalRunning)) }
-            let message = "Stopped because your device is almost full. Free up space, then tap Retry."
+            let message = "Stopped because your device is almost full. It continues once there's room, or free up space and tap Retry."
             for id in running {
-                lock.withLock { records[id]?.state = .failed(message); live[id] = nil }
+                lock.withLock { records[id]?.state = .failed(message); records[id]?.failedForSpace = true; live[id] = nil }
                 stopTransfer(id)
             }
             save()
@@ -1038,11 +1141,23 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             return
         }
         if let http = task.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            try? FileManager.default.removeItem(at: location)
+            let expired = http.statusCode == 403 || http.statusCode == 410
             lock.withLock {
                 tasks[id] = nil
-                records[id]?.state = .failed(http.statusCode == 403 || http.statusCode == 410
-                                             ? "The link expired (HTTP \(http.statusCode)). Tap Retry for a fresh one."
-                                             : "The server returned \(http.statusCode).")
+                live[id] = nil
+                // A debrid link expires (a resume reuses the old one): the
+                // first time, go back in the queue for a fresh link from
+                // `resolveResource` rather than fail.
+                if expired, resolveResource != nil, !relinked.contains(id) {
+                    relinked.insert(id)
+                    pendingResources[id] = nil
+                    records[id]?.state = .queued
+                } else {
+                    records[id]?.state = .failed(expired
+                                                 ? "The link expired (HTTP \(http.statusCode)). Tap Retry for a fresh one."
+                                                 : "The server returned \(http.statusCode).")
+                }
             }
             try? FileManager.default.removeItem(at: resumeURL(id))
             return
@@ -1085,6 +1200,7 @@ public final class DownloadManager: NSObject, @unchecked Sendable {
             tasks[id] = nil
             live[id] = nil
             autoRetries[id] = nil
+            spaceRetriedAt[id] = nil; relinked.remove(id)
             return pendingSubtitles.removeValue(forKey: id) ?? []
         }
         if !subs.isEmpty { Task { await self.saveSubtitles(subs, for: id) } }
@@ -1155,7 +1271,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
         guard let id = downloadTask.taskDescription else { return }
         let current = lock.withLock { () -> Bool in
             guard tasks[id] === downloadTask else { return false }
-            if totalBytesWritten > records[id]?.receivedBytes ?? 0 { lastBytesAt[id] = Date() }
+            if totalBytesWritten > records[id]?.receivedBytes ?? 0 {
+                lastBytesAt[id] = Date()
+                // Moving again: a dropped connection later gets its three retries afresh.
+                autoRetries[id] = nil
+            }
             records[id]?.receivedBytes = totalBytesWritten
             if totalBytesExpectedToWrite > 0 { records[id]?.expectedBytes = totalBytesExpectedToWrite }
             let now = Date()
@@ -1173,7 +1293,10 @@ extension DownloadManager: URLSessionDownloadDelegate {
             }
             return true
         }
-        if current { progressChanged() }
+        if current {
+            progressChanged()
+            scheduleStaleSpeedCheck()
+        }
     }
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {

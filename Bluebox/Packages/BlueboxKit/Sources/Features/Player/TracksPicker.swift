@@ -7,7 +7,7 @@ import SwiftUI
 /// One audio or subtitle track as people read it: "English (US)" with "SDH"
 /// underneath, not VLC's "English (SDH / US) - [English]".
 struct TrackRow: Identifiable, Equatable {
-    enum Source: Equatable { case video, file, added, torrent }
+    enum Source: Equatable { case video, file, added, torrent, generated }
     let id: String
     let title: String
     let detail: String?
@@ -34,6 +34,8 @@ struct TrackRow: Identifiable, Equatable {
         case .file: "File"
         case .added: "Added"
         case .torrent: "Torrent"
+        // Written by Bluebox from the soundtrack, so nobody takes it for an official track.
+        case .generated: "Generated"
         }
     }
 }
@@ -45,6 +47,11 @@ struct TrackLanguageGroup: Identifiable, Equatable {
     let languageCode: String?
     let rows: [TrackRow]
     var selected: TrackRow? { rows.first(where: \.selected) }
+    /// The track one tap on the language turns on: the plain one (no SDH,
+    /// Forced or commentary), else the first that isn't Forced, else the first.
+    var standard: TrackRow? {
+        rows.first { $0.detail == nil } ?? rows.first { !($0.detail ?? "").localizedCaseInsensitiveContains("Forced") } ?? rows.first
+    }
 }
 
 /// Builds the rows for the picker and the subtitle panel: cleaned names,
@@ -95,7 +102,8 @@ enum TrackRows {
             let l = labels[t.id] ?? TrackLabel(title: t.label)
             let selection: SubtitleSelection = t.isExternal ? .external(t.id) : .embedded(t.id)
             let source: TrackRow.Source = !t.isExternal ? .video : t.id.hasPrefix("import-") ? .added
-                : t.id.hasPrefix(ExternalSubtitle.torrentPrefix) ? .torrent : .file
+                : t.id.hasPrefix(ExternalSubtitle.torrentPrefix) ? .torrent
+                : t.id.hasPrefix(ExternalSubtitle.generatedPrefix) ? .generated : .file
             return TrackRow(id: t.id, title: l.title, detail: details[t.id] ?? nil, source: source, isBitmap: t.isBitmap,
                             languageCode: l.languageCode, selected: key.selection == selection, selection: selection,
                             format: t.format, keepsOwnStyle: t.keepsOwnStyle)

@@ -2,6 +2,39 @@
 
 What changed in each Bluebox release, newest first. Each version ships as one build for iPhone, iPad and Mac, on the [Releases](https://github.com/BCYAYAY14/bluebox/releases) page and through the AltStore source.
 
+## 1.2.8 (22 November 2026)
+
+### AI, out in the open
+- A short sheet on first launch says where Bluebox uses AI (only for subtitles), that it all runs on your device, and lets you turn each part off. It comes back only when an update changes something that uses AI.
+- Privacy & Features has a new AI section with the same switches, Whisper's download and Delete, and the sheet to read again.
+
+### Subtitles
+- Generated subtitles: a video with no subtitles in your language can have them written from its sound, on your device, and translated with Apple's Translation.
+- Subtitle timing is remembered for each film, episode and track, and comes back the next time you play it.
+- Sync to the Audio is stricter, so it says when it can't find a match instead of setting the wrong timing, and it no longer hangs on some files.
+- ⌥{ and ⌥} move subtitles a whole second.
+- Subtitles can't be dragged off the screen, and dragging one keeps the alignment you chose.
+- The subtitle and audio tracks you pick are remembered for the whole show.
+- Search Automatically asks every subtitle site that's on and keeps the file it found with the title.
+
+### Remote control
+- The remote reconnects as soon as your iPhone is unlocked, instead of after up to 20 seconds.
+- The highlight moves the moment you swipe, scrubbing is lighter, and a Mac that stops answering is noticed within a couple of seconds.
+- Typing a search on the iPhone reaches the Mac sooner.
+
+### Screens
+- Fixed the Play button staying grey after adding a TorBox key: title pages no longer wait for slow sources.
+- New & Hot shows what has loaded instead of waiting for every row, and the iPad keeps your page when its layout changes.
+- Next Episode can be cancelled, Search keeps its results when loading more fails, and a pinch no longer seeks.
+- Small buttons are easier to hit, and film names in notices are never translated.
+
+### Downloads and Settings
+- A season that doesn't all fit offers to download the episodes that do, and downloads waiting for space carry on when there's room.
+- A debrid download picks up with a fresh link instead of starting over, and a torrent with no one sharing it offers another release.
+- Download First starts a paused or failed download again.
+- A debrid key is checked before it's saved.
+- Settings is grouped more clearly, with the profile's own features on one page, and more of it can be found with Settings search.
+
 ## 1.2.7 (17 November 2026)
 
 ### Smoother

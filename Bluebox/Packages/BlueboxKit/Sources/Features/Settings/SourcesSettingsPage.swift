@@ -605,6 +605,7 @@ struct AddLinkSheet: View {
                     .autocorrectionDisabled()
                 TextField("Title", text: $title)
                 Toggle("Match to catalog by title", isOn: $match)
+                    .settingsRow("Match to Catalog by Title")
                 if let error { Text(error).font(.footnote).foregroundStyle(Palette.warning) }
                 Text("Only add links you have the right to stream. MP4, MOV, M4V and HLS (.m3u8) are supported.")
                     .font(.footnote).foregroundStyle(Palette.textSecondary)

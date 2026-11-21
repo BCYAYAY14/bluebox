@@ -304,6 +304,16 @@ final class FakeRunner: @unchecked Sendable {
         return Dictionary(list.map { ($0.id, $0) }) { a, _ in a }
     }
 
+    /// Waits for `count` torrent starts and for the write that recorded them.
+    /// The runner is handed a start before the pass writes the index, so on a
+    /// busy machine that write could otherwise land after a test counts writes.
+    func started(_ count: Int, _ m: DownloadManager, _ dir: URL, _ runner: FakeRunner) async throws {
+        try await ready(m) { _ in
+            runner.log.count == count
+                && ((try? onDisk(dir).values.filter { $0.state == .downloading }.count) ?? 0) == count
+        }
+    }
+
     /// Pausing, resuming or deleting a 100-episode selection used to write
     /// the index twice per episode on the caller's thread.
     @Test func bulkCommandsWriteTheIndexOnce() async throws {
@@ -314,7 +324,7 @@ final class FakeRunner: @unchecked Sendable {
         for (i, h) in hashes.enumerated() {
             try m.enqueue(torrent(h, key: .movie(tmdbID: 100 + i)), key: .movie(tmdbID: 100 + i), title: h)
         }
-        try await ready(m) { _ in runner.log.count == 2 }
+        try await started(2, m, dir, runner)
         let ids = hashes.map(id)
 
         var before = m.indexWrites
@@ -335,11 +345,12 @@ final class FakeRunner: @unchecked Sendable {
     }
 
     @Test func aQueuePassThatChangesNothingDoesNotWrite() async throws {
+        let dir = DownloadsTests.tempDir()
         let runner = FakeRunner()
-        let m = manager(settings: DownloadSettings(maxConcurrent: 1), runner: runner)
+        let m = manager(dir, settings: DownloadSettings(maxConcurrent: 1), runner: runner)
         try m.enqueue(torrent(Self.hashA), key: .movie(tmdbID: 1), title: "A")
         try m.enqueue(torrent(Self.hashB, key: .movie(tmdbID: 2)), key: .movie(tmdbID: 2), title: "B")
-        try await ready(m) { _ in runner.log.count == 1 }
+        try await started(1, m, dir, runner)
         let before = m.indexWrites
         m.pump()
         m.pump()
@@ -359,7 +370,7 @@ final class FakeRunner: @unchecked Sendable {
         let runner = FakeRunner()
         let m = manager(dir, settings: DownloadSettings(maxConcurrent: 1), runner: runner)
         try m.enqueue(torrent(Self.hashA), key: .movie(tmdbID: 1), title: "A")
-        try await ready(m) { _ in runner.log.count == 1 }
+        try await started(1, m, dir, runner)
 
         var before = m.indexWrites
         try m.enqueue(torrent(Self.hashB, key: .movie(tmdbID: 2)), key: .movie(tmdbID: 2), title: "B", mobileData: true)

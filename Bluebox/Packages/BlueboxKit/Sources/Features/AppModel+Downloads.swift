@@ -58,6 +58,8 @@ extension AppModel {
                         manager.externalCompleted(id, fileName: name)
                     case .failed(let message):
                         manager.externalFailed(id, message: message)
+                    case .gaveUp(let message):
+                        manager.externalFailed(id, message: message, needsAnotherRelease: true)
                     }
                 }
             },
@@ -67,7 +69,8 @@ extension AppModel {
 
     /// Starts the queue (unfinished downloads resume) once sources are registered.
     func startDownloadQueue() {
-        announceDownloadChanges()  // baseline: what was already finished or failed isn't news
+        announceDownloadChanges()  // what finished or failed since the index was saved (a background launch)
+        finishLeftoverDownloadDeletes()
         loadUpgradeOffers()
         let keep = Set(downloads.all().filter(\.isTorrent).map(\.id))
         let torrents = torrentDownloads
@@ -171,7 +174,11 @@ extension AppModel {
     ///   Downloads, new episodes): it keeps to the download window and Wi‑Fi,
     ///   only takes a release within the quality and size caps, and fails
     ///   quietly (in the log) instead of with an alert.
-    public func startDownload(key: MediaKey, title: String, subtitle: String? = nil, automatic: Bool = false) async {
+    /// - Parameter mobileData: as `DownloadManager.setMobileData`, set as it's queued.
+    /// - Returns: true when it's in the queue (or already was).
+    @discardableResult
+    public func startDownload(key: MediaKey, title: String, subtitle: String? = nil, automatic: Bool = false,
+                              mobileData: Bool? = nil) async -> Bool {
         // The button shows "preparing" at once, while a release is found.
         preparingDownloads.insert(key)
         defer { preparingDownloads.remove(key) }
@@ -181,27 +188,74 @@ extension AppModel {
             } else {
                 alert = AppAlert(title: "Can't download", message: DownloadError.notDownloadable.localizedDescription)
             }
-            return
+            return false
         }
         if variant.sourceID == addons.id {
-            await downloadFromAddons(key: key, title: title, subtitle: subtitle, automatic: automatic)
-            return
+            return await downloadFromAddons(key: key, title: title, subtitle: subtitle, automatic: automatic, mobileData: mobileData)
         }
-        await enqueueDownload(variant, key: key, title: title, subtitle: subtitle, automatic: automatic)
+        return await enqueueDownload(variant, key: key, title: title, subtitle: subtitle, automatic: automatic, mobileData: mobileData)
     }
 
     /// Downloads one release the user picked: debrid over HTTPS, torrents with libtorrent.
-    public func download(_ release: AddonRelease, for item: NowPlayingItem) async {
+    @discardableResult
+    public func download(_ release: AddonRelease, for item: NowPlayingItem) async -> Bool {
         await download(release, for: item, automatic: false)
     }
 
+    /// The release picker's Download: says it's queued, and when the title
+    /// already has a download of another release, asks whether this one
+    /// replaces it rather than quietly adding a second copy.
+    func downloadPicked(_ release: AddonRelease, for item: NowPlayingItem) async {
+        let variant = await addons.variant(for: release, key: item.key)
+        let existing = downloads.records(for: item.key).filter { !PendingDownloadDeletes.shared.contains($0.id) }
+        if let same = existing.first(where: { $0.id == DownloadRecord.id(for: variant) }), !same.isFailed, same.state != .paused {
+            showToast(AppToast(same.state == .completed ? "Already downloaded" : "Already downloading", verbatimMessage: item.title, style: .info))
+            return
+        }
+        guard let current = existing.first(where: { $0.id != DownloadRecord.id(for: variant) }) else {
+            await downloadPickedNow(release, for: item, replacing: nil)
+            return
+        }
+        let finished = current.state == .completed
+        let what = [current.releaseName, current.origin.resolution].compactMap { $0 }.first.map { " (\($0))" } ?? ""
+        alert = AppAlert(
+            title: String(localized: "Replace current download?"),
+            message: finished
+                ? "“\(item.title)” is already downloaded\(what). The one you have stays until this one is in."
+                : "“\(item.title)” is already downloading\(what). Replacing cancels it.",
+            actions: [
+                .init(String(localized: "Replace"), role: .primary) { [weak self] in
+                    Task { await self?.downloadPickedNow(release, for: item, replacing: current) }
+                },
+                .init(String(localized: "Keep Both"), role: .secondary) { [weak self] in
+                    Task { await self?.downloadPickedNow(release, for: item, replacing: nil) }
+                },
+                .init(String(localized: "Cancel"), role: .cancel),
+            ])
+    }
+
+    private func downloadPickedNow(_ release: AddonRelease, for item: NowPlayingItem, replacing current: DownloadRecord?) async {
+        // A finished copy goes once the new one is in (as Swap does); an unfinished one goes now.
+        let finished = current?.state == .completed
+        if let current, !finished { deleteDownloads([current]) }
+        guard await download(release, for: item, automatic: false, replaces: finished ? current?.id : nil) else { return }
+        // Held for Wi‑Fi: "Will start on Wi‑Fi" (with Download Now) has already said so.
+        let variant = await addons.variant(for: release, key: item.key)
+        if let r = downloads.record(for: variant), mobileDataDownloadNotice(for: r, title: item.title) != nil { return }
+        let name = item.subtitle.map { "\(item.title) · \($0)" } ?? item.title
+        showToast(AppToast("Downloading", verbatimMessage: "\(name) · \(DownloadUpgrade.label(release))", style: .success))
+    }
+
     /// - Parameter replaces: the download this one upgrades (Swap); it goes once this one finishes.
-    func download(_ release: AddonRelease, for item: NowPlayingItem, automatic: Bool, replaces: String? = nil) async {
+    /// - Returns: true when it's in the queue.
+    @discardableResult
+    func download(_ release: AddonRelease, for item: NowPlayingItem, automatic: Bool, replaces: String? = nil,
+                  mobileData: Bool? = nil) async -> Bool {
         if release.magnet != nil, !release.isDebrid, !TorrentStreamer.isAvailable {
             if !automatic {
                 alert = AppAlert(title: "Can't download", message: TorrentStreamError.unavailableOnThisPlatform.localizedDescription)
             }
-            return
+            return false
         }
         // A link that leads to an add-on's notice clip (expired plan, not cached) isn't worth queueing.
         do {
@@ -212,12 +266,12 @@ extension AppModel {
             } else {
                 alert = debridAlert(error, title: "Couldn't download “\(item.title)”", item: item)
             }
-            return
+            return false
         } catch {}
         let variant = await addons.variant(for: release, key: item.key)
         let resource = release.url.map { PlaybackResource(variant: variant, url: $0) }
-        await enqueueDownload(variant, key: item.key, title: item.title, subtitle: item.subtitle, resource: resource,
-                              automatic: automatic, replaces: replaces)
+        return await enqueueDownload(variant, key: item.key, title: item.title, subtitle: item.subtitle, resource: resource,
+                              automatic: automatic, replaces: replaces, mobileData: mobileData)
     }
 
     /// The release a download of `key` takes when Bluebox picks: the add-ons'
@@ -229,7 +283,9 @@ extension AppModel {
 
     /// Downloads the best release for a title within its download rule: a
     /// debrid link if there is one, otherwise a torrent.
-    func downloadFromAddons(key: MediaKey, title: String, subtitle: String?, automatic: Bool = false) async {
+    @discardableResult
+    func downloadFromAddons(key: MediaKey, title: String, subtitle: String?, automatic: Bool = false,
+                            mobileData: Bool? = nil) async -> Bool {
         do {
             guard let release = try await downloadRelease(for: key, strict: automatic) else {
                 if automatic {
@@ -237,27 +293,31 @@ extension AppModel {
                 } else {
                     alert = AppAlert(title: "Can't download", message: "The add-ons didn't find a release of this.")
                 }
-                return
+                return false
             }
-            await download(release, for: NowPlayingItem(key: key, title: title, subtitle: subtitle), automatic: automatic)
+            return await download(release, for: NowPlayingItem(key: key, title: title, subtitle: subtitle), automatic: automatic,
+                                  mobileData: mobileData)
         } catch {
             if automatic {
                 Log.sources.error("Automatic download failed (\(key.rawValue, privacy: .public)): \(error.localizedDescription, privacy: .public)")
-                return
+                return false
             }
             report(error, title: "Couldn't download “\(title)”", context: .addons) { [weak self] in
                 await self?.downloadFromAddons(key: key, title: title, subtitle: subtitle)
             }
+            return false
         }
     }
 
+    @discardableResult
     private func enqueueDownload(_ variant: MediaVariant, key: MediaKey, title: String, subtitle: String?,
-                                 resource: PlaybackResource? = nil, automatic: Bool = false, replaces: String? = nil) async {
+                                 resource: PlaybackResource? = nil, automatic: Bool = false, replaces: String? = nil,
+                                 mobileData: Bool? = nil) async -> Bool {
         let artwork = await self.title(for: key.seriesKey ?? key).flatMap { imageURL($0.poster, width: 120) }
         do {
             let record = try downloads.enqueue(variant, key: key, title: title, subtitle: subtitle, artworkURL: artwork,
-                                               resource: resource, automatic: automatic, replaces: replaces)
-            if automatic { return }  // quiet: it waits for Wi‑Fi and the download window by design
+                                               resource: resource, automatic: automatic, replaces: replaces, mobileData: mobileData)
+            if automatic { return true }  // quiet: it waits for Wi‑Fi and the download window by design
             // No "Downloading…" toast: the button turns into progress and the tab's badge goes up.
             // Only the case where it won't start yet is worth saying.
             if let notice = mobileDataDownloadNotice(for: record, title: title) {  // "Will start on Wi‑Fi" (MobileData.swift)
@@ -265,80 +325,167 @@ extension AppModel {
             }
             // The first download is when "Downloaded" alerts start to matter; iOS asks only once.
             Task { _ = await EpisodeNotifications.requestPermission() }
+            return true
         } catch DownloadError.alreadyInQueue {
             // Already downloading: nothing changes, so nothing to say.
+            return true
         } catch DownloadError.alreadyDownloaded {
             if !automatic { alert = AppAlert(title: "Already downloaded", message: "This release is already in Downloads.") }
+            return false
         } catch {
             if automatic {
                 Log.sources.error("Automatic download not queued (\(title, privacy: .public)): \(error.localizedDescription, privacy: .public)")
             } else {
                 report(error, title: "Couldn't start the download", context: .download)
             }
+            return false
         }
     }
 
-    /// Says when a download finishes or fails while you're elsewhere in the app.
-    /// Only changes seen during this launch count; the first call just records.
+    /// Says when a download finishes or fails while you're elsewhere in the
+    /// app, and with a notification when Bluebox is out of sight. The first
+    /// look compares with the index as it was at launch, so a background
+    /// launch for transfers that finished meanwhile still says so.
     func announceDownloadChanges() {
-        let now = Dictionary(downloads.all().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        defer { lastDownloadStates = now.mapValues(\.state) }
-        guard let before = lastDownloadStates else { return }
-        for (id, record) in now {
-            guard let old = before[id], old != record.state else { continue }
+        let all = downloads.all()
+        let before = lastDownloadStates ?? downloads.launchStates
+        lastDownloadStates = Dictionary(all.map { ($0.id, $0.state) }, uniquingKeysWith: { a, _ in a })
+        let outOfSight = DownloadLifecycle.isOutOfSight
+        var failures: [(record: DownloadRecord, message: String)] = []
+        for (record, news) in DownloadNews.changes(from: before, to: all) {
+            let id = record.id
             let name = record.subtitle.map { "\(record.title) · \($0)" } ?? record.title
-            switch record.state {
-            case .completed where old == .downloading:
+            switch news {
+            case .finished:
                 if record.replaces != nil {
                     finishUpgrades()
                 } else {
-                    showToast(AppToast("Downloaded “\(name)”", style: .success, actionTitle: "Play") { [weak self] in
+                    // The name is shown as it is, never looked up in the translations.
+                    showToast(AppToast("Downloaded", message: name, style: .success, verbatim: .message, actionTitle: "Play") { [weak self] in
                         Task { await self?.playDownload(record) }
                     })
                 }
-                if record.isTorrent && downloadLifecycle.isInBackground { DownloadLifecycle.notifyFinished(record) }
+                if outOfSight { DownloadLifecycle.notifyFinished(record) }
                 Task { await fetchSubtitles(for: record) }
-            case .failed(let message) where old == .downloading || old == .queued:
+            case .failed(let message):
                 Log.sources.error("Download failed (\(record.title, privacy: .public)): \(message, privacy: .public)")
-                showToast(AppToast("Download failed: \(name)", message: message, style: .error, actionTitle: "Retry") { [weak self] in
-                    self?.downloads.resume(id)
-                })
-            default:
-                break
+                failures.append((record, message))
+                if outOfSight && record.isAutomatic != true { DownloadLifecycle.notifyFailed(record, message: message) }
             }
+        }
+        announceFailures(failures)
+    }
+
+    /// One notice for what failed together (a season short of space), not one per episode.
+    private func announceFailures(_ failures: [(record: DownloadRecord, message: String)]) {
+        guard let first = failures.first else { return }
+        if failures.count == 1 {
+            let record = first.record
+            let name = record.subtitle.map { "\(record.title) · \($0)" } ?? record.title
+            // A torrent nobody shares won't come back with a Retry: offer the next release instead.
+            let another = record.suggestsAnotherRelease
+            showToast(AppToast("Download failed", verbatimMessage: "\(name)\n\(AppToast.translated(first.message))", style: .error,
+                               actionTitle: another ? "Try Another Release" : "Retry") { [weak self] in
+                guard let self else { return }
+                if another { Task { await self.tryAnotherRelease(record) } } else { self.downloads.resume(record.id) }
+            })
+            return
+        }
+        let ids = failures.map(\.record.id)
+        showToast(AppToast(String(localized: "\(String(failures.count)) downloads failed"), message: first.message, style: .error, actionTitle: "Retry All") { [weak self] in
+            self?.downloads.resume(ids)
+        })
+    }
+
+    /// Try Another Release: a torrent download nobody shares makes way for
+    /// the next release the add-ons offer (not the same torrent again),
+    /// picked within the title's download rule like any download.
+    func tryAnotherRelease(_ r: DownloadRecord) async {
+        guard let key = r.mediaKey else { return }
+        showToast(AppToast("Finding another release…", verbatimMessage: r.title, style: .info))
+        do {
+            let others = DownloadNews.otherReleases(try await addons.releases(for: key), than: r)
+            guard let release = SmartDownloads.pickRelease(others, rule: downloadSettings.rule(for: key), strict: false) else {
+                showToast(AppToast("No other release", verbatimMessage: "\(r.title)\n\(AppToast.translated("The add-ons didn't find another release."))", style: .info))
+                return
+            }
+            // The old one stays until the new one is in the queue; then it goes, with Undo.
+            let item = NowPlayingItem(key: key, title: r.title, subtitle: r.subtitle, artworkURL: r.artworkURL)
+            let variant = await addons.variant(for: release, key: key)
+            let wasThere = downloads.record(for: variant) != nil  // Undo leaves alone what was already queued
+            guard await download(release, for: item, automatic: false) else { return }
+            guard let new = downloads.record(for: variant), new.id != r.id else { return }
+            let name = r.subtitle.map { "\(r.title) · \($0)" } ?? r.title
+            replaceDownloadWithUndo(r, by: wasThere ? nil : new, title: "Downloading another release",
+                                    verbatimMessage: "\(name) · \(DownloadUpgrade.label(release))")
+        } catch {
+            report(error, title: "Couldn't find another release", context: .addons)
         }
     }
 
     /// Queues the next `count` episodes after `key` that aren't downloaded or
-    /// queued yet. Returns how many it asked for.
+    /// queued yet. Their lookups run side by side, like Download Season's,
+    /// and they join the queue in episode order. Returns how many went in and
+    /// what failed (an episode with no release counts there, not as added).
     @discardableResult
-    public func downloadNextEpisodes(after key: MediaKey, count: Int = 3) async -> Int {
+    public func downloadNextEpisodes(after key: MediaKey, count: Int = 3) async -> (added: Int, failed: [(MediaKey, Error)]) {
         guard let seriesKey = key.seriesKey, let start = key.episodeNumbers,
-              let detail = try? await metadata.detail(for: seriesKey) else { return 0 }
+              let detail = try? await metadata.detail(for: seriesKey) else { return (0, []) }
         var (s, e) = start
-        var added = 0
+        var wanted: [(key: MediaKey, subtitle: String)] = []
         var checked = 0
-        while added < count, checked < count + 20, let (ns, ne) = SeriesCursor.next(after: s, e, seasons: detail.seasons) {
+        while wanted.count < count, checked < count + 20, let (ns, ne) = SeriesCursor.next(after: s, e, seasons: detail.seasons) {
             (s, e) = (ns, ne)
             checked += 1
             guard let next = seriesKey.episode(season: ns, episode: ne) else { break }
             if downloads.records(for: next).contains(where: { $0.state != .paused && !$0.isFailed }) { continue }
-            await startDownload(key: next, title: detail.title.name, subtitle: "S\(ns)·E\(ne)")
-            added += 1
+            wanted.append((next, "S\(ns)·E\(ne)"))
         }
-        return added
+        guard !wanted.isEmpty else { return (0, []) }
+        let keys = wanted.map(\.key)
+        preparingDownloads.formUnion(keys)
+        defer { preparingDownloads.subtract(keys) }
+        let artwork = await self.title(for: seriesKey).flatMap { imageURL($0.poster, width: 120) }
+        let lookups = keys.map { k in
+            Task { [weak self] () -> Result<(MediaVariant, PlaybackResource?), Error> in
+                guard let self else { return .failure(CancellationError()) }
+                do { return .success(try await self.downloadTarget(for: k)) } catch { return .failure(error) }
+            }
+        }
+        var added = 0
+        var failed: [(MediaKey, Error)] = []
+        for (i, want) in wanted.enumerated() {
+            do {
+                let (variant, resource) = try await lookups[i].value.get()
+                try downloads.enqueue(variant, key: want.key, title: detail.title.name, subtitle: want.subtitle,
+                                      artworkURL: artwork, resource: resource)
+                added += 1
+            } catch DownloadError.alreadyInQueue {
+                added += 1
+            } catch {
+                failed.append((want.key, error))
+            }
+        }
+        if added > 0 { Task { _ = await EpisodeNotifications.requestPermission() } }
+        return (added, failed)
     }
 
     /// "Download Next 3 Episodes" from a menu: says what it did, so the tap
     /// never seems to do nothing (the queue may be on another tab, or the
     /// show may have nothing left).
     func downloadNextEpisodesAnnounced(after key: MediaKey, count: Int = 3, showTitle: String) async {
-        showToast(AppToast("Finding the next episodes…", message: showTitle, style: .info))
-        let added = await downloadNextEpisodes(after: key, count: count)
-        showToast(added == 0
-                  ? AppToast("Nothing more to download", message: "\(showTitle): the following episodes are already downloaded or not out yet.",
-                             style: .info)
-                  : AppToast("Downloading \(added) more episode\(added == 1 ? "" : "s")", message: showTitle, style: .success))
+        showToast(AppToast("Finding the next episodes…", message: showTitle, style: .info, verbatim: .message))
+        let (added, failed) = await downloadNextEpisodes(after: key, count: count)
+        if let problem = failed.first {
+            let reason = UserFacingError.message(for: problem.1, context: .download)
+            showToast(AppToast(added == 0 ? "Couldn't download the next episodes" : "Downloading \(added) of \(added + failed.count) episodes",
+                               message: "\(showTitle): \(AppToast.translated(reason))", style: added == 0 ? .error : .info, verbatim: .message))
+        } else {
+            showToast(added == 0
+                      ? AppToast("Nothing more to download", message: "\(showTitle): \(AppToast.translated("The following episodes are already downloaded or not out yet."))",
+                                 style: .info, verbatim: .message)
+                      : AppToast("Downloading \(added) more episode\(added == 1 ? "" : "s")", message: showTitle, style: .success, verbatim: .message))
+        }
     }
 
     public func pauseDownload(_ r: DownloadRecord) { downloads.pause(r.id) }
@@ -431,5 +578,35 @@ extension AppModel {
         let tokens = streamHolds
         streamHolds = []
         tokens.forEach { downloads.releaseHold($0) }
+    }
+}
+
+/// What changed between two looks at the downloads that's worth saying.
+enum DownloadNews: Equatable {
+    case finished
+    case failed(String)
+
+    /// Finishes and failures of downloads that were queued or running (or
+    /// new: one can fail before the first look, say for space). `before` is
+    /// the last look's states, or the index's at launch.
+    static func changes(from before: [String: DownloadRecord.State], to now: [DownloadRecord]) -> [(DownloadRecord, DownloadNews)] {
+        now.sorted { $0.sortOrder < $1.sortOrder }.compactMap { r in
+            let old = before[r.id]
+            guard old != r.state else { return nil }
+            let wasWorking = old == nil || old == .queued || old == .downloading
+            switch r.state {
+            case .completed where old == .queued || old == .downloading: return (r, .finished)
+            case .failed(let message) where wasWorking: return (r, .failed(message))
+            default: return nil
+            }
+        }
+    }
+
+    /// The add-ons' releases minus the one a download already tried: the
+    /// same release, or the same torrent under another file or debrid link.
+    static func otherReleases(_ ranked: [AddonRelease], than r: DownloadRecord) -> [AddonRelease] {
+        let hash = r.infoHash
+            ?? URL(string: r.origin.id)?.pathComponents.first { $0.count == 40 && $0.allSatisfy(\.isHexDigit) }?.lowercased()
+        return ranked.filter { c in c.id != r.origin.id && (hash == nil || c.contentHash != hash) }
     }
 }

@@ -44,6 +44,11 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
     public var isAutomatic: Bool?
     /// The download this one upgrades: deleted once this one finishes.
     public var replaces: String?
+    /// Failed for want of free space: it goes back in the queue by itself once there's room.
+    public var failedForSpace: Bool?
+    /// A torrent that failed in a way Retry won't fix (nobody shares it, it's
+    /// damaged): Try Another Release is offered instead.
+    public var needsAnotherRelease: Bool?
 
     public init(id: String, mediaKey: MediaKey?, title: String, subtitle: String?, origin: MediaVariant, state: State,
                 receivedBytes: Int64, expectedBytes: Int64?, createdAt: Date, fileName: String?, subtitleFiles: [SubtitleFile],
@@ -77,6 +82,10 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
     public var isActive: Bool { state == .queued || state == .downloading }
     public var isFailed: Bool { if case .failed = state { true } else { false } }
     public var failureMessage: String? { if case .failed(let m) = state { m } else { nil } }
+
+    /// A torrent whose downloader gave up (nobody shares it, it's damaged):
+    /// Retry won't help, Try Another Release might.
+    public var suggestsAnotherRelease: Bool { isTorrent && isFailed && needsAnotherRelease == true }
 
     /// The release name when it says more than the title (torrent and debrid releases).
     public var releaseName: String? {

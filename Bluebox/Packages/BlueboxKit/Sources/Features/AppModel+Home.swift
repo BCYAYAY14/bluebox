@@ -23,7 +23,7 @@ extension AppModel {
         let profile = currentProfileID
         hiddenTitles.hide(title, profileID: profile)
         hiddenRevision += 1
-        showToast(AppToast(title.name, message: "Hidden from Home", actionTitle: "Undo") { [weak self] in
+        showToast(AppToast(title.name, message: "Hidden from Home", verbatim: .title, actionTitle: "Undo") { [weak self] in
             self?.unhideTitle(title.key, profileID: profile)
         })
     }

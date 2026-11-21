@@ -20,7 +20,10 @@ extension EnvironmentValues {
 @MainActor
 final class PagedTitles {
     private(set) var items: [Title] = []
+    /// The first page failed: there's nothing to show.
     var error: Error?
+    /// A later page failed: the results stay, with Retry under them.
+    private(set) var moreError: Error?
     /// Whether the current query is loading a page. An earlier query's request doesn't count.
     var isLoading: Bool { loadingGeneration == generation }
     /// The items belong to the previous query: shown dimmed until the new
@@ -44,7 +47,7 @@ final class PagedTitles {
     /// Starts over, clearing the grid (genre pages, an emptied search field).
     func reset(_ fetch: ((Int) async throws -> Page<Title>)?) async {
         generation += 1
-        items = []; error = nil; page = 0; totalPages = 1; isStale = false; query = nil
+        items = []; error = nil; moreError = nil; page = 0; totalPages = 1; isStale = false; query = nil
         self.fetch = fetch
         if fetch != nil { await loadMore() }
     }
@@ -56,6 +59,7 @@ final class PagedTitles {
         self.query = query
         self.fetch = fetch
         error = nil
+        moreError = nil
         if let cached {
             items = Self.unique(cached.items)
             page = cached.page; totalPages = cached.totalPages; isStale = false
@@ -66,8 +70,9 @@ final class PagedTitles {
         await loadMore()
     }
 
+    /// The next page. Not again by itself after a failure: Retry (`retryMore`) asks.
     func loadMore() async {
-        guard let fetch, hasMore, !isLoading else { return }
+        guard let fetch, hasMore, !isLoading, moreError == nil else { return }
         let gen = generation
         loadingGeneration = gen
         defer { if loadingGeneration == gen { loadingGeneration = nil } }
@@ -86,14 +91,41 @@ final class PagedTitles {
         } catch is CancellationError {
         } catch {
             guard gen == generation else { return }
-            self.error = error
-            if isStale { items = []; isStale = false }
+            if isStale || items.isEmpty {
+                self.error = error
+                items = []; isStale = false
+            } else {
+                moreError = error
+            }
         }
+    }
+
+    /// Asks for the page that failed again.
+    func retryMore() async {
+        moreError = nil
+        await loadMore()
     }
 
     private static func unique(_ titles: [Title]) -> [Title] {
         var seen = Set<MediaKey>()
         return titles.filter { seen.insert($0.key).inserted }
+    }
+}
+
+/// Under results whose next page failed: they stay, and this asks again.
+struct MoreResultsRetry: View {
+    let results: PagedTitles
+
+    var body: some View {
+        HStack(spacing: Spacing.m) {
+            Label("Couldn't load more results", systemImage: "exclamationmark.triangle")
+                .font(.footnote).foregroundStyle(Palette.textSecondary)
+            Button { Task { await results.retryMore() } } label: { Text("Retry") }
+                .buttonStyle(SecondaryButtonStyle())
+                .accessibilityIdentifier("retryMoreResults")
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
     }
 }
 
@@ -140,6 +172,8 @@ struct TitleGrid: View {
         // The next page; a new query's progress shows in the header instead.
         if results.isLoading && !results.isStale && !results.items.isEmpty {
             ProgressView().frame(maxWidth: .infinity).padding()
+        } else if results.moreError != nil, !results.items.isEmpty {
+            MoreResultsRetry(results: results)
         }
     }
 
@@ -258,12 +292,20 @@ struct SearchView: View {
         .task(id: app.catalogMode == .live) { await loadBrowse() }
         .task(id: AvailabilityRequest(needed: filter.needsAvailability, downloads: app.completedDownloadKeys)) {
             guard filter.needsAvailability else { return }
-            availability = await app.searchAvailability()
+            // Downloads and releases already found show at once; the debrid cloud joins when it answers (capped).
+            let quick = await app.searchAvailability(includingCloud: false)
+            guard !Task.isCancelled else { return }
+            if quick != availability { availability = quick }
+            guard app.searchHasCloud else { return }
+            let full = await app.searchAvailability()
+            guard !Task.isCancelled else { return }
+            if full != availability { availability = full }
         }
         // Back online: the browse page and a failed search load again by themselves.
-        .reloadsWhenBackOnline(browseFailed || results.error != nil) {
+        .reloadsWhenBackOnline(browseFailed || results.error != nil || results.moreError != nil) {
             if browseFailed { await loadBrowse() }
             if results.error != nil { await search(query) }
+            else if results.moreError != nil { await results.retryMore() }
         }
         .task(id: app.currentProfileID) {
             recents = RecentSearches.load(profile: app.currentProfileID)

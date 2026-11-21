@@ -352,7 +352,7 @@ private struct TopBarBackButton: View {
                 .frame(width: 30, height: 30)
                 .background(Circle().fill(.white.opacity(hovering ? 0.22 : 0.12)))
                 .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
-                .contentShape(Circle())
+                .hitTarget(width: 30, height: 30)
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
@@ -377,7 +377,7 @@ private struct NavIcon: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(selected || hovering ? Palette.textPrimary : Palette.textSecondary)
                 .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
+                .hitTarget(width: 28, height: 28)
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }
@@ -438,7 +438,9 @@ struct CompactHomeHeader: View {
                             .font(.footnote.weight(.bold))
                             .frame(width: 34, height: 34)
                             .overlay(Circle().strokeBorder(.white.opacity(0.45), lineWidth: 1))
-                            .contentShape(Circle())
+                            // In the chips' scroll view, so a real 44 pt frame rather than `hitTarget`.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(PressableStyle())
                     .accessibilityLabel("Show Everything")
@@ -454,7 +456,7 @@ struct CompactHomeHeader: View {
                 if genres.hasGenres != false { categoriesMenu }
             }
             .padding(.horizontal, Spacing.l)
-            .frame(height: 40)
+            .frame(height: 44)
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
@@ -472,7 +474,8 @@ struct CompactHomeHeader: View {
             .padding(.horizontal, 14)
             .frame(minHeight: 34)
             .overlay(Capsule().strokeBorder(.white.opacity(0.45), lineWidth: 1))
-            .contentShape(Capsule())
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
             .opacity(categoriesOpen ? 0.8 : 1)
         }
         .buttonStyle(PressableStyle())

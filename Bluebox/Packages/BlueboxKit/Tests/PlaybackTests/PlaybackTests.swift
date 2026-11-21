@@ -40,6 +40,10 @@ class MockEngine: PlaybackEngine {
     func selectEmbeddedSubtitle(_ trackID: String?) { embeddedSelection = trackID }
     var secondaryEmbeddedSelection: String?
     func selectSecondaryEmbeddedSubtitle(_ trackID: String?) { secondaryEmbeddedSelection = trackID }
+    var subtitleDelays: [TimeInterval] = []
+    func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) { subtitleDelays.append(seconds) }
+    var subtitleScales: [Double] = []
+    func setEmbeddedSubtitleScale(_ scale: Double) { subtitleScales.append(scale) }
     func stop() { snapshot.status = .idle }
     func setVideoAdjustments(_ adjustments: VideoAdjustments) {}
     var volume: Float = 1

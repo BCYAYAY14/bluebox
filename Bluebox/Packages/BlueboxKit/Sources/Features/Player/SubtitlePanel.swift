@@ -247,6 +247,10 @@ struct SubtitleTimingPage: View {
     @Environment(SubtitleAudioSync.self) private var sharedSync: SubtitleAudioSync?
     @State private var ownSync = SubtitleAudioSync()
     private var audioSync: SubtitleAudioSync { sharedSync ?? ownSync }
+    /// Optional: the page also renders in snapshots without the app.
+    @Environment(AppModel.self) private var app: AppModel?
+    /// Off in Settings › Privacy & Features hides it, unless one is still running.
+    private var showsAudioSync: Bool { app?.settings.offersAudioSync ?? true || audioSync.isRunning }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -263,12 +267,13 @@ struct SubtitleTimingPage: View {
                     .font(.footnote).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                if session.canRetimeSubtitleLines || !session.subtitleCues.isEmpty { syncToAudio }
+                if showsAudioSync && (session.canRetimeSubtitleLines || !session.subtitleCues.isEmpty) { syncToAudio }
                 // Only Bluebox's own lines can be shown here (VLC draws the video's in the picture).
                 if session.canRetimeSubtitleLines { nowShowing }
-                ValueDial(title: "Subtitle delay", value: session.subtitleOffset.seconds, range: -10...10, defaultValue: 0,
-                          fine: 0.1, coarse: 1, format: Self.delayText, meaning: Self.meaning, keys: ("{", "}"),
-                          stepLabel: { String(format: $0 > 0 ? "+%g s" : "−%g s", abs($0)) }) { new in
+                ValueDial(title: "Subtitle delay", value: session.subtitleOffset.seconds, range: Self.delayRange(session.subtitleOffset.seconds),
+                          defaultValue: 0, fine: 0.1, coarse: 1, format: Self.delayText, meaning: Self.meaning, keys: ("{", "}"), coarseKeys: ("⌥{", "⌥}"),
+                          stepLabel: { String(format: $0 > 0 ? "+%g s" : "−%g s", abs($0)) },
+                          limit: -SubtitleOffset.limit...SubtitleOffset.limit) { new in
                     session.nudgeSubtitles(by: new - session.subtitleOffset.seconds)
                 }
                 if session.canRetimeSubtitleLines {
@@ -297,9 +302,11 @@ struct SubtitleTimingPage: View {
                      : "Listens to a couple of minutes of speech and lines the subtitles up, drift included.")
                     .font(.caption).foregroundStyle(Palette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
-            case .done(let offset, _, let drift):
+            case .done(let offset, _, let drift, let here):
                 HStack(spacing: 6) {
-                    Label("Synced · \(offset.label)" + (drift ? ", drift fixed" : ""), systemImage: "checkmark.circle.fill")
+                    // A delay for this part only: the timing changes elsewhere in the film (a cut).
+                    Label("Synced · \(offset.label)" + (drift ? ", drift fixed" : here ? ", for this part of the video" : ""),
+                          systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.semibold)).foregroundStyle(Palette.brandBright)
                     Spacer(minLength: 0)
                     Button("Undo") { audioSync.undo(session) }
@@ -318,6 +325,13 @@ struct SubtitleTimingPage: View {
         case .matching: "Matching…"
         default: "Sync to the Audio"
         }
+    }
+
+    /// The slider's reach: ±10 s, or out to the next 10 s past a bigger delay
+    /// (Sync to the Audio sets tens of seconds), so the thumb isn't pinned at an end.
+    static func delayRange(_ s: Double) -> ClosedRange<Double> {
+        let reach = max(10, (abs(s) / 10).rounded(.up) * 10)
+        return -reach...reach
     }
 
     static func delayText(_ s: Double) -> String {
@@ -388,6 +402,12 @@ struct SubtitleTimingPage: View {
             }
         }
         .tint(Palette.textSecondary)
+        // From the video's own frame rate when the engine knows it, not always 25 → 23.976.
+        .onAppear {
+            if let pair = SubtitleSyncFrameRates.startingPair(videoFPS: session.engine.diagnostics().frameRate) {
+                (subtitleFPS, videoFPS) = pair
+            }
+        }
     }
 }
 
@@ -420,6 +440,22 @@ private struct NearbyLinePicker: View {
 enum SubtitleSyncFrameRates {
     static let all: [(String, Double)] = [("23.976", 24000.0 / 1001), ("24", 24), ("25", 25), ("29.97", 30000.0 / 1001), ("30", 30)]
     static var options: [BlueboxPickerOption<Double>] { all.map { BlueboxPickerOption("\($0.0) fps", value: $0.1) } }
+
+    /// The convert's starting pair for a video playing at `videoFPS` (the
+    /// engine's, when known): the video's own rate, and the rate subtitles
+    /// for it are most often made at instead (25 for film rates, 23.976 for
+    /// a 25 fps video, 30 for 29.97). Nil for a rate not in the list.
+    static func startingPair(videoFPS: Double?) -> (subtitles: Double, video: Double)? {
+        guard let videoFPS, let video = all.map(\.1).filter({ abs($0 - videoFPS) < 0.05 })
+            .min(by: { abs($0 - videoFPS) < abs($1 - videoFPS) }) else { return nil }
+        let subtitles: Double = switch video {
+        case 25: 24000.0 / 1001
+        case 30000.0 / 1001: 30
+        case 30: 30000.0 / 1001
+        default: 25
+        }
+        return (subtitles, video)
+    }
 }
 
 // MARK: - Style
@@ -433,6 +469,7 @@ struct SubtitleStyleInspector: View {
     let session: PlayerSession
     let onClose: () -> Void
     static let width: CGFloat = 300
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -473,6 +510,12 @@ struct SubtitleStyleInspector: View {
                         SubtitlePositionPad(style: $style)
                         Toggle("Move Up for Controls", isOn: $style.avoidControls)
                             .font(.subheadline).toggleStyle(.switch).tint(Palette.brand)
+                        if !style.isDefaultPosition {
+                            Button("Reset Position") { withAnimation(Motion.standard(reduceMotion)) { style.resetPosition() } }
+                                .font(.subheadline.weight(.semibold)).buttonStyle(PlayerQuietButtonStyle())
+                                .foregroundStyle(Palette.brandBright)
+                                .accessibilityIdentifier("style.resetPosition")
+                        }
                     }
                     Toggle(isOn: $style.hidesSoundCues) {
                         VStack(alignment: .leading, spacing: 1) {
@@ -484,7 +527,10 @@ struct SubtitleStyleInspector: View {
                     }
                     .toggleStyle(.switch).tint(Palette.brand)
                     .accessibilityIdentifier("style.hideSoundCues")
-                    Text(PanelMetrics.showsShortcuts ? "You can also drag subtitles on the video; − and = resize them."
+                    // VLC draws styled ASS and picture tracks itself: nothing on the
+                    // video can be dragged, and it keeps only part of the position.
+                    Text(SubtitleStyleNote.positionLimited(session) ? "Position is limited for this track."
+                         : PanelMetrics.showsShortcuts ? "You can also drag subtitles on the video; − and = resize them."
                          : "You can also drag subtitles on the video, and pinch to resize.")
                         .font(.caption).foregroundStyle(Palette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -574,6 +620,14 @@ enum SubtitleStyleNote {
         if session.slowSnapshot.drawsEmbeddedSubtitles, track.keepsOwnStyle { return "This ASS track keeps its own look. Size still applies." }
         return nil
     }
+
+    /// VLC draws the chosen track (the same test as the player's): it can't be
+    /// dragged on the video, keeps no sideways offset and no small margins.
+    @MainActor
+    static func positionLimited(_ session: PlayerSession) -> Bool {
+        if case .embedded = session.subtitleSelection { return session.slowSnapshot.drawsEmbeddedSubtitles }
+        return false
+    }
 }
 
 extension SubtitleStyle {
@@ -638,7 +692,7 @@ extension SubtitleStyle {
     /// The look and position only (languages are preferences, not style).
     var withoutPreferences: SubtitleStyle {
         var s = self; s.preferredLanguage = nil; s.secondaryLanguage = nil; s.secondaryScale = 0; s.secondaryColor = .white
-        s.hidesSoundCues = false; s.savedLooks = []
+        s.hidesSoundCues = false; s.savedLooks = []; s.turnsOn = .always
         return s
     }
 
@@ -647,8 +701,19 @@ extension SubtitleStyle {
         var s = SubtitleStyle()
         s.preferredLanguage = preferredLanguage; s.secondaryLanguage = secondaryLanguage
         s.secondaryScale = secondaryScale; s.secondaryColor = secondaryColor; s.hidesSoundCues = hidesSoundCues
-        s.savedLooks = savedLooks
+        s.savedLooks = savedLooks; s.turnsOn = turnsOn
         return s
+    }
+}
+
+/// A touch target of at least 44 × 44 pt around a smaller control, centred on
+/// it, so a dot keeps its size on screen but is easy to hit with a finger.
+/// (Neighbours a few points apart overlap by those points; each keeps its own middle.)
+struct MinimumHitArea: Shape {
+    var side: CGFloat = 44
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: min(rect.width - side, 0) / 2, dy: min(rect.height - side, 0) / 2))
     }
 }
 
@@ -675,7 +740,11 @@ struct ColorSwatches: View {
                         .padding(3)
                         .overlay(Circle().strokeBorder(Palette.brandBright, lineWidth: selected ? 2 : 0))
                         .frame(minWidth: 28, idealWidth: 34, maxWidth: 40, minHeight: 34)
+                        #if os(iOS)
+                        .contentShape(MinimumHitArea())
+                        #else
                         .contentShape(Circle())
+                        #endif
                 }
                 .buttonStyle(PanelPressStyle())
                 .accessibilityAddTraits(selected ? .isSelected : [])
@@ -695,6 +764,9 @@ struct ColorSwatches: View {
                 .padding(3)
                 .overlay(Circle().strokeBorder(Palette.brandBright, lineWidth: custom ? 2 : 0).allowsHitTesting(false))
                 .frame(minWidth: 28, idealWidth: 34, maxWidth: 40, minHeight: 34)
+                #if os(iOS)
+                .contentShape(MinimumHitArea())
+                #endif
                 .help("Custom Colour")
                 .accessibilityLabel("Custom \(title)")
         }

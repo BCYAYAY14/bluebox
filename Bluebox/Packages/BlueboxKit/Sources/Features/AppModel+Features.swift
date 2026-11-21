@@ -404,14 +404,7 @@ extension AppModel {
     /// The debrid service whose library can be browsed, from Settings › Sources.
     var debridLibraryService: DebridService? {
         guard !debridKey.isEmpty else { return nil }
-        return switch addonSettings.debrid {
-        case .realDebrid: .realDebrid
-        case .premiumize: .premiumize
-        case .torBox: .torBox
-        case .allDebrid: .allDebrid
-        case .debridLink: .debridLink
-        case .none: nil
-        }
+        return DebridService(addonSettings.debrid)
     }
 
     /// Name of the service whose library `DebridLibraryView` shows, or nil

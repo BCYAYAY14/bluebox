@@ -10,6 +10,8 @@ struct ProfilesSection: View {
     @State private var unlocking: Profile?
 
     var body: some View {
+        // Search's Switch Profile lands on the first profile you could switch to.
+        let firstOther = app.profiles.first { $0.id != app.currentProfileID }?.id
         Section {
             ForEach(app.profiles) { p in
                 HStack(spacing: Spacing.m) {
@@ -44,7 +46,7 @@ struct ProfilesSection: View {
                     }
                     SettingsChevron()
                 }
-                .settingsRow(p.id == app.currentProfileID ? "Edit Profile" : "Profile \(p.id)")
+                .settingsRow(p.id == app.currentProfileID ? "Edit Profile" : p.id == firstOther ? "Switch Profile" : "Profile \(p.id)")
                 .profileDeleteMenu(p)
             }
             NavigationLink(value: SettingsRoute.newProfile) {

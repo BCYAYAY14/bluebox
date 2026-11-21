@@ -14,9 +14,14 @@ struct TorrentsSettingsPage: View {
     /// A debrid key being typed or pasted; saved with `SettingsKeyField`, then cleared.
     @State private var debridKey = ""
     @State private var savingKey = false
+    /// Why the last key wasn't saved (the service refused it).
+    @State private var keyError: String?
+    /// A key saved without an answer from the service (offline).
+    @State private var keyNote: String?
     @State private var health: SourceHealthText?
     @State private var testing = false
     @State private var showsEngine = false
+    @State private var showsAddons = false
 
     struct SourceHealthText: Equatable { let ok: Bool; let message: String }
 
@@ -37,9 +42,11 @@ struct TorrentsSettingsPage: View {
                      : "Torrents can't stream here yet, so only debrid links play. Set up a debrid service below.")
             }
 
+            // Debrid shows whatever Find Releases says: its key also opens the
+            // debrid library, and its status row says when add-ons are off.
+            if settings.isEnabled { addonsSection }
+            debridSection
             if settings.isEnabled {
-                addonsSection
-                debridSection
                 releasesSection
                 engineSection
             }
@@ -48,14 +55,14 @@ struct TorrentsSettingsPage: View {
             // The plan's days left change daily; read them fresh.
             await app.refreshDebridAccount()
         }
-        // A search hit for an engine setting opens Torrent Engine, which scrolls to it.
+        // A search hit for an engine or add-on setting opens that page, which scrolls to it.
         .task(id: reveal?.target?.id) {
-            if let target = reveal?.target, target.page == .torrents, target.subpage == TorrentEngineSettingsPage.title,
-               app.addonSettings.isEnabled {
-                showsEngine = true
-            }
+            guard let target = reveal?.target, target.page == .torrents, app.addonSettings.isEnabled else { return }
+            if target.subpage == TorrentEngineSettingsPage.title { showsEngine = true }
+            if target.subpage == AddonsSettingsPage.title { showsAddons = true }
         }
         .navigationDestination(isPresented: $showsEngine) { TorrentEngineSettingsPage() }
+        .navigationDestination(isPresented: $showsAddons) { AddonsSettingsPage() }
     }
 
     // MARK: Sections
@@ -94,19 +101,27 @@ struct TorrentsSettingsPage: View {
                 .settingsRow("Debrid Service")
             if settings.debrid.requiresKey {
                 if app.debridKey.isEmpty {
-                    // Saved on Return or as soon as a key is pasted, like every key in Settings.
-                    SettingsKeyField(label: String(localized: "\(settings.debrid.title) API key"), text: $debridKey, working: savingKey, error: nil) {
+                    // Checked and saved on Return or as soon as a key is pasted, like every key in Settings.
+                    SettingsKeyField(label: String(localized: "\(settings.debrid.title) API key"), text: $debridKey, working: savingKey,
+                                     error: keyError) {
                         await saveDebridKey()
                     }
                     .settingsRow("Debrid API Key")
                 } else {
-                    // The key isn't checked when it's saved; a plan read with it shows it works.
+                    // Checked as it was saved: Connected once the account answers.
                     LabeledContent("API Key", value: app.debridPlanSummary == nil ? "Saved" : "Connected")
                         .settingsRow("Debrid API Key")
                     Button("Remove Key", role: .destructive) {
                         app.setDebridKey("")
+                        keyNote = nil
                         Task { await app.refreshDebridAccount() }
                     }
+                }
+                if let note = keyNote, !app.debridKey.isEmpty, app.debridPlanSummary == nil {
+                    SettingsStatus(ok: false, message: note)
+                } else if let status = DebridReadiness.status(settings: settings, debridKey: app.debridKey,
+                                                              account: app.features.debridAccount) {
+                    SettingsStatus(ok: status.ok, message: status.message)
                 }
                 Toggle("Share Key with Community Add-ons", isOn: setting(\.shareKeyWithCommunityHosts))
                     .settingsRow("Share Key with Community Add-ons")
@@ -195,7 +210,17 @@ struct TorrentsSettingsPage: View {
         guard !savingKey, !debridKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         savingKey = true
         defer { savingKey = false }
-        app.setDebridKey(debridKey)
+        let service = app.addonSettings.debrid
+        let check = await app.checkAndSaveDebridKey(debridKey)
+        keyError = check.fieldError(service: service.title, hint: service.keyHint)
+        switch check {
+        case .rejected:
+            return  // left in the field to fix
+        case .unreachable(let why):
+            keyNote = "Saved, but \(service.title) couldn't be reached to check it" + (why.isEmpty ? "." : ": \(why)")
+        case .planEnded, .accepted:
+            keyNote = nil
+        }
         debridKey = ""
         await app.refreshDebridAccount()
     }

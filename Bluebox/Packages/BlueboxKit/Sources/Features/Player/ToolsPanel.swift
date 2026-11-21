@@ -641,7 +641,7 @@ struct ShortcutsPage: View {
         ("F", "Full screen"), ("Esc", "Close a card, leave full screen, then close"),
         ("T", "Tools"), ("E", "Episodes"), ("V", "Next subtitle track"), ("C", "Subtitles off or back on"),
         ("B", "Next audio track"),
-        ("{ }", "Subtitles earlier or later (0.1 s)"), ("− =", "Subtitle size"),
+        ("{ }", "Subtitles earlier or later (0.1 s)"), ("⌥{ ⌥}", "Subtitles earlier or later (1 s)"), ("− =", "Subtitle size"),
         ("A", "Aspect ratio"), ("⇧C", "Crop"), ("Z", "Zoom"), ("R", "Rotate"), ("< >", "Step one frame back or forward (also , .)"),
         ("L", "A–B repeat"), ("J", "Jump to time"), ("N P", "Next or previous chapter"),
         ("⇧N ⇧P", "Next or previous episode"), ("S", "Save frame"),

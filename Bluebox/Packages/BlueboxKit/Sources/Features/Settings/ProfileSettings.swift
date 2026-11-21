@@ -18,6 +18,8 @@ public enum ProfileSettingKey {
     public static func equalizer(_ profileID: String) -> String { "bluebox.profile.\(profileID).equalizer" }
     /// `ShowSkipRules` JSON: the shows this profile always skips the intro, recap or credits of.
     public static func showSkipRules(_ profileID: String) -> String { "bluebox.profile.\(profileID).showSkipRules" }
+    /// `ShowTrackMemory` JSON: the audio and subtitles (or Off) this profile chose for each show.
+    public static func showTracks(_ profileID: String) -> String { "bluebox.profile.\(profileID).showTracks" }
     /// Bool: set once the shared values were copied into every profile.
     public static let migrated = "bluebox.profileSettings.migrated"
 }

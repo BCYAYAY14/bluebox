@@ -14,13 +14,21 @@ public struct SubtitlePlacement: Equatable, Sendable {
     public var snappedX: Bool
     /// The block snapped to the default distance from the top or bottom.
     public var snappedY: Bool
+    /// What the offset is measured from: the style's alignment, which a drag
+    /// never changes (Left, Centre and Right are chosen in Subtitle Style).
+    public var alignment: SubtitleStyle.Alignment = .center
+    /// Which upright line `snappedX` is on: the centre line, or the left or
+    /// right side margin.
+    public var snapLine: SubtitleStyle.Alignment = .center
 
     /// How close (in video fractions) counts as "on" a snap line.
     public static let snapDistance = 0.03
 
     /// - Parameters:
     ///   - block: the block's frame after the drag, in unit coordinates.
-    ///   - alignment/horizontalMargin: the style's, which define the block's resting x.
+    ///   - alignment/horizontalMargin: the style's, which define the block's
+    ///     resting x. The alignment is kept; the block snaps onto the centre
+    ///     line, its resting spot or a side margin when dropped near one.
     ///   - verticalBounds: where the block may go up and down, in the same units:
     ///     the picture (0…1), or further into the black bars above and below it.
     ///     A block dropped in a bar gets a negative margin (past the picture's edge).
@@ -48,12 +56,30 @@ public struct SubtitlePlacement: Equatable, Sendable {
 
         var x = midX
         var snappedX = false
-        if abs(x - 0.5) < snapDistance { x = 0.5; snappedX = true }
+        var snapLine: SubtitleStyle.Alignment = .center
+        if abs(x - 0.5) < snapDistance {
+            x = 0.5; snappedX = true
+        } else if abs(x - w / 2 - horizontalMargin) < snapDistance {
+            // Its left edge near the left margin: onto it, like the centre line.
+            x = horizontalMargin + w / 2; snappedX = true; snapLine = .leading
+        } else if abs(x + w / 2 - (1 - horizontalMargin)) < snapDistance {
+            x = 1 - horizontalMargin - w / 2; snappedX = true; snapLine = .trailing
+        }
         let restingMidX = restingMidX(blockWidth: w, alignment: alignment, horizontalMargin: horizontalMargin)
         var offset = x - restingMidX
         if abs(offset) < 0.0005 { offset = 0 }
         return SubtitlePlacement(anchor: anchor, verticalMargin: margin, horizontalOffset: min(max(offset, -1), 1),
-                                 snappedX: snappedX, snappedY: snappedY)
+                                 snappedX: snappedX, snappedY: snappedY, alignment: alignment, snapLine: snapLine)
+    }
+
+    /// A placement from something that shows only the picture (Subtitle
+    /// Style's position pad): dragged against the edge where `style` sits in
+    /// a black bar past it, it keeps that place instead of losing it to the edge.
+    public func keepingBar(of style: SubtitleStyle) -> SubtitlePlacement {
+        guard anchor == style.anchor, anchor != .middle, style.verticalMargin < 0, verticalMargin <= 0.0005 else { return self }
+        var p = self
+        p.verticalMargin = style.verticalMargin
+        return p
     }
 
     /// Centre x of a block of `blockWidth` at its aligned spot, before any offset.

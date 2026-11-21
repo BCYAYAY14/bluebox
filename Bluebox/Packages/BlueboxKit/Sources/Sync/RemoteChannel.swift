@@ -9,6 +9,14 @@ public protocol RemoteTransport: AnyObject, Sendable {
     @discardableResult func send(_ message: RemoteMessage) async -> Bool
     /// Reconnect at once (see `RemoteChannel.reconnect`).
     func reconnect() async
+    /// The Mac stopped answering: find out whether our own socket is the
+    /// problem (a heartbeat goes unanswered) and reconnect only then.
+    func checkAlive() async
+}
+
+public extension RemoteTransport {
+    /// A transport that can't tell: reconnect, to be sure.
+    func checkAlive() async { await reconnect() }
 }
 
 /// The remote-control channel: Supabase Realtime broadcast, one private topic
@@ -35,6 +43,8 @@ public actor RemoteChannel: RemoteTransport {
     static let event = "remote"
     /// Two missed heartbeat replies.
     static let silenceLimit: Duration = .seconds(60)
+    /// How long `checkAlive` waits for its heartbeat's reply.
+    static let probeWait: Duration = .seconds(3)
 
     let config: SupabaseConfig
     let auth: SupabaseAuth
@@ -91,6 +101,24 @@ public actor RemoteChannel: RemoteTransport {
     public func reconnect() {
         backoff?.cancel()
         socket?.cancel(with: .goingAway, reason: nil)
+    }
+
+    /// A heartbeat now, rather than waiting up to `heartbeatInterval` for the
+    /// next: a socket that hears nothing back within `probeWait` is dropped
+    /// and reconnected; one that answers is fine, and the Mac is the one not answering.
+    public func checkAlive() {
+        guard let socket else { reconnect(); return }
+        let asked = ContinuousClock.now
+        Task {
+            do { try await send(socket, RealtimeListener.heartbeatMessage(ref: nextRef())) } catch {
+                socket.cancel(with: .goingAway, reason: nil)
+                return
+            }
+            try? await Task.sleep(for: Self.probeWait)
+            guard self.socket === socket, lastHeard < asked else { return }
+            Log.sync.notice("Remote channel: no answer to a heartbeat, reconnecting")
+            socket.cancel(with: .goingAway, reason: nil)
+        }
     }
 
     private func run() async {

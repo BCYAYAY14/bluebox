@@ -3,7 +3,7 @@ import Foundation
 /// An audio or subtitle choice, kept so the next episode can pick the same
 /// kind of track: the language first, then the variant (SDH, Forced,
 /// Commentary, Audio Description) where the new file has it.
-public struct TrackChoice: Equatable, Sendable {
+public struct TrackChoice: Equatable, Sendable, Codable {
     /// ISO 639-1 where known ("en"); nil when the track had no language.
     public var languageCode: String?
     /// Subtitles turned off.

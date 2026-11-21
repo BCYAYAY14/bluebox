@@ -36,6 +36,8 @@ public actor StremioSource: MediaSource {
     public nonisolated let kind = SourceKind.addons
     public nonisolated let displayName = "Torrents & Debrid"
     public nonisolated let capabilities: SourceCapabilities = [.play, .download]
+    /// Add-on searches keep their own per-add-on deadlines (Settings › Add-ons).
+    public nonisolated var answersWithin: TimeInterval? { nil }
 
     /// The variant ID that means "pick the best release when playing".
     public static let bestReleaseID = "best"
@@ -46,6 +48,10 @@ public actor StremioSource: MediaSource {
     static let freshFor: TimeInterval = 5 * 60
     /// Older answers (up to this age) are used while a fresh search runs in the background.
     static let usableFor: TimeInterval = 30 * 60
+    /// Titles whose releases are kept in memory; each can hold hundreds.
+    static let cachedTitles = 40
+    /// How long `variants(for:)` waits for a title's IMDb ID.
+    static let imdbLookupLimit: TimeInterval = 4
 
     private var settings: AddonSettings
     private var debridKey: String
@@ -146,7 +152,12 @@ public actor StremioSource: MediaSource {
     public func variants(for key: MediaKey) async throws -> [MediaVariant] {
         guard settings.isEnabled, !settings.resolvedAddons(debridKey: debridKey).isEmpty else { return [] }
         guard canStreamTorrents || hasDebrid else { return [] }
-        guard await imdbID(key.seriesKey ?? key) != nil else { return [] }
+        // The IMDb lookup is a catalogue request with no deadline of its own;
+        // it mustn't hold the title page's Play. Past `imdbLookupLimit` the
+        // release is offered anyway (the lookup goes on, and Play asks again).
+        let lookup = imdbID, titleKey = key.seriesKey ?? key
+        let found = await Deadline.value(within: Self.imdbLookupLimit) { () -> String?? in await lookup(titleKey) }
+        if case .some(.none) = found { return [] }  // answered: it has no IMDb ID
         // A movie's page is open: look its releases up now so Play needn't wait.
         // Episodes are skipped; a series page asks about many at once.
         if settings.prefetchReleases, key.seriesKey == nil { prefetch(key) }
@@ -471,6 +482,33 @@ public actor StremioSource: MediaSource {
     private func store(_ releases: [AddonRelease], key: MediaKey) {
         cache[key] = CacheEntry(releases: releases, fetched: Date(), generation: generation)
         for release in releases { known[release.id] = release }
+        prune()
+    }
+
+    /// Drops answers too old to use, then the oldest beyond `cachedTitles`,
+    /// with the releases only they knew about. A long browse otherwise grows
+    /// memory with every movie page, since each one prefetches.
+    private func prune() {
+        let now = Date()
+        var drop = cache.filter { now.timeIntervalSince($0.value.fetched) >= Self.usableFor }.map(\.key)
+        let kept = cache.count - drop.count
+        if kept > Self.cachedTitles {
+            let oldest = cache.filter { now.timeIntervalSince($0.value.fetched) < Self.usableFor }
+                .sorted { $0.value.fetched < $1.value.fetched }
+                .prefix(kept - Self.cachedTitles).map(\.key)
+            drop += oldest
+        }
+        guard !drop.isEmpty else { return }
+        var gone = Set<String>()
+        for key in drop {
+            gone.formUnion(cache[key]?.releases.map(\.id) ?? [])
+            cache[key] = nil
+            runtimes[key] = nil
+        }
+        for entry in cache.values { gone.subtract(entry.releases.map(\.id)) }
+        // A release picked from a dropped answer still plays: `resolve` rebuilds it from the variant.
+        for id in gone { known[id] = nil }
+        if debridCached.count > 4000 { debridCached = [:] }
     }
 
     /// Asks TorBox, Premiumize or Debrid-Link about hashes it hasn't been asked about.

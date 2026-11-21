@@ -97,3 +97,25 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         #expect(VariantChooser.choose(from: [remote, saved], item: last, canAttempt: { _ in true })?.id == "d")
     }
 }
+
+extension DownloadsTests {
+    /// A debrid link that expired (403) is swapped for a fresh one once, by itself;
+    /// a second refusal fails with the reason.
+    @Test func anExpiredLinkIsResolvedAgainOnce() async throws {
+        let body = Data(count: 20_000)
+        StubProtocol.bodies = ["/old.mp4": (403, Data("expired".utf8)), "/fresh.mp4": (200, body), "/never.mp4": (403, Data())]
+        let m = manager()
+        let fresh = resource("/fresh.mp4")
+        m.resolveResource = { _ in fresh }
+        let r = try m.start(resource("/old.mp4"), key: nil, title: "old")
+        let done = try await waitFor(m, r.id) { $0.state == .completed }
+        #expect(done.receivedBytes == 20_000)
+
+        let m2 = manager()
+        let never = resource("/never.mp4")
+        m2.resolveResource = { _ in never }
+        let r2 = try m2.start(resource("/never.mp4"), key: nil, title: "never")
+        let failed = try await waitFor(m2, r2.id) { $0.isFailed }
+        #expect(failed.failureMessage?.contains("expired") == true)
+    }
+}

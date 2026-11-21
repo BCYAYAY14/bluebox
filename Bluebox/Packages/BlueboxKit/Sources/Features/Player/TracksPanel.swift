@@ -4,7 +4,7 @@ import Subtitles
 import SwiftUI
 
 /// A page inside the Audio & Subtitles card.
-enum TracksPage: String, CaseIterable { case timing, secondLine, lines }
+enum TracksPage: String, CaseIterable { case timing, secondLine, lines, generate }
 
 /// Audio & Subtitles: audio and subtitle columns side by side (stacked when
 /// the card is narrow), the chosen tracks checked, Add File and Search Online
@@ -13,6 +13,10 @@ enum TracksPage: String, CaseIterable { case timing, secondLine, lines }
 struct TracksPanel: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The player's, so writing carries on when the card closes.
+    @Environment(SubtitleGenerator.self) private var sharedGenerator: SubtitleGenerator?
+    @State private var ownGenerator = SubtitleGenerator()
+    private var generator: SubtitleGenerator { sharedGenerator ?? ownGenerator }
     let session: PlayerSession
     /// The card's content width: two columns from 300 pt.
     let width: CGFloat
@@ -51,6 +55,9 @@ struct TracksPanel: View {
                     .transition(pageTransition)
             case .lines:
                 SubtitleLinesPage(session: session, onBack: { page = nil })
+                    .transition(pageTransition)
+            case .generate:
+                GenerateSubtitlesPage(session: session, onBack: { page = nil })
                     .transition(pageTransition)
             case nil:
                 main.transition(reduceMotion ? .opacity : .push(from: .leading))
@@ -135,9 +142,35 @@ struct TracksPanel: View {
                     .font(.caption).foregroundStyle(Palette.textTertiary)
                     .padding(.horizontal, 6).padding(.vertical, 2)
             }
+            if generator.isRunning { generatingRow }
             linkRow("Add File…", symbol: "plus", action: onAddFile)
             if canSearch { linkRow("Search Online…", symbol: "magnifyingglass", action: onSearch) }
+            linkRow("Generate Subtitles…", symbol: "sparkles", highlighted: rows.isEmpty && !generator.isRunning) { page = .generate }
+                .accessibilityIdentifier("tracks.generate")
         }
+    }
+
+    /// While generated subtitles are being written: how far they go, and Stop.
+    private var generatingRow: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                switch generator.phase {
+                case .preparing(let status): Text(ui: status)
+                default:
+                    PlayheadReader(session: session) { position in
+                        Text("Lines ready to \(Formatters.duration(generator.reach(from: position) ?? position))")
+                    }
+                }
+                Spacer(minLength: 4)
+                Button("Stop") { generator.stop() }
+                    .buttonStyle(PlayerQuietButtonStyle()).foregroundStyle(Palette.brandBright)
+            }
+            .font(.caption.weight(.medium)).foregroundStyle(Palette.textSecondary).lineLimit(1)
+            ProgressView(value: generator.duration > 0 ? min(1, generator.covered.total / generator.duration) : 0)
+                .tint(Palette.brandBright)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 
     private func column<Content: View>(_ title: String, shortcut: String, @ViewBuilder content: () -> Content) -> some View {
@@ -175,7 +208,8 @@ struct TracksPanel: View {
         }
     }
 
-    /// One language: a single track picks straight away; several open their list.
+    /// One language: one tap turns it on (its plain track when it has several);
+    /// the chevron, or a tap on a language already on, opens its list.
     @ViewBuilder private func groupRow(_ g: TrackLanguageGroup) -> some View {
         if g.rows.count == 1, let only = g.rows.first {
             row(TrackRow(id: only.id, title: g.title, detail: only.detail, source: only.source, isBitmap: only.isBitmap,
@@ -185,7 +219,9 @@ struct TracksPanel: View {
             }
         } else {
             let chosen = g.selected
-            Button { language = g.id } label: {
+            Button {
+                if chosen == nil, let s = g.standard?.selection { session.selectSubtitle(s) } else { language = g.id }
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.bold)).foregroundStyle(Palette.brandBright)
@@ -199,7 +235,7 @@ struct TracksPanel: View {
                     Text(chosen?.tag ?? "\(g.rows.count)")
                         .font(.caption2.weight(.medium)).monospacedDigit()
                         .foregroundStyle(chosen != nil ? Palette.textSecondary : Palette.textTertiary).lineLimit(1)
-                    Image(systemName: "chevron.forward").font(.caption2.weight(.bold)).foregroundStyle(Palette.textTertiary)
+                    Color.clear.frame(width: 28)  // the chevron's button, laid over this end
                 }
                 .padding(.horizontal, 6)
                 .frame(minHeight: PlayerPopoverMetrics.rowHeight)
@@ -213,6 +249,16 @@ struct TracksPanel: View {
             .buttonStyle(PopoverRowStyle())
             .accessibilityLabel("\(g.title), \(g.rows.count) tracks" + (chosen.map { ", \($0.tag ?? "on")" } ?? ""))
             .accessibilityAddTraits(chosen != nil ? .isSelected : [])
+            .accessibilityAction(named: "Show All Tracks") { language = g.id }
+            .overlay(alignment: .trailing) {
+                Button { language = g.id } label: {
+                    Image(systemName: "chevron.forward").font(.caption2.weight(.bold)).foregroundStyle(Palette.textTertiary)
+                        .frame(width: 34, height: PlayerPopoverMetrics.rowHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PopoverRowStyle())
+                .accessibilityLabel("All \(g.title) Tracks")
+            }
         }
     }
 
@@ -244,21 +290,26 @@ struct TracksPanel: View {
         case .added: "Added file"
         case .torrent: "In the torrent"
         case .file: "Subtitle file"
+        case .generated: "Generated from the audio"
         }
         parts.append(source)
         return parts.joined(separator: " · ")
     }
 
-    private func linkRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+    /// `highlighted`: the thing to do here (Generate when the video has no subtitles).
+    private func linkRow(_ title: String, symbol: String, highlighted: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: symbol).font(.caption.weight(.bold)).frame(width: 14)
-                Text(title).font(PlayerPopoverMetrics.rowFont).lineLimit(1)
+                Text(ui: title).font(PlayerPopoverMetrics.rowFont.weight(highlighted ? .semibold : .regular)).lineLimit(1)
                 Spacer(minLength: 0)
             }
             .foregroundStyle(Palette.brandBright)
             .padding(.horizontal, 6)
             .frame(minHeight: PlayerPopoverMetrics.rowHeight)
+            .background {
+                if highlighted { RoundedRectangle(cornerRadius: PlayerPopoverMetrics.rowRadius, style: .continuous).fill(Palette.wash) }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowStyle())

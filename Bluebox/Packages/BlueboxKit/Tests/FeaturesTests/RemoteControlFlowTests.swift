@@ -57,7 +57,8 @@ import Testing
         p.macLink.comeBack()
         #expect(await until { p.engine.seeks.contains(600) })
         #expect(await until { p.phone.nowPlaying.map { abs($0.position - 600) < 2 } == true })
-        #expect(p.phone.connection == .connected)
+        // Amber while its resends went unanswered, if the Mac was away that long; green once one lands.
+        #expect(await until { p.phone.connection == .connected })
     }
 
     /// A retry the Mac already applied is acknowledged again but not applied twice.
@@ -84,7 +85,8 @@ import Testing
         #expect(p.phone.nowPlaying?.audioID == "a2")  // drawn at once
         #expect(await until(.seconds(2)) { p.phone.connection == .notAnswering })
         #expect(p.phone.nowPlaying?.audioID == "a1")  // the Mac's word again
-        #expect(await until { p.phoneLink.reconnects >= 1 })  // and our own socket is renewed in case it was ours
+        // Its states kept coming, so the channel works: no reconnect, which would only drop a good socket.
+        #expect(p.phoneLink.reconnects == 0)
         // The next acknowledged command clears it.
         p.hub.dropCommands = false
         p.phone.send(.audio("a2"))
@@ -172,6 +174,7 @@ import Testing
         let handler = FakeAppHandler()
         let mac = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
         mac.handler = handler
+        handler.remote = mac
         mac.update(wanted: true, controllable: true, player: nil, makeChannel: hub.link("mac").make)
         let phone = RemoteControl(defaults: Self.defaults(), now: { Date() }, timing: Self.fast)
         phone.update(wanted: true, player: nil, makeChannel: hub.link("phone").make)
@@ -398,7 +401,9 @@ import Testing
         return d
     }
 
-    func until(_ timeout: Duration = .seconds(2), _ condition: @MainActor () -> Bool) async -> Bool {
+    /// Long by default, since it returns as soon as the condition holds: in the whole suite
+    /// the snapshot tests can hold the main actor for half a minute. Timing claims pass their own.
+    func until(_ timeout: Duration = .seconds(30), _ condition: @MainActor () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if condition() { return true }
@@ -426,7 +431,12 @@ final class FakeAppHandler: RemoteAppHandler {
     }
     func remoteClosePlayer() async { log.append("close") }
     func remoteFocus(_ id: String, driver: String) { log.append("focus \(id)") }
-    func remoteMove(_ direction: RemoteDirection, driver: String) { log.append("move \(direction.rawValue)") }
+    /// The Mac's highlight tells the remote when it moves (`RemoteFocus.onChange` in the app).
+    weak var remote: RemoteControl?
+    func remoteMove(_ direction: RemoteDirection, driver: String) {
+        log.append("move \(direction.rawValue)")
+        remote?.screenChanged()
+    }
     func remoteSelect(driver: String) { log.append("select") }
     func remote4(_ action: RemoteCommand.Action, driver: String) {
         switch action {

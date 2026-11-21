@@ -249,7 +249,7 @@ extension AppModel {
             report(error, title: "Couldn't update \(list.name)") { [weak self] in await self?.setOnList(title, list: list, on) }
             return
         }
-        showToast(AppToast(title.name, message: on ? "Added to \(list.name)" : "Removed from \(list.name)", actionTitle: "Undo") { [weak self] in
+        showToast(AppToast(title.name, message: on ? "Added to \(list.name)" : "Removed from \(list.name)", verbatim: .title, actionTitle: "Undo") { [weak self] in
             Task { await self?.undoSetOnList(title, list: list, on) }
         })
     }
@@ -270,7 +270,7 @@ extension AppModel {
             let list = try await store.createList(name: name, symbol: symbol)
             if let title { try await store.setOnList(title, listID: list.id, true) }
             noteLibraryChanged()
-            if let title { showToast(AppToast(title.name, message: "Added to \(list.name)")) }
+            if let title { showToast(AppToast(title.name, message: "Added to \(list.name)", verbatim: .title)) }
             return list
         } catch {
             report(error, title: "Couldn't create the list")
@@ -291,7 +291,7 @@ extension AppModel {
         do {
             try await store.removeList(list.id)
             noteLibraryChanged()
-            showToast(AppToast(list.name, message: "List deleted"))
+            showToast(AppToast(list.name, message: "List deleted", verbatim: .title))
         } catch {
             report(error, title: "Couldn't delete \(list.name)")
         }

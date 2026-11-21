@@ -58,7 +58,7 @@ struct PlayerNoticeView: View {
                         .foregroundStyle(Palette.brandBright)
                         .padding(.horizontal, 6)
                         .frame(minHeight: 32)
-                        .contentShape(Rectangle())
+                        .hitTarget(height: 32)
                 }
                 .buttonStyle(PressableStyle())
                 .accessibilityIdentifier("toastAction")

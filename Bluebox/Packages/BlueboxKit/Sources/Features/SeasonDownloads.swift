@@ -88,17 +88,40 @@ enum SeasonDownloadCheck: Equatable {
     case none
     case large(bytes: Int64, episodes: Int)
     case mobileData(bytes: Int64, episodes: Int, wifiOnly: Bool)
-    case notEnoughSpace(bytes: Int64, free: Int64, episodes: Int)
+    /// `fits`: how many of the episodes, from the first, there's room for.
+    case notEnoughSpace(bytes: Int64, free: Int64, episodes: Int, fits: Int)
 
     /// Anything past this asks first, on Wi‑Fi too (about four 1080p episodes).
     static let largeBytes: Int64 = 5_000_000_000
 
-    static func check(bytes: Int64, episodes: Int, onMobileData: Bool, wifiOnly: Bool, freeBytes: Int64?) -> Self {
+    /// - Parameter episodeBytes: each episode's size in order, to count how
+    ///   many fit; without it they're taken as equal shares of `bytes`.
+    static func check(bytes: Int64, episodes: Int, onMobileData: Bool, wifiOnly: Bool, freeBytes: Int64?,
+                      episodeBytes: [Int64]? = nil) -> Self {
         guard episodes > 0 else { return .none }
-        if let freeBytes, bytes > freeBytes { return .notEnoughSpace(bytes: bytes, free: freeBytes, episodes: episodes) }
+        // The queue leaves `DownloadManager.reserveBytes` free, so a season
+        // that only just fits would fail on its last episode.
+        if let freeBytes, bytes > freeBytes - DownloadManager.reserveBytes {
+            let sizes = episodeBytes ?? Array(repeating: bytes / Int64(episodes), count: episodes)
+            return .notEnoughSpace(bytes: bytes, free: freeBytes, episodes: episodes,
+                                   fits: fittingPrefix(sizes, free: freeBytes - DownloadManager.reserveBytes))
+        }
         if onMobileData { return .mobileData(bytes: bytes, episodes: episodes, wifiOnly: wifiOnly) }
         if bytes >= largeBytes { return .large(bytes: bytes, episodes: episodes) }
         return .none
+    }
+
+    /// How many sizes, from the first, add up to no more than `free`
+    /// (episodes download in order, so it stops at the first that doesn't fit).
+    static func fittingPrefix(_ sizes: [Int64], free: Int64) -> Int {
+        var left = free
+        var n = 0
+        for size in sizes {
+            guard size <= left else { break }
+            left -= size
+            n += 1
+        }
+        return n
     }
 }
 
@@ -108,7 +131,7 @@ struct SeasonDownloadRequest: Identifiable, Equatable {
     let season: Int
     let seasonName: String
     let seriesName: String
-    let episodes: [Episode]
+    var episodes: [Episode]
     let bytes: Int64
     let check: SeasonDownloadCheck
     var id: String { SeasonDownloadRequest.jobID(seriesKey, season) }
@@ -133,8 +156,11 @@ struct SeasonDownloadRequest: Identifiable, Equatable {
             return wifiOnly
                 ? "\(n), \(size). You're on mobile data and downloads are set to Wi‑Fi only, so they'll wait for Wi‑Fi unless you start them now."
                 : "\(n), \(size), on mobile data. That can use a lot of your plan."
-        case .notEnoughSpace(_, let free, _):
-            return "\(n) need \(size) and this device has \(Formatters.bytes(free)) free. Downloads stop when space runs out."
+        case .notEnoughSpace(_, let free, _, let fits):
+            let room = fits == 0 ? "Free up some space first."
+                : fits == 1 ? "There's room for the first one."
+                : "There's room for the first \(fits)."
+            return "\(n) need \(size) and this device has \(Formatters.bytes(free)) free. \(room)"
         }
     }
 }
@@ -229,10 +255,10 @@ extension AppModel {
                 defer { self.preparingDownloads.remove(ep.key) }
                 do {
                     let (variant, resource) = try result.get()
+                    // The mobile data choice goes in with the download, before the queue can start it on the wrong network.
                     let record = try self.downloads.enqueue(variant, key: ep.key, title: seriesName,
                                                             subtitle: "S\(ep.seasonNumber)·E\(ep.number)",
-                                                            artworkURL: artwork, resource: resource)
-                    if let mobileData { self.downloads.setMobileData(record.id, allowed: mobileData) }
+                                                            artworkURL: artwork, resource: resource, mobileData: mobileData)
                     if self.mobileDataDownloadNotice(for: record, title: seriesName) != nil, mobileData != true { heldForWiFi += 1 }
                 } catch DownloadError.alreadyInQueue {
                     continue
@@ -277,12 +303,13 @@ extension AppModel {
         deleteDownloadsWithUndo(unfinished, title: "\(seasonName) downloads canceled")
     }
 
+    /// One index write and one queue pass for the season, not one per episode.
     func pauseSeasonDownload(_ series: MediaKey, season: Int) {
-        seasonDownloads(series, season: season).filter(\.isActive).forEach { downloads.pause($0.id) }
+        downloads.pause(seasonDownloads(series, season: season).filter(\.isActive).map(\.id))
     }
 
     func resumeSeasonDownload(_ series: MediaKey, season: Int) {
-        seasonDownloads(series, season: season).filter { $0.state == .paused || $0.isFailed }.forEach { downloads.resume($0.id) }
+        downloads.resume(seasonDownloads(series, season: season).filter { $0.state == .paused || $0.isFailed }.map(\.id))
     }
 }
 

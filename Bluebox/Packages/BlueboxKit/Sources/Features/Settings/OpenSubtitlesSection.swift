@@ -45,11 +45,12 @@ struct OpenSubtitlesSection: View {
                 .settingsRow("OpenSubtitles API Key")
             }
             SubtitleSiteToggle(site: .openSubtitles, title: "Include in Search Online")
+                .settingsRow("Include OpenSubtitles in Search Online")
             Toggle("Search Automatically", isOn: $settings.autoSearchSubtitles)
-                .disabled(!app.hasOpenSubtitlesKey)
+                .disabled(!SubtitleSite.allCases.contains(where: app.canAsk))
                 .settingsRow("Search Automatically")
         } header: {
-            Text("OpenSubtitles")
+            SettingsScopeHeader("OpenSubtitles", scope: .everyone)  // keys and sites are the device's, on the profile's Subtitles page
         } footer: {
             Text("Create a free API consumer at opensubtitles.com › Profile › API consumers and paste its key here. Signing in is optional and raises the daily limit. Keys stay in your Keychain.")
             Text(autoSearchFooter)
@@ -57,9 +58,9 @@ struct OpenSubtitlesSection: View {
     }
 
     private var autoSearchFooter: String {
-        if !app.hasOpenSubtitlesKey { return "Search Automatically needs the key." }
-        if app.subtitleStyle.preferredLanguage == nil { return "Search Automatically looks for your subtitle language: choose one on the Language page first." }
-        return "Search Automatically: when a video has nothing in your language, Bluebox adds the best match from OpenSubtitles. Each counts toward your daily limit."
+        if !SubtitleSite.allCases.contains(where: app.canAsk) { return "Search Automatically needs a subtitle site that's on: add the key here, or turn on a site below." }
+        if app.subtitleStyle.preferredLanguage == nil { return "Search Automatically looks for your subtitle language: choose one on the Languages page first." }
+        return "Search Automatically: when a video has nothing in your language, Bluebox asks every site that's on and adds the best match for the release. The file is kept with the title, so it isn't downloaded again; OpenSubtitles downloads count toward your daily limit."
     }
 
     private func saveKey() async {
@@ -107,8 +108,9 @@ struct SubdlSection: View {
                 .settingsRow("Subdl API Key")
             }
             SubtitleSiteToggle(site: .subdl, title: "Include in Search Online")
+                .settingsRow("Include Subdl in Search Online")
         } header: {
-            Text("Subdl")
+            SettingsScopeHeader("Subdl", scope: .everyone)  // keys and sites are the device's, on the profile's Subtitles page
         } footer: {
             Text("Get a free API key at subdl.com › Panel › API. It stays in your Keychain.")
         }
@@ -136,7 +138,7 @@ struct SubtitleSitesSection: View {
                 .settingsRow("Search Online Sites")
             SubtitleSiteToggle(site: .jellyfin)
         } header: {
-            Text("Search Online")
+            SettingsScopeHeader("Search Online", scope: .everyone)  // keys and sites are the device's, on the profile's Subtitles page
         } footer: {
             Text("Search Online in the player asks every site that's on at once, OpenSubtitles and Subdl above included, and shows one list with the best match for the release first.")
         }

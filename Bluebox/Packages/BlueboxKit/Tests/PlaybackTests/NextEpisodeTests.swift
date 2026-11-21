@@ -80,5 +80,76 @@ final class CallCounter: @unchecked Sendable {
         await task.value
         #expect(s.item == e2)
         #expect(!s.isLoadingNext)
+        #expect(s.switchFailures == 0)
+    }
+
+    @Test func nextEpisodeThatCantBeFoundCountsAsAFailure() async {
+        let engine = MockEngine()
+        let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in nil })
+        await s.start(e1, resource: resource("e1"))
+        await s.playNext()
+        #expect(s.switchFailures == 1)
+    }
+
+    @Test func cancelResumesInPlaceAtOnceWithoutAFailure() async {
+        let e2 = e2
+        let engine = MockEngine()
+        let gate = CallCounter()
+        // A provider that never answers (until long after the test).
+        let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in
+            gate.bump()
+            try? await Task.sleep(for: .seconds(60))
+            return (e2, resource("e2"))
+        })
+        await s.start(e1, resource: resource("e1"))
+        engine.advance(to: 300)
+        let task = Task { await s.playNext() }
+        #expect(await waitUntil { gate.count == 1 })
+        #expect(s.isLoadingNext)
+        s.cancelSwitch()
+        await task.value
+        #expect(!s.isLoadingNext)
+        #expect(s.item == e1)
+        #expect(s.snapshot.status == .playing)
+        #expect(s.snapshot.position == 300)
+        #expect(s.switchFailures == 0)
+    }
+
+    @Test func aSwitchThatTakesTooLongGivesUpAndSaysSo() async {
+        let e2 = e2
+        let engine = MockEngine()
+        let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in
+            try? await Task.sleep(for: .seconds(60))
+            return (e2, resource("e2"))
+        })
+        s.switchLimit = .milliseconds(50)
+        await s.start(e1, resource: resource("e1"))
+        await s.playNext()
+        #expect(s.item == e1)
+        #expect(!s.isLoadingNext)
+        #expect(s.snapshot.status == .playing)
+        #expect(s.switchFailures == 1)
+    }
+
+    @Test func anEarlierSwitchsLimitLeavesTheNextSwitchAlone() async {
+        let e2 = e2
+        let engine = MockEngine()
+        let calls = CallCounter()
+        // The first look finds nothing at once; the second takes longer than the first's limit.
+        let s = PlayerSession(engine: engine, progress: MemoryProgress(), deviceID: "test", nextProvider: { _ in
+            calls.bump()
+            if calls.count == 1 { return nil }
+            try? await Task.sleep(for: .milliseconds(400))
+            return (e2, resource("e2"))
+        })
+        s.switchLimit = .milliseconds(150)
+        await s.start(e1, resource: resource("e1"))
+        await s.playNext()
+        #expect(s.switchFailures == 1)
+        s.switchLimit = .seconds(10)
+        await s.playNext()
+        #expect(calls.count == 2)
+        #expect(s.item == e2)
+        #expect(s.switchFailures == 1)
     }
 }

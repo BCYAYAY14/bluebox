@@ -86,7 +86,14 @@ import Testing
                 == .mobileData(bytes: 1_000_000_000, episodes: 1, wifiOnly: true))
         // Not fitting beats everything else.
         #expect(C.check(bytes: 9_000_000_000, episodes: 8, onMobileData: true, wifiOnly: false, freeBytes: 4_000_000_000)
-                == .notEnoughSpace(bytes: 9_000_000_000, free: 4_000_000_000, episodes: 8))
+                == .notEnoughSpace(bytes: 9_000_000_000, free: 4_000_000_000, episodes: 8, fits: 3))
+        // The queue's 500 MB reserve counts: 4 GB into 4.2 GB free doesn't fit.
+        #expect(C.check(bytes: 4_000_000_000, episodes: 4, onMobileData: false, wifiOnly: false, freeBytes: 4_200_000_000)
+                == .notEnoughSpace(bytes: 4_000_000_000, free: 4_200_000_000, episodes: 4, fits: 3))
+        // Episodes go in order: a big second one stops the count there.
+        #expect(C.check(bytes: 6_000_000_000, episodes: 3, onMobileData: false, wifiOnly: false, freeBytes: 3_000_000_000,
+                        episodeBytes: [1_000_000_000, 4_000_000_000, 1_000_000_000])
+                == .notEnoughSpace(bytes: 6_000_000_000, free: 3_000_000_000, episodes: 3, fits: 1))
         #expect(C.check(bytes: 0, episodes: 0, onMobileData: true, wifiOnly: false, freeBytes: 0) == .none)
     }
 
@@ -122,6 +129,26 @@ import Testing
         let waiting = DownloadQueueSummary(queue: [record(s2[2].key, .queued)], stats: { _ in nil }, wait: { _ in .wifi })
         #expect(waiting.detail == "Waiting for Wi‑Fi")
         #expect(DownloadQueueSummary(queue: [], stats: { _ in nil }, wait: { _ in nil }).headline == "All downloads finished")
+    }
+
+    @Test func queueCardTimeLeftCountsOnlyWhatWillCome() {
+        let s2 = (1...3).map { episode(2, $0) }
+        let speed: (String) -> DownloadLiveStats? = { _ in DownloadLiveStats(bytesPerSecond: 1_000_000) }
+        // Paused and failed bytes don't come by themselves: 750 MB left at 1 MB/s, not 2.25 GB.
+        let mixed = DownloadQueueSummary(queue: [
+            record(s2[0].key, .downloading, received: 250_000_000, expected: 1_000_000_000),
+            record(s2[1].key, .paused, received: 0, expected: 1_000_000_000),
+            record(s2[2].key, .failed("Gone"), received: 500_000_000, expected: 1_000_000_000),
+        ], stats: speed, wait: { _ in nil })
+        #expect(mixed.remainingBytes == 750_000_000)
+        #expect(mixed.detail == Formatters.bytes(1_000_000) + "/s · about " + Formatters.remaining(750))
+        // A size not known yet isn't counted as what's arrived, and there's no time left to give.
+        let unknown = DownloadQueueSummary(queue: [
+            record(s2[0].key, .downloading, received: 400_000_000, expected: nil),
+            record(s2[1].key, .queued, received: 0, expected: 1_000_000_000),
+        ], stats: speed, wait: { _ in nil })
+        #expect(unknown.expectedBytes == 1_000_000_000 && unknown.receivedBytes == 0)
+        #expect(unknown.sizesUnknown && unknown.detail == Formatters.bytes(1_000_000) + "/s")
     }
 
     @Test func queueRowsSayTheSourceAndWhyTheyStall() {

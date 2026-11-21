@@ -118,16 +118,20 @@ public struct TitleDetail: Hashable, Codable, Sendable {
     public let imdbID: String?
     /// The franchise a film belongs to (TMDB only).
     public let collection: CollectionRef?
+    /// The language it was made in, ISO 639-1 ("ja"; TMDB only): the likely
+    /// spoken language when an audio track carries none.
+    public let originalLanguage: String?
 
     public init(
         title: Title, tagline: String? = nil, runtimeMinutes: Int? = nil, genres: [Genre] = [],
         cast: [CreditPerson] = [], crew: [CreditPerson] = [], logo: Artwork? = nil,
         seasons: [SeasonSummary] = [], related: [Title] = [], certification: String? = nil, imdbID: String? = nil,
-        collection: CollectionRef? = nil
+        collection: CollectionRef? = nil, originalLanguage: String? = nil
     ) {
         self.title = title; self.tagline = tagline; self.runtimeMinutes = runtimeMinutes; self.genres = genres
         self.cast = cast; self.crew = crew; self.logo = logo; self.seasons = seasons; self.related = related
         self.certification = certification; self.imdbID = imdbID; self.collection = collection
+        self.originalLanguage = originalLanguage
     }
 }
 

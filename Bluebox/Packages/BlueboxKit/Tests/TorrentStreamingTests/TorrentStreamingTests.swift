@@ -277,3 +277,19 @@ import Testing
         #expect(FileSelection.subtitles(for: files[0], in: files).isEmpty)
     }
 }
+
+@Suite struct TorrentDownloadErrorTests {
+    /// libtorrent's own words become plain ones that say what to do.
+    @Test func libtorrentErrorsReadPlainly() {
+        #expect(TorrentDownloader.plainError("No space left on device") == "Your device is full. Free up space, then tap Retry.")
+        #expect(TorrentDownloader.plainError("open: Permission denied").hasPrefix("Bluebox couldn't write the file."))
+        #expect(TorrentDownloader.plainError("mismatching file size").hasPrefix("Part of the download went missing."))
+        #expect(TorrentDownloader.plainError("weird internal failure 0x2a").hasSuffix("try another release."))
+        // Only a damaged torrent gives up; a connection problem or an unknown one can be retried.
+        #expect(TorrentDownloader.failure("invalid bdecode data") == .gaveUp("This torrent is damaged. Try another release."))
+        if case .gaveUp = TorrentDownloader.failure("tracker timed out") { Issue.record("a timeout should be retryable") }
+        if case .gaveUp = TorrentDownloader.failure("weird internal failure 0x2a") { Issue.record("an unknown error should be retryable") }
+        // A metadata wait gives up in minutes, not five.
+        #expect(TorrentDownloader.metadataTimeout <= 120)
+    }
+}

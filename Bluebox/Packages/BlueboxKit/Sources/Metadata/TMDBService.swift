@@ -167,7 +167,8 @@ public struct TMDBService: MetadataProvider {
                 collection: d.belongsToCollection.flatMap { c in
                     c.name.map { CollectionRef(id: c.id, name: $0, poster: TMDBMapping.art(.poster, c.posterPath),
                                                backdrop: TMDBMapping.art(.backdrop, c.backdropPath)) }
-                }
+                },
+                originalLanguage: d.originalLanguage
             )
         } else {
             let d = try await get(TMDBSeriesDetail.self, "tv/\(id)", query: [
@@ -192,7 +193,7 @@ public struct TMDBService: MetadataProvider {
                 logo: TMDBMapping.logo(d.images, language: lang), seasons: seasons,
                 related: (d.recommendations?.results ?? []).compactMap { TMDBMapping.title($0, fallbackKind: .series) },
                 certification: d.contentRatings?.results.first { $0.iso31661 == region }?.rating,
-                imdbID: TMDBMapping.imdbID(d.externalIds?.imdbId)
+                imdbID: TMDBMapping.imdbID(d.externalIds?.imdbId), originalLanguage: d.originalLanguage
             )
         }
     }

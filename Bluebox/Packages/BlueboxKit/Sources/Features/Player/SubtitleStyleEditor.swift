@@ -265,6 +265,11 @@ struct SubtitlePositionPad: View {
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { v in
+                        // A touch on the bar that hasn't moved yet changes nothing, so
+                        // touching it doesn't lose a place the pad can't show (a black bar).
+                        let bar = CGRect(x: barX(w: w, barW: barW) - barW / 2, y: restingMidY * h - barH / 2, width: barW, height: barH)
+                        if dragY == nil, bar.insetBy(dx: -4, dy: -4).contains(v.startLocation),
+                           hypot(v.translation.width, v.translation.height) < 4 { return }
                         let y = min(max(v.location.y / h, Self.barHeight / 2), 1 - Self.barHeight / 2)
                         dragY = y
                         candidate = placement(midY: y)
@@ -322,9 +327,10 @@ struct SubtitlePositionPad: View {
 
     private func placement(midY: Double) -> SubtitlePlacement {
         let block = CGRect(x: 0.5 - 0.22, y: midY - Self.barHeight / 2, width: 0.44, height: Self.barHeight)
-        var p = SubtitlePlacement.dropping(block: block, alignment: .center, horizontalMargin: style.horizontalMargin)
-        p.horizontalOffset = style.horizontalOffset  // the pad moves up and down only
-        return p
+        var p = SubtitlePlacement.dropping(block: block, alignment: style.alignment, horizontalMargin: style.horizontalMargin)
+        // The pad moves up and down only.
+        p.horizontalOffset = style.horizontalOffset
+        return p.keepingBar(of: style)
     }
 
     private var snapLines: [(y: Double, title: String, on: Bool)] {

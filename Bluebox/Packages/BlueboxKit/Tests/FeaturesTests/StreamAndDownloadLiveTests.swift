@@ -122,7 +122,7 @@ private final class EventLog: @unchecked Sendable {
             case .connecting: break
             case .progress(let p): _progress = p
             case .completed(let path): _completed = path
-            case .failed(let message): _failed = message
+            case .failed(let message), .gaveUp(let message): _failed = message
             }
         }
     }

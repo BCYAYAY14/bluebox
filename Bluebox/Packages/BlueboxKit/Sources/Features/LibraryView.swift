@@ -274,39 +274,58 @@ struct LibraryView: View {
         } catch { return false }
     }
 
-    /// Your sources' files. True when every source answered.
+    /// Your sources' files. True when every source answered. Every server is
+    /// asked at once, each for no longer than its `answersWithin` (4 s unless
+    /// it says otherwise), and each group shows as soon as its server answers;
+    /// one still answering keeps what it showed last time.
     private func loadSources() async -> Bool {
-        var built: [SourceGroup] = []
-        var unreachable: [String] = []
-        var problems: [String] = []
         // The debrid library has its own page (the entry above), not a list of raw
         // files here, and downloads have their own tab.
-        for source in await app.registry.enabled(with: .browse)
-        where (sourceFilter == nil && source.id != SidebarSource.debridLibraryID && source.kind != .downloads) || source.id == sourceFilter {
-            let variants: [MediaVariant]
-            do {
-                variants = try await source.catalog()
-            } catch let error as LocalFolderError {
-                problems.append(UserFacingError.message(for: error))
-                continue
-            } catch {
-                unreachable.append(source.displayName)
-                if let old = groups.first(where: { $0.id == source.id }) { built.append(old) }
-                continue
+        let sources = await app.registry.enabled(with: .browse).filter { source in
+            (sourceFilter == nil && source.id != SidebarSource.debridLibraryID && source.kind != .downloads) || source.id == sourceFilter
+        }
+        var results = SourceCatalogResults(sources: sources.map { ($0.id, $0.displayName) }, previous: groups)
+        publish(results)
+        let titles = SourceTitleLookup(app: app)
+        await withTaskGroup(of: (Int, SourceCatalogResults.Outcome).self) { group in
+            for (i, source) in sources.enumerated() {
+                group.addTask {
+                    let limit = source.answersWithin ?? SourceCatalogResults.defaultLimit
+                    let answer = await Deadline.value(within: limit) { () -> Result<[MediaVariant], any Error>? in
+                        do { return .success(try await source.catalog()) } catch { return .failure(error) }
+                    }
+                    switch answer {
+                    case nil: return (i, .unreachable)
+                    case .failure(let error as LocalFolderError)?: return (i, .problem(UserFacingError.message(for: error)))
+                    case .failure?: return (i, .unreachable)
+                    case .success(let variants)?:
+                        // Titles side by side (each may be a catalogue request); variants without a key get none.
+                        let keyed = variants.enumerated().compactMap { i, v in (v.mediaKey?.seriesKey ?? v.mediaKey).map { (i, $0) } }
+                        let found = await titles.titles(for: keyed.map(\.1))
+                        var byIndex: [Int: Title] = [:]
+                        for ((i, _), t) in zip(keyed, found) { byIndex[i] = t }
+                        let items = variants.enumerated().map { i, v in SourceItem(variant: v, title: byIndex[i]) }
+                        return (i, .loaded(SourceGroup(id: source.id, name: source.displayName, items: items)))
+                    }
+                }
             }
-            // Titles side by side (each may be a catalogue request); variants without a key get none.
-            let keyed = variants.enumerated().compactMap { i, v in (v.mediaKey?.seriesKey ?? v.mediaKey).map { (i, $0) } }
-            let found = await app.titles(for: keyed.map(\.1))
-            var byIndex: [Int: Title] = [:]
-            for ((i, _), t) in zip(keyed, found) { byIndex[i] = t }
-            let items = variants.enumerated().map { i, v in SourceItem(variant: v, title: byIndex[i]) }
-            built.append(SourceGroup(id: source.id, name: source.displayName, items: items))
+            for await (i, outcome) in group {
+                guard !Task.isCancelled else { continue }
+                results.record(outcome, at: i)
+                publish(results)
+            }
         }
         guard !Task.isCancelled else { return false }
+        return results.unreachable.isEmpty
+    }
+
+    /// Shows the sources' groups as they stand; unchanged values aren't written back.
+    private func publish(_ results: SourceCatalogResults) {
+        guard !Task.isCancelled else { return }
+        let built = results.groups, unreachable = results.unreachable, problems = results.problems
         if built != groups { groups = built }
         if unreachable != unreachableSources { unreachableSources = unreachable }
         if problems != folderProblems { folderProblems = problems }
-        return unreachable.isEmpty
     }
 
     /// My List filtered and sorted. Runs on load and when the chips or sort
@@ -329,7 +348,7 @@ struct LibraryView: View {
                 try await app.setWatched(entry.progress.key, false)
             }
             guard removed else { return }
-            app.showToast(AppToast(entry.title.name, message: "Removed from History", actionTitle: "Undo") { [app] in
+            app.showToast(AppToast(entry.title.name, message: "Removed from History", verbatim: .title, actionTitle: "Undo") { [app] in
                 Task { await app.restoreToContinueWatching(entry.progress) }
             })
         }
@@ -445,7 +464,7 @@ struct LibraryView: View {
                 try await app.setOnMyList(t, false)
             }
             guard removed else { return }
-            app.showToast(AppToast(t.name, message: "Removed from My List", actionTitle: "Undo") { [app] in
+            app.showToast(AppToast(t.name, message: "Removed from My List", verbatim: .title, actionTitle: "Undo") { [app] in
                 Task { await app.optimistic("Couldn't add back to My List", from: false, to: true, apply: { _ in }) {
                     try await app.setOnMyList(t, true)
                 } }
@@ -526,7 +545,7 @@ struct LibraryView: View {
         Task {
             await app.removeFromContinueWatching(entry.progress)
             await load(force: true)
-            app.showToast(AppToast(entry.title.name, message: "Removed from Continue Watching", actionTitle: "Undo") { [app] in
+            app.showToast(AppToast(entry.title.name, message: "Removed from Continue Watching", verbatim: .title, actionTitle: "Undo") { [app] in
                 Task { await app.restoreToContinueWatching(entry.progress) }
             })
         }

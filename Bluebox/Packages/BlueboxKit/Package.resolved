@@ -1,12 +1,30 @@
 {
-  "originHash" : "4c4352c6abd8d76d184838428b95563530dbcbf100073e1967d29be75553975a",
+  "originHash" : "131eca8216bd8a91a3e17b7bcd81f2c2629c2fa24715a368429e2422d42cded8",
   "pins" : [
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
     {
       "identity" : "swiftvlc",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/harflabs/SwiftVLC.git",
       "state" : {
         "revision" : "6e8ad130a40730cb0d3b8ddc96e19b4be02c341b"
+      }
+    },
+    {
+      "identity" : "whisperkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/argmaxinc/WhisperKit.git",
+      "state" : {
+        "revision" : "1bbc57cb7fe6410248a685b1c5a3c6d56adc2ed4",
+        "version" : "1.1.1"
       }
     }
   ],

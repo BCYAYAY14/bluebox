@@ -51,6 +51,13 @@ public final class AVPlayerEngine: PlaybackEngine {
     /// Lines of the embedded text track seen so far (AVPlayer only hands over the current one).
     private var seenCues: [SubtitleCue] = []
     private var shownLine: (text: String, start: TimeInterval)?
+    /// The subtitle delay (positive shows the embedded lines later). AVPlayer
+    /// has none of its own: the lines are held here until their time plus the
+    /// delay, and asked for ahead of time when it's negative.
+    private var subtitleDelay: TimeInterval = 0
+    /// Lines handed over, at the time the track gives them, waiting to be shown.
+    private var pendingLines: [(at: TimeInterval, text: String?)] = []
+    private var lineWake: Task<Void, Never>?
     private var adjustments = VideoAdjustments()
     private let audioSwitches = AudioEffectsSwitch()
     private var audioEffects = AudioEffects()
@@ -141,6 +148,8 @@ public final class AVPlayerEngine: PlaybackEngine {
         let isHLS = (resource.variant.container ?? resource.url.pathExtension).lowercased() == "m3u8"
         snapshot.supportsVideoAdjustments = !isHLS
         snapshot.supportsAudioEffects = !isHLS  // AVFoundation ignores audio mixes for HLS
+        // Its embedded text lines are drawn by Bluebox, and held for the delay here.
+        snapshot.delaysEmbeddedSubtitles = true
         if let groups = try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: Locale.preferredLanguages) {
             var chapters: [Chapter] = []
             for (i, g) in groups.enumerated() {
@@ -167,12 +176,10 @@ public final class AVPlayerEngine: PlaybackEngine {
         let legible = AVPlayerItemLegibleOutput(mediaSubtypesForNativeRepresentation: [])
         legible.suppressesPlayerRendering = true
         legible.setDelegate(legibleReceiver, queue: .main)
-        legibleReceiver.onText = { [weak self] text in
+        legible.advanceIntervalForDelegateInvocation = max(0, -subtitleDelay)
+        legibleReceiver.onText = { [weak self] text, time in
             guard let self, self.snapshot.selectedEmbeddedSubtitleID != nil else { return }
-            if self.snapshot.embeddedSubtitleText != text {
-                self.noteLine(text)
-                self.snapshot.embeddedSubtitleText = text
-            }
+            self.receivedLine(text, at: time)
         }
         item.add(legible)
         legibleOutput = legible
@@ -227,9 +234,51 @@ public final class AVPlayerEngine: PlaybackEngine {
 
     public func embeddedSubtitleCues() -> [SubtitleCue] { seenCues }
 
-    /// A line AVPlayer shows: the one before it ends now and is kept.
-    private func noteLine(_ text: String?) {
+    public func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {
+        guard seconds != subtitleDelay else { return }
+        subtitleDelay = seconds
+        // Lines due earlier than the track has them must be handed over that much ahead.
+        legibleOutput?.advanceIntervalForDelegateInvocation = max(0, -seconds)
+        showDueLines()
+    }
+
+    /// A line (or the end of one, nil) the track gives for `time`, shown at that time plus the delay.
+    private func receivedLine(_ text: String?, at time: TimeInterval) {
+        let at = time.isFinite ? time : (item?.currentTime().seconds ?? snapshot.position)
+        if text != shownLine?.text { noteLine(text, at: at) }
+        let i = pendingLines.firstIndex { $0.at > at } ?? pendingLines.count
+        pendingLines.insert((at, text), at: i)
+        showDueLines()
+    }
+
+    /// Shows the lines whose moment has come, and wakes for the next one
+    /// while playing. The time observer calls it too, for play and speed changes.
+    private func showDueLines() {
+        lineWake?.cancel(); lineWake = nil
         let now = item?.currentTime().seconds ?? snapshot.position
+        guard now.isFinite else { return }
+        while let first = pendingLines.first, first.at + subtitleDelay <= now + 0.01 {
+            pendingLines.removeFirst()
+            if snapshot.embeddedSubtitleText != first.text { snapshot.embeddedSubtitleText = first.text }
+        }
+        guard let next = pendingLines.first, player.rate > 0 else { return }
+        let wait = (next.at + subtitleDelay - now) / Double(player.rate)
+        lineWake = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, wait)))
+            guard !Task.isCancelled else { return }
+            self?.showDueLines()
+        }
+    }
+
+    /// The lines waiting are for where the video was: after a seek or a new track, the track hands over new ones.
+    private func dropPendingLines() {
+        pendingLines = []
+        lineWake?.cancel(); lineWake = nil
+    }
+
+    /// A line the track gives: the one before it ends at `now` and is kept,
+    /// on the track's own clock (the delay isn't in it).
+    private func noteLine(_ text: String?, at now: TimeInterval) {
         guard now.isFinite else { return }
         if let shown = shownLine, now > shown.start {
             let cue = SubtitleCue(start: shown.start, end: now, text: shown.text)
@@ -319,6 +368,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         watchdog.noteSeek()
         snapshot.position = target
         if snapshot.status == .ended { snapshot.status = .paused }
+        dropPendingLines()
         let time = CMTime(seconds: target, preferredTimescale: 600)
         // Exact seeks keep resume positions and scrubbing honest; tolerance only
         // matters for long-GOP HLS where it's still accurate to the frame.
@@ -508,6 +558,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         snapshot.selectedEmbeddedSubtitleID = option == nil ? nil : trackID
         snapshot.embeddedSubtitleText = nil
         seenCues = []; shownLine = nil
+        dropPendingLines()
     }
 
     public func stop() {
@@ -532,6 +583,7 @@ public final class AVPlayerEngine: PlaybackEngine {
         item = nil; audioGroup = nil; legibleGroup = nil; videoOutput = nil; legibleOutput = nil; asset = nil
         snapshot.embeddedSubtitleText = nil
         seenCues = []; shownLine = nil
+        dropPendingLines()
         streamLoader?.cancelAll(); streamLoader = nil
         scrubTarget = nil; seekGeneration += 1; isSeeking = false
     }
@@ -663,6 +715,7 @@ public final class AVPlayerEngine: PlaybackEngine {
     private func tick(_ time: CMTime) {
         guard !isSeeking, let item else { return }
         if time.seconds.isFinite { snapshot.position = time.seconds }
+        if !pendingLines.isEmpty, lineWake == nil { showDueLines() }
         if snapshot.duration == nil, item.duration.isNumeric { snapshot.duration = item.duration.seconds }
         if let range = item.loadedTimeRanges.last?.timeRangeValue {
             let end = (range.start + range.duration).seconds
@@ -743,13 +796,16 @@ public final class AVPlayerEngine: PlaybackEngine {
 
 /// Receives embedded subtitle text from AVFoundation on the main queue.
 final class LegibleReceiver: NSObject, AVPlayerItemLegibleOutputPushDelegate, @unchecked Sendable {
-    var onText: (@MainActor (String?) -> Void)?
+    /// The text (nil when a line ends) and the time in the video it's for:
+    /// ahead of that time when the delay asks for it early.
+    var onText: (@MainActor (String?, TimeInterval) -> Void)?
 
     func legibleOutput(_ output: AVPlayerItemLegibleOutput, didOutputAttributedStrings strings: [NSAttributedString],
                        nativeSampleBuffers: [Any], forItemTime itemTime: CMTime) {
         let text = strings.map(\.string).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let value = text.isEmpty ? nil : text
-        MainActor.assumeIsolated { onText?(value) }
+        let time = itemTime.seconds
+        MainActor.assumeIsolated { onText?(value, time) }
     }
 }
 

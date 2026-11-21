@@ -27,10 +27,10 @@ struct AccountSettingsPage: View {
                         } else if manual {
                             AccountManualConnectView(manual: $manual)
                         } else {
-                            AccountConnectView(manual: $manual)
+                            AccountConnectView(manual: $manual).accountRow("Supabase Project")
                         }
                     } else {
-                        AccountSignInView()
+                        AccountSignInView().accountRow("Sign In")
                         AccountServerRows(confirmDisconnect: $confirmDisconnect).padding(.top, Spacing.l)
                     }
                     TraktRows().padding(.top, Spacing.l)

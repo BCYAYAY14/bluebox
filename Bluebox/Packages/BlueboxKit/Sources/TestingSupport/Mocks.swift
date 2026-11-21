@@ -77,13 +77,15 @@ public struct MockMediaSource: MediaSource {
     public var variantsByKey: [MediaKey: [MediaVariant]]
     public var failure: SourceError?
     public var delay: Duration?
+    public var answersWithin: TimeInterval?
 
     public init(
         id: String, kind: SourceKind = .directURL, capabilities: SourceCapabilities = [.browse, .play],
-        variantsByKey: [MediaKey: [MediaVariant]] = [:], failure: SourceError? = nil, delay: Duration? = nil
+        variantsByKey: [MediaKey: [MediaVariant]] = [:], failure: SourceError? = nil, delay: Duration? = nil,
+        answersWithin: TimeInterval? = 4
     ) {
         self.id = SourceID(id); self.kind = kind; self.displayName = id; self.capabilities = capabilities
-        self.variantsByKey = variantsByKey; self.failure = failure; self.delay = delay
+        self.variantsByKey = variantsByKey; self.failure = failure; self.delay = delay; self.answersWithin = answersWithin
     }
 
     public static func variant(_ vid: String, source: String, key: MediaKey?, container: String = "mp4",

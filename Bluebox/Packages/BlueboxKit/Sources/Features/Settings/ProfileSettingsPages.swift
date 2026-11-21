@@ -55,10 +55,10 @@ extension AppModel {
 
 // MARK: - Languages
 
-/// Settings › Language: the app's own language (this device), then the
-/// audio track and subtitle languages this profile prefers. Also opens from
-/// the profile editor for any profile, titled like the editor's row
-/// ("Languages and Playback"): without the app's language, with its autoplay.
+/// Settings › (profile) › Languages: the audio track and subtitle languages
+/// this profile prefers (the app's own language is on Appearance). Also
+/// opens from the profile editor for any profile, titled like the editor's
+/// row ("Languages and Playback"), with its autoplay.
 struct ProfileLanguagesPage: View {
     @Environment(AppModel.self) private var app
     /// nil: the current profile.
@@ -75,11 +75,10 @@ struct ProfileLanguagesPage: View {
         Group {
             if profileID == nil {
                 SettingsForm(.languages) {
-                    AppLanguageSection()
                     profileSections
                 }
             } else {
-                // Not the Language page: no summary about the app's own language.
+                // Not the Languages page: titled for the editor's row.
                 SettingsForm(title: Self.editorTitle) {
                     profileSections
                     Section {
@@ -113,10 +112,16 @@ struct ProfileLanguagesPage: View {
                            groups: [[.init("Off", value: nil)], SettingsLanguages.options])
                 .disabled(current.subtitleStyle.preferredLanguage == nil)
                 .settingsRow("Second Language")
+            SettingsPicker("Turn On", selection: binding(\.subtitleStyle.turnsOn),
+                           groups: [[.init("Always", value: SubtitleStyle.TurnOn.always),
+                                     .init("When the Audio Isn't My Language", value: .foreignAudio),
+                                     .init("Forced Only", value: .forcedOnly)]])
+                .disabled(current.subtitleStyle.preferredLanguage == nil)
+                .settingsRow("Turn On Subtitles")
         } header: {
-            Text("Subtitles")
+            SettingsScopeHeader("Subtitles", scope: .profile(profile))
         } footer: {
-            Text("Turns subtitles on when a video has your language. A second language shows underneath, for learning.")
+            Text("Turns subtitles on when a video has your language: always, only when the audio is in another language, or only Forced tracks (signs and foreign lines). A pick for a show is kept for its next episodes. A second language shows underneath, for learning.")
         }
     }
 

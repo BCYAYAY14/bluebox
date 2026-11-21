@@ -62,6 +62,7 @@ struct TMDBMovieDetail: Decodable {
     let releaseDate: String?
     let runtime: Int?
     let imdbId: String?
+    let originalLanguage: String?
     let genres: [TMDBGenre]?
     let voteAverage: Double?
     let posterPath: String?
@@ -97,6 +98,7 @@ struct TMDBSeriesDetail: Decodable {
     let tagline: String?
     let firstAirDate: String?
     let episodeRunTime: [Int]?
+    let originalLanguage: String?
     let genres: [TMDBGenre]?
     let voteAverage: Double?
     let posterPath: String?

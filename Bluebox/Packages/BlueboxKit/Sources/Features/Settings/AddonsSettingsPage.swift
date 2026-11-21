@@ -35,6 +35,8 @@ extension AppModel {
 }
 
 struct AddonsSettingsPage: View {
+    /// Torrents & Debrid › Add-ons, for search hits on this page (`SettingsSearchIndex.Entry.subpage`).
+    nonisolated static let title = "Add-ons"
     @Environment(AppModel.self) private var app
     @State private var health: [String: AddonHealth] = [:]
     @State private var link = ""
@@ -47,7 +49,7 @@ struct AddonsSettingsPage: View {
 
     var body: some View {
         let settings = app.addonSettings
-        SettingsForm(title: "Add-ons") {
+        SettingsForm(.torrents, subpage: Self.title) {
             Section {
                 if settings.addons.isEmpty {
                     Text("No add-ons. Add one below.").foregroundStyle(Palette.textSecondary)
@@ -71,6 +73,7 @@ struct AddonsSettingsPage: View {
                         AddonSettingsRow(addon: addon, health: health[addon.id],
                                          isOn: Binding { addon.isEnabled } set: { app.setAddon(addon.id, enabled: $0) })
                             .contextMenu { menu(addon) }
+                            .settingsRow(addon.name)  // the presets are in the search index by name
                     }
                 }
                 if let linkResult { SettingsStatus(ok: linkResult.ok, message: linkResult.message) }

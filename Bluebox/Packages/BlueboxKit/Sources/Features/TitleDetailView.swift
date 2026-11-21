@@ -28,6 +28,11 @@ final class TitleDetailModel {
     var playableEpisodes: Set<MediaKey> = []
     /// Episodes a source would let you download (the round ↓ shows for these).
     var downloadableEpisodes: Set<MediaKey> = []
+    /// Episodes of the season shown whose sources haven't answered yet.
+    var checkingEpisodes: Set<MediaKey> = []
+    /// Episodes some round has had an answer for: asked again, they keep that
+    /// answer rather than going back to "checking".
+    @ObservationIgnored private var answeredEpisodes: Set<MediaKey> = []
     /// Rates for the season menu's "about" sizes.
     var sizeEstimate = SeasonSizeEstimate(bytesPerMinute: nil, fallbackBytesPerMinute: SeasonSizeEstimate.typicalBytesPerMinute(resolution: nil))
     /// Set once the page has scrolled to the episode you're up to.
@@ -82,16 +87,24 @@ final class TitleDetailModel {
 
     func load(_ app: AppModel) async {
         onList = (try? await app.store.isOnWatchlist(title.key)) ?? false
+        // Whether it plays is asked alongside TMDB's detail, not after it: a
+        // slow detail (or OMDb's ratings) no longer leaves Play grey. A show
+        // you've started already knows its episode; one whose next episode
+        // needs the season list asks again once the detail is in.
+        async let early: Void = refreshProgress(app)
+        var fetched: TitleDetail?
         do {
             let d = try await app.metadata.detail(for: title.key)
             detail = d
             error = nil
+            fetched = d
             try? await app.store.store([d.title])
-            ratings = await app.externalRatings(for: d)
         } catch {
             self.error = error
         }
-        await refreshProgress(app)
+        async let rated: Void = loadRatings(fetched, app)
+        await early
+        if title.kind == .series, detail != nil, seriesTarget() != target { await refreshProgress(app) }
         // A Jellyfin or Emby server may know of watching since its library last
         // loaded; anything newer bumps libraryRevision, which redraws the page.
         Task { [key = title.key] in await app.refreshServerProgress(for: key) }
@@ -108,6 +121,18 @@ final class TitleDetailModel {
         async let extras: Void = loadExtras(app)
         if let s = selectedSeason { await loadSeason(s, app) }
         await extras
+        await rated
+    }
+
+    /// IMDb, Rotten Tomatoes and Metacritic, shown when OMDb answers; nothing waits on them.
+    private func loadRatings(_ detail: TitleDetail?, _ app: AppModel) async {
+        guard let detail else { return }
+        ratings = await app.externalRatings(for: detail)
+    }
+
+    /// The episode Play would start, from the progress already read.
+    private func seriesTarget() -> SeriesCursor.Target? {
+        SeriesCursor.target(series: title.key, progress: Array(seriesProgress.values), seasons: detail?.seasons ?? [])
     }
 
     /// Trailers & More: the season's videos when it has its own, else the title's.
@@ -145,6 +170,8 @@ final class TitleDetailModel {
             if byKey != seriesProgress { seriesProgress = byKey }
             let next = SeriesCursor.target(series: title.key, progress: all, seasons: detail?.seasons ?? [])
             if next != target { target = next }
+            // No episode yet because the season list isn't in: still unknown, not unavailable.
+            if next == nil, detail == nil { return }
             var availability = Availability.none
             if let t = next { availability = await app.availability(for: t.key) }
             if availability != targetAvailability { targetAvailability = availability }
@@ -158,7 +185,14 @@ final class TitleDetailModel {
             guard selectedSeason == number else { return }
             season = s
             let keys = s.episodes.map(\.key)
-            var playable = Set<MediaKey>(), downloadable = Set<MediaKey>()
+            // Each row fills in as its own answer arrives, rather than every row
+            // waiting for the slowest episode. Until then a row is "checking",
+            // which isn't the same as "not in your sources".
+            var answers = EpisodeAvailabilityAnswers(keys: keys, answered: answeredEpisodes,
+                                                     playable: playableEpisodes, downloadable: downloadableEpisodes)
+            checkingEpisodes = answers.checking
+            playableEpisodes = answers.playable
+            downloadableEpisodes = answers.downloadable
             await withTaskGroup(of: (MediaKey, Bool, Bool).self) { group in
                 for k in keys {
                     group.addTask {
@@ -167,16 +201,19 @@ final class TitleDetailModel {
                     }
                 }
                 for await (k, ok, canDownload) in group {
-                    if ok { playable.insert(k) }
-                    if canDownload { downloadable.insert(k) }
+                    guard selectedSeason == number else { continue }
+                    answers.answer(k, playable: ok, downloadable: canDownload)
+                    answeredEpisodes.insert(k)
+                    if answers.checking != checkingEpisodes { checkingEpisodes = answers.checking }
+                    if answers.playable != playableEpisodes { playableEpisodes = answers.playable }
+                    if answers.downloadable != downloadableEpisodes { downloadableEpisodes = answers.downloadable }
                 }
             }
+            guard selectedSeason == number else { return }
             #if DEBUG
             // Screenshots: `-demo-downloadable` treats every episode as downloadable (the season's ↓ menu shows).
-            if ProcessInfo.processInfo.arguments.contains("-demo-downloadable") { downloadable = Set(keys) }
+            if ProcessInfo.processInfo.arguments.contains("-demo-downloadable") { downloadableEpisodes = Set(keys) }
             #endif
-            playableEpisodes = playable
-            downloadableEpisodes = downloadable
             await estimateSizes(for: s, app)
         } catch {
             seasonError = error
@@ -205,6 +242,28 @@ final class TitleDetailModel {
             await loadSeason(number, app)
             await loadExtras(app)
         }
+    }
+}
+
+/// A season's episode rows while their sources answer one by one: what plays,
+/// what downloads, and which are still being asked (unknown, not unavailable).
+struct EpisodeAvailabilityAnswers: Equatable {
+    private(set) var playable: Set<MediaKey>
+    private(set) var downloadable: Set<MediaKey>
+    private(set) var checking: Set<MediaKey>
+
+    /// `answered` are episodes an earlier round already knows about: they keep
+    /// their last answer until the new one arrives.
+    init(keys: [MediaKey], answered: Set<MediaKey>, playable: Set<MediaKey>, downloadable: Set<MediaKey>) {
+        self.playable = playable
+        self.downloadable = downloadable
+        checking = Set(keys).subtracting(answered)
+    }
+
+    mutating func answer(_ key: MediaKey, playable isPlayable: Bool, downloadable canDownload: Bool) {
+        checking.remove(key)
+        if isPlayable { playable.insert(key) } else { playable.remove(key) }
+        if canDownload { downloadable.insert(key) } else { downloadable.remove(key) }
     }
 }
 
@@ -1113,6 +1172,7 @@ struct TitleDetailView: View {
         return EpisodeRow(
             episode: ep, progress: model.seriesProgress[ep.key],
             isPlayable: model.playableEpisodes.contains(ep.key),
+            isChecking: model.checkingEpisodes.contains(ep.key),
             isNext: model.hasSeriesProgress && model.target?.key == ep.key,
             canDownload: model.downloadableEpisodes.contains(ep.key),
             thumbnailWidth: thumbnailWidth,
@@ -1261,7 +1321,8 @@ struct TitleDetailView: View {
         guard !episodes.isEmpty else { return }
         let bytes = model.sizeEstimate.bytes(for: episodes, knownSizes: [:])
         let check = SeasonDownloadCheck.check(bytes: bytes, episodes: episodes.count, onMobileData: app.settings.isOnMobileData,
-                                              wifiOnly: app.downloadSettings.wifiOnly, freeBytes: app.downloads.freeBytes())
+                                              wifiOnly: app.downloadSettings.wifiOnly, freeBytes: app.downloads.freeBytes(),
+                                              episodeBytes: episodes.map { model.sizeEstimate.bytes(for: $0, knownSize: nil) })
         let request = SeasonDownloadRequest(seriesKey: model.title.key, season: season.number, seasonName: seasonName(season),
                                             seriesName: model.display.name, episodes: episodes, bytes: bytes, check: check)
         if check == .none { startSeason(request, mobileData: nil) } else { askSeasonDownload(request) }
@@ -1284,6 +1345,17 @@ struct TitleDetailView: View {
                        .init(wifiOnly ? String(localized: "Download Now on Mobile Data") : String(localized: "Download Now"), role: .secondary) {
                            startSeason(request, mobileData: true)
                        }]
+        case .notEnoughSpace(_, _, _, let fits):
+            // Queueing them all would only fail the later ones, one notice each.
+            actions = []
+            if fits > 0 {
+                var fitting = request
+                fitting.episodes = Array(request.episodes.prefix(fits))
+                actions.append(.init(fits == 1 ? String(localized: "Download the 1 That Fits") : "Download the \(fits) That Fit",
+                                     role: .primary) {
+                    startSeason(fitting, mobileData: nil)
+                })
+            }
         default:
             actions = [.init(n == 1 ? String(localized: "Download 1 Episode") : "Download \(n) Episodes", role: .primary) {
                 startSeason(request, mobileData: nil)

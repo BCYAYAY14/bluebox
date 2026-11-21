@@ -27,7 +27,9 @@ final class SubtitleAudioSync {
         case idle
         case listening(part: Int, of: Int)
         case matching
-        case done(SubtitleOffset, previous: SubtitleOffset, drift: Bool)
+        /// `here`: the stretches disagreed (the film's timing changes partway),
+        /// so the delay is the one for this part of the film.
+        case done(SubtitleOffset, previous: SubtitleOffset, drift: Bool, here: Bool)
         case failed(String)
     }
 
@@ -50,7 +52,7 @@ final class SubtitleAudioSync {
     func cancel() { task?.cancel(); task = nil; phase = .idle }
 
     func undo(_ session: PlayerSession) {
-        if case .done(_, let previous, _) = phase { session.applySubtitleOffset(previous) }
+        if case .done(_, let previous, _, _) = phase { session.applySubtitleOffset(previous) }
         phase = .idle
     }
 
@@ -82,8 +84,12 @@ final class SubtitleAudioSync {
             update(.failed("The subtitles have no lines around here to match. Try again where there's dialogue.")); return
         }
         let fitsDrift = session.canRetimeSubtitleLines
+        let playhead = session.snapshot.position
+        let frameRate = session.engine.diagnostics().frameRate
         var words: [SubtitleAudioAlignment.HeardWord] = []
         var best: SubtitleAudioAlignment.Result?
+        // What went wrong with the stretches that couldn't be read, to say when none could.
+        var failure: Error?
         // Its own folder: a run stopped and started again doesn't share clips with the last.
         let folder = FileManager.default.temporaryDirectory.appending(path: "bluebox-audio-sync-\(UUID().uuidString)", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -107,19 +113,23 @@ final class SubtitleAudioSync {
                 let (wav, start) = try await withTaskCancellationHandler { try await current.value } onCancel: { current.cancel() }
                 defer { try? FileManager.default.removeItem(at: wav) }
                 let hints = Self.hints(cues, around: start, offset: previous)
-                words += try await Self.recognize(wav, with: listener, hints: hints).map { .init($0.text, at: start + $0.time) }
+                // Numbered by stretch: each votes on its own, however close they are.
+                words += try await Self.recognize(wav, with: listener, hints: hints).map { .init($0.text, at: start + $0.time, clip: i) }
             } catch is CancellationError {
                 return
             } catch {
+                failure = error
                 Log.playback.notice("Audio sync: stretch at \(Int(windows[i])) s failed: \(error.localizedDescription, privacy: .public)")
             }
             if Task.isCancelled { return }
             // A track in the video keeps being read while this listens.
             if session.subtitleSelection == selection { cues = session.subtitleCues }
             // Two stretches that agree well are enough (one, where only a delay is set): the third is for when they don't.
-            if i >= (fitsDrift ? 1 : 0), let result = SubtitleAudioAlignment.fit(words: words, cues: cues, current: previous, fitsDrift: fitsDrift) {
+            // A delay for this part only (the stretches disagree) listens on: another stretch may settle it.
+            if i >= (fitsDrift ? 1 : 0), let result = await Self.match(words: words, cues: cues, current: previous, fitsDrift: fitsDrift,
+                                                                                       playhead: playhead, videoFrameRate: frameRate).result {
                 best = result
-                if result.matches >= Self.confidentMatches { break }
+                if result.matches >= Self.confidentMatches, !result.isLocal { break }
             }
         }
         update(.matching)
@@ -127,14 +137,50 @@ final class SubtitleAudioSync {
         guard session.subtitleSelection == selection, session.currentResource?.url == resource.url else {
             update(.failed("The subtitles changed while Bluebox was listening. Try again.")); return
         }
-        guard !words.isEmpty else { update(.failed("No speech was heard. Try again in a stretch with dialogue.")); return }
-        guard let result = best ?? SubtitleAudioAlignment.fit(words: words, cues: cues, current: previous, fitsDrift: fitsDrift) else {
+        guard !words.isEmpty else {
+            // Every stretch failed to read: say why, rather than blame the dialogue.
+            update(.failed(failure.map(Self.message(for:)) ?? "No speech was heard. Try again in a stretch with dialogue.")); return
+        }
+        let outcome: SubtitleAudioAlignment.Outcome = if let best { .fitted(best) } else {
+            await Self.match(words: words, cues: cues, current: previous, fitsDrift: fitsDrift, playhead: playhead, videoFrameRate: frameRate)
+        }
+        guard !Task.isCancelled else { return }
+        let result: SubtitleAudioAlignment.Result
+        switch outcome {
+        case .fitted(let fitted): result = fitted
+        case .refused(.drifts):
+            update(.failed(fitsDrift
+                ? "These subtitles drift against the speech, and Bluebox couldn't hear far enough apart to measure it. Try again later in the video, or use Slipping Out of Sync?"
+                : "These subtitles drift against the speech, and only their delay can be moved here. Add a subtitle file to fix the drift."))
+            return
+        case .refused:
             update(.failed("The speech didn't match these subtitles well enough. Are they for this video, and in \(name)?"))
             return
         }
         guard !Task.isCancelled else { return }
         session.applySubtitleOffset(result.offset)
-        phase = .done(result.offset, previous: previous, drift: result.fittedDrift)
+        phase = .done(result.offset, previous: previous, drift: result.fittedDrift, here: result.isLocal)
+    }
+
+    /// The matching, off the main actor: a fit reads every line's words (about
+    /// 200 ms in a debug build, two or three per run), which held up the
+    /// player's drawing while it ran. Only the outcome comes back here.
+    nonisolated static func match(words: [SubtitleAudioAlignment.HeardWord], cues: [SubtitleCue], current: SubtitleOffset, fitsDrift: Bool,
+                                  playhead: TimeInterval?, videoFrameRate: Double?) async -> SubtitleAudioAlignment.Outcome {
+        await Task.detached(priority: .userInitiated) {
+            SubtitleAudioAlignment.match(words: words, cues: cues, current: current, fitsDrift: fitsDrift,
+                                         playhead: playhead, videoFrameRate: videoFrameRate)
+        }.value
+    }
+
+    /// What to say when a stretch's sound couldn't be read.
+    static func message(for error: Error) -> String {
+        switch error as? VLCAudioClip.Failure {
+        case .couldNotDecode: "Bluebox couldn't decode the sound of this video."
+        case .noSound: "No sound could be read where Bluebox listened. Try again in another part of the video."
+        case .timedOut: "Reading the sound of this video took too long. Try again once more of it has loaded."
+        case nil: "Bluebox couldn't listen to this video's sound."
+        }
     }
 
     /// Agreeing word pairs that settle it without listening to another stretch.
@@ -323,7 +369,8 @@ final class SubtitleAudioSync {
     nonisolated private static func handler(_ once: ResumeOnce) -> @Sendable (SFSpeechRecognitionResult?, Error?) -> Void {
         { result, error in
             if let result, result.isFinal {
-                once.resume(.success(result.bestTranscription.segments.map { ($0.substring, $0.timestamp) }))
+                // Each word at its middle, as with the transcriber.
+                once.resume(.success(result.bestTranscription.segments.map { ($0.substring, $0.timestamp + $0.duration / 2) }))
             } else if let error {
                 once.resume(.failure(error))
             }
@@ -396,6 +443,42 @@ enum TranscriberListening {
         }
     }
 
+    /// Words heard in a clip, with when each starts and ends in the video
+    /// (the clip starts at `offset`), for generated subtitles. The text keeps
+    /// the transcriber's spacing and punctuation, which is what finds sentences.
+    static func heard(_ url: URL, locale: Locale, offset: TimeInterval) async throws -> [HeardWord] {
+        let transcriber = module(locale)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let file = try AVAudioFile(forReading: url)
+        let words = Task {
+            var out: [HeardWord] = []
+            for try await result in transcriber.results {
+                for run in result.text.runs {
+                    guard let range = run.audioTimeRange else { continue }
+                    out.append(HeardWord(String(result.text[run.range].characters), start: offset + range.start.seconds,
+                                         end: offset + range.end.seconds))
+                }
+            }
+            return out
+        }
+        return try await withTaskCancellationHandler {
+            do {
+                if let last = try await analyzer.analyzeSequence(from: file) {
+                    try await analyzer.finalizeAndFinish(through: last)
+                } else {
+                    await analyzer.cancelAndFinishNow()
+                }
+            } catch {
+                words.cancel()
+                throw error
+            }
+            return try await words.value
+        } onCancel: {
+            words.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
+        }
+    }
+
     /// Words heard in a clip, with their times from its start.
     static func recognize(_ url: URL, locale: Locale, hints: [String]) async throws -> SubtitleAudioSync.Heard {
         let transcriber = module(locale)
@@ -411,7 +494,9 @@ enum TranscriberListening {
             for try await result in transcriber.results {
                 for run in result.text.runs {
                     guard let range = run.audioTimeRange else { continue }
-                    out.append((String(result.text[run.range].characters), range.start.seconds))
+                    // The word's middle, where a line's word is placed too: its
+                    // start put every word heard 0.2 to 0.5 s early.
+                    out.append((String(result.text[run.range].characters), range.start.seconds + range.duration.seconds / 2))
                 }
             }
             return out

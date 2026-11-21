@@ -181,21 +181,30 @@ private final class LiveActivityDriver {
 #if os(macOS)
 /// The Dock badge, and an App Nap exemption while downloads run: with the
 /// window closed, macOS would otherwise throttle Bluebox's timers and network.
+/// On mains power the Mac also stays awake until they finish; on battery it
+/// may still sleep when idle.
 @MainActor
 private final class MacDownloadsDock {
     private var shown = 0
     private var activity: NSObjectProtocol?
+    /// Whether the running activity keeps the Mac awake.
+    private var keepsAwake = false
 
     func update(activeCount: Int) {
-        guard activeCount != shown else { return }
-        shown = activeCount
-        NSApp?.dockTile.badgeLabel = activeCount > 0 ? "\(activeCount)" : nil
-        if activeCount > 0, activity == nil {
-            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
-                                                             reason: "Downloading videos")
-        } else if activeCount == 0, let running = activity {
+        let onMains = DownloadPowerMonitor.isCharging
+        guard activeCount != shown || (activeCount > 0 && onMains != keepsAwake) else { return }
+        if activeCount != shown {
+            shown = activeCount
+            NSApp?.dockTile.badgeLabel = activeCount > 0 ? "\(activeCount)" : nil
+        }
+        if let running = activity, activeCount == 0 || onMains != keepsAwake {
             ProcessInfo.processInfo.endActivity(running)
             activity = nil
+        }
+        if activeCount > 0, activity == nil {
+            keepsAwake = onMains
+            activity = ProcessInfo.processInfo.beginActivity(options: onMains ? .userInitiated : .userInitiatedAllowingIdleSystemSleep,
+                                                             reason: "Downloading videos")
         }
     }
 }

@@ -154,7 +154,9 @@ public actor DebridLibrarySource: MediaSource {
 
     public func variants(for key: MediaKey) async throws -> [MediaVariant] {
         guard api != nil else { return [] }
-        // Don't hold up a title page on a cold library; it fills in on the next look.
+        // A cold library is loaded here, but a title page doesn't wait on it
+        // for long: `MediaSourceRegistry.availability` goes on without this
+        // source after `answersWithin` while the load finishes for the next look.
         let current = loadedAt == nil ? ((try? await library()) ?? []) : entries
         if let loadedAt, now().timeIntervalSince(loadedAt) >= lifetime, loading == nil {
             Task { _ = try? await self.library(refresh: true) }

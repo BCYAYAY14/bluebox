@@ -79,6 +79,8 @@ struct SubtitleOverlay: View {
                         if showsReset, !dragging, !style.isDefaultPosition { resetButton(above: style.anchor != .top) }
                     }
                     .contentShape(Rectangle().inset(by: -8))
+                    // A moved line: a tap brings Reset Position back after its flash has gone.
+                    .gesture(TapGesture().onEnded { flashReset() }, isEnabled: editable && !style.isDefaultPosition)
                     .gesture(dragGesture(w: w, h: h), including: editable ? .all : .subviews)
                     .simultaneousGesture(pinchGesture, including: editable ? .all : .subviews)
                     #if os(macOS)
@@ -118,13 +120,20 @@ struct SubtitleOverlay: View {
     /// the controls while they cover it (`SubtitleStyle.restingMargin`). The
     /// controls are measured from the stage's edges, so the black bars they
     /// sit over don't count (they cover less of a letterboxed picture), and a
-    /// line dropped in a bar under them stays there.
+    /// line dropped in a bar under them stays there. A line saved in a bar
+    /// deeper than this stage's (another film's, or before a phone turned)
+    /// comes up to the window's edge. While dragging it's the saved distance:
+    /// the controls fade then, and a drag measured from the lifted line would
+    /// save it too high.
     private func restingMargin(h: Double) -> Double {
-        guard controlsVisible, !holdsDrop else { return style.restingMargin(coveredBottom: -.infinity, coveredTop: -.infinity) * h }
         let stage = stageRect ?? videoRect
         let below = Double(stage.maxY - videoRect.maxY), above = Double(videoRect.minY - stage.minY)
+        guard controlsVisible, !holdsDrop, !dragging else {
+            return style.restingMargin(coveredBottom: -.infinity, coveredTop: -.infinity, barBelow: below / h, barAbove: above / h) * h
+        }
         return style.restingMargin(coveredBottom: (Double(controlsInset) - below) / h,
-                                   coveredTop: (Double(controlsTopInset) - above) / h) * h
+                                   coveredTop: (Double(controlsTopInset) - above) / h,
+                                   barBelow: below / h, barAbove: above / h) * h
     }
 
     /// How far up and down the text can go, in unit coordinates of the picture.
@@ -161,7 +170,7 @@ struct SubtitleOverlay: View {
     /// a drop is where the user let go).
     private func rect(for p: SubtitlePlacement, w: Double, h: Double) -> CGRect {
         let bw = Double(blockSize.width) / w, bh = Double(blockSize.height) / h
-        let midX = SubtitlePlacement.restingMidX(blockWidth: bw, alignment: style.alignment, horizontalMargin: style.horizontalMargin) + p.horizontalOffset
+        let midX = SubtitlePlacement.restingMidX(blockWidth: bw, alignment: p.alignment, horizontalMargin: style.horizontalMargin) + p.horizontalOffset
         let minY = switch p.anchor { case .bottom: 1 - p.verticalMargin - bh; case .middle: 0.5 - bh / 2; case .top: p.verticalMargin }
         return CGRect(x: midX - bw / 2, y: minY, width: bw, height: bh)
     }
@@ -177,7 +186,8 @@ struct SubtitleOverlay: View {
                 if !dragging { begin(); dragging = true }
                 let rest = restingRect(w: w, h: h)
                 let moved = rest.offsetBy(dx: v.translation.width / w, dy: v.translation.height / h)
-                candidate = SubtitlePlacement.dropping(block: moved, alignment: style.alignment, horizontalMargin: style.horizontalMargin,
+                candidate = SubtitlePlacement.dropping(block: moved, alignment: style.alignment,
+                                                       horizontalMargin: style.horizontalMargin,
                                                        verticalBounds: verticalBounds(h: h))
             }
             .onEnded { _ in endDrag() }
@@ -262,15 +272,21 @@ struct SubtitleOverlay: View {
         .transition(.opacity)
     }
 
-    /// Snap lines: the centre lines and the usual distance from the edge.
+    /// Snap lines: the centre lines, the side margins and the usual distance from the edge.
     private func guides(w: Double, h: Double) -> some View {
         let snapX = candidate?.snappedX == true, snapY = candidate?.snappedY == true
+        let side = candidate?.snapLine ?? .center
         let edgeY = candidate?.anchor == .top ? SubtitleStyle.defaultMargin * h : h - SubtitleStyle.defaultMargin * h
+        let marginX = style.horizontalMargin * w
         return Canvas { ctx, size in
             var centre = Path(); centre.move(to: CGPoint(x: w / 2, y: 0)); centre.addLine(to: CGPoint(x: w / 2, y: h))
             var edge = Path(); edge.move(to: CGPoint(x: 0, y: edgeY)); edge.addLine(to: CGPoint(x: w, y: edgeY))
             let dash = StrokeStyle(lineWidth: 1, dash: [6, 6])
-            ctx.stroke(centre, with: .color(snapX ? Palette.brandBright : .white.opacity(0.25)), style: dash)
+            ctx.stroke(centre, with: .color(snapX && side == .center ? Palette.brandBright : .white.opacity(0.25)), style: dash)
+            for (x, a) in [(marginX, SubtitleStyle.Alignment.leading), (w - marginX, .trailing)] {
+                var line = Path(); line.move(to: CGPoint(x: x, y: 0)); line.addLine(to: CGPoint(x: x, y: h))
+                ctx.stroke(line, with: .color(snapX && side == a ? Palette.brandBright : .white.opacity(0.15)), style: dash)
+            }
             ctx.stroke(edge, with: .color(snapY && candidate?.anchor != .middle ? Palette.brandBright : .white.opacity(0.25)), style: dash)
             var middle = Path(); middle.move(to: CGPoint(x: 0, y: h / 2)); middle.addLine(to: CGPoint(x: w, y: h / 2))
             ctx.stroke(middle, with: .color(candidate?.anchor == .middle ? Palette.brandBright : .white.opacity(0.18)), style: dash)

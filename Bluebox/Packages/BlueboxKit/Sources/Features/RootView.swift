@@ -112,6 +112,40 @@ public enum AppTab: Hashable {
     case source(SourceID)
 }
 
+/// A tab's nearest equivalent in the other layout: items that only exist in
+/// the top bar (iPad, Mac) fold into My Library or Home's chips on iPhone, and
+/// back. The pages open in the old tab move with it, so Split View or a
+/// resized window keeps the title you were on rather than dropping it.
+struct TabLayoutMapping: Equatable {
+    var tab: AppTab
+    var homeCategory: HomeCategory
+    var paths: [AppTab: [Route]]
+
+    func normalized(compact: Bool) -> TabLayoutMapping {
+        var out = self
+        if compact {
+            switch tab {
+            case .myList, .watching, .source: out.tab = .library
+            case .shows: out.tab = .home; out.homeCategory = .series
+            case .movies: out.tab = .home; out.homeCategory = .movies
+            default: break
+            }
+        } else {
+            if tab == .library { out.tab = .myList }
+            if tab == .home && homeCategory != .all {
+                out.tab = homeCategory == .series ? .shows : .movies
+                out.homeCategory = .all
+            }
+        }
+        // The open pages go where the tab went; with none open, the new tab keeps its own.
+        if out.tab != tab, let moving = paths[tab], !moving.isEmpty {
+            out.paths[out.tab] = moving
+            out.paths[tab] = []
+        }
+        return out
+    }
+}
+
 /// A registered source, as listed in the Sources menu.
 struct SidebarSource: Identifiable, Hashable {
     let id: SourceID
@@ -334,6 +368,8 @@ public struct RootView: View {
         .modifier(ExternalOpenPresenter())
         // Join a Party…, and a party being joined before its player opens (WatchPartyViews.swift).
         .modifier(PartyHost())
+        // The AI sheet: first launch, and updates that change the AI (AINotice.swift).
+        .modifier(AINoticeHost(isBlocked: showsProfilePicker))
         #if os(macOS)
         // Drop a magnet, .torrent, video or folder anywhere on the window.
         .modifier(ExternalDropTarget())
@@ -409,8 +445,8 @@ public struct RootView: View {
             tab = .home
             paths[.home] = []
         case .search(let query):
+            if app.remoteSearchStartsOver(query, onSearch: tab == .search) { paths[.search] = [] }
             tab = .search
-            paths[.search] = []
             app.remoteSearchText = query
         case .title(let key):
             guard let title = await app.title(for: key) else { return }
@@ -562,8 +598,8 @@ public struct RootView: View {
         }
         .onAppear { normalizeTab(compact: true) }
         #if os(iOS)
-        // Long-press My Library: the profile menu, from any tab.
-        .background(TabBarLongPress(tabIndex: 2) { libraryProfileMenu = true })
+        // Long-press Home: Settings. Long-press My Library: the profile menu, from any tab.
+        .background(TabBarLongPress(actions: [0: { openSettings(nil) }, 2: { libraryProfileMenu = true }]))
         .overlay(alignment: .bottom) {
             GeometryReader { geo in
                 // An anchor just above the tab bar's My Library item, for the menu to open from.
@@ -655,23 +691,13 @@ public struct RootView: View {
         }
     }
 
-    /// Maps a tab to its nearest equivalent in the other layout: items that
-    /// only exist in the top bar fold into My Library on iPhone, and back.
+    /// Maps a tab to its nearest equivalent in the other layout (`TabLayoutMapping`),
+    /// taking the open pages along.
     private func normalizeTab(compact: Bool) {
-        if compact {
-            switch tab {
-            case .myList, .watching, .source: tab = .library
-            case .shows: tab = .home; homeCategory = .series
-            case .movies: tab = .home; homeCategory = .movies
-            default: break
-            }
-        } else {
-            if tab == .library { tab = .myList }
-            if tab == .home && homeCategory != .all {
-                tab = homeCategory == .series ? .shows : .movies
-                homeCategory = .all
-            }
-        }
+        let mapped = TabLayoutMapping(tab: tab, homeCategory: homeCategory, paths: paths).normalized(compact: compact)
+        if mapped.paths != paths { paths = mapped.paths }
+        if mapped.tab != tab { tab = mapped.tab }
+        if mapped.homeCategory != homeCategory { homeCategory = mapped.homeCategory }
     }
 
     private var isCompact: Bool {
@@ -1287,13 +1313,14 @@ struct ProfilePickerAction: Equatable {
 #if os(iOS)
 import UIKit
 
-/// iPhone: a long press on one of the tab bar's items (My Library opens the
-/// profile menu). SwiftUI's `Tab` takes no gestures, so this finds the
-/// hosting tab bar controller and adds a recogniser to its bar.
+/// iPhone: a long press on one of the tab bar's items (Home opens Settings,
+/// My Library the profile menu). SwiftUI's `Tab` takes no gestures, so this
+/// finds the hosting tab bar controller and adds one recogniser to its bar,
+/// which works out which item was pressed.
 private struct TabBarLongPress: UIViewRepresentable {
-    /// Which item, counting from the leading edge (Search, drawn apart on iOS 26, isn't counted).
-    let tabIndex: Int
-    let action: @MainActor () -> Void
+    /// What a long press on each item does, keyed by the item's place counting
+    /// from the leading edge (Search, drawn apart on iOS 26, isn't counted).
+    let actions: [Int: @MainActor () -> Void]
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -1304,14 +1331,12 @@ private struct TabBarLongPress: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UIView, context: Context) {
-        context.coordinator.tabIndex = tabIndex
-        context.coordinator.action = action
+        context.coordinator.actions = actions
         DispatchQueue.main.async { context.coordinator.attach(from: view) }
     }
 
     @MainActor final class Coordinator: NSObject {
-        var tabIndex = 0
-        var action: (@MainActor () -> Void)?
+        var actions: [Int: @MainActor () -> Void] = [:]
         private weak var bar: UITabBar?
 
         func attach(from view: UIView) {
@@ -1336,17 +1361,17 @@ private struct TabBarLongPress: UIViewRepresentable {
             }
             items.sort { $0.minX < $1.minX }
             let x = press.location(in: bar).x
-            let hit: Bool
-            if items.count > tabIndex {
-                hit = items[tabIndex].insetBy(dx: -8, dy: -20).contains(CGPoint(x: x, y: items[tabIndex].midY))
-            } else {
+            let pressed = actions.keys.first { index in
+                if items.count > index {
+                    return items[index].insetBy(dx: -8, dy: -20).contains(CGPoint(x: x, y: items[index].midY))
+                }
                 // Couldn't find the buttons: share the bar evenly between the four tabs.
                 let width = bar.bounds.width / 4
-                hit = x >= width * CGFloat(tabIndex) && x < width * CGFloat(tabIndex + 1)
+                return x >= width * CGFloat(index) && x < width * CGFloat(index + 1)
             }
-            if hit {
+            if let pressed, let action = actions[pressed] {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                action?()
+                action()
             }
         }
 

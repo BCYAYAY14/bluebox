@@ -55,6 +55,8 @@ public final class VLCEngine: PlaybackEngine {
     /// Subtitle size, VLC's `sub-text-scale` / 100. Set on the player live.
     private var subtitleTextScale: Float = 0.9
     private var subtitleDelay: TimeInterval = 0
+    /// The subtitle speed for the tracks Bluebox's overlay draws (VLC's spu-delay has no speed).
+    private var subtitleScale: Double = 1
     private var audioDelay: TimeInterval = 0
     private var volume: Float = 1
     private var muted = false
@@ -167,6 +169,7 @@ public final class VLCEngine: PlaybackEngine {
         snapshot.outputGeneration = generation
         snapshot.drawsEmbeddedSubtitles = true
         snapshot.delaysEmbeddedSubtitles = true
+        snapshot.scalesEmbeddedSubtitles = true
         snapshot.status = .loading
         self.resource = resource
         intendedPaused = true  // the session calls play() after load when it wants autoplay
@@ -538,6 +541,20 @@ public final class VLCEngine: PlaybackEngine {
         updateOverlayText()  // the overlay's lines move with the delay
         guard resource != nil else { return }
         try? player.setSubtitleDelay(.milliseconds(Int((s * 1000).rounded())))
+    }
+
+    /// The overlay's tracks only: those VLC draws itself take the delay alone.
+    public func setEmbeddedSubtitleScale(_ scale: Double) {
+        let s = scale.isFinite && scale > 0 ? scale : 1
+        guard s != subtitleScale else { return }
+        subtitleScale = s
+        updateOverlayText()
+    }
+
+    /// The time in the track for the overlay to show at `clock`: VLC's delay
+    /// moves lines later and the speed stretches them (`SubtitleOffset.cueTime`).
+    nonisolated static func overlayTrackTime(clock: TimeInterval, delay: TimeInterval, scale: Double) -> TimeInterval {
+        (clock - delay) * scale
     }
 
     /// Size, colour, box, outline and position reach the picture at once (VLC's
@@ -1203,8 +1220,9 @@ public final class VLCEngine: PlaybackEngine {
             if snapshot.secondaryEmbeddedSubtitleText != nil { snapshot.secondaryEmbeddedSubtitleText = nil }
             return
         }
-        // The file's clock: VLC's delay moves lines later, so look them up earlier.
-        let t = subtitleClock() - subtitleDelay
+        // The file's clock: VLC's delay moves lines later, so look them up earlier
+        // (and the speed of a drift fix stretches them).
+        let t = Self.overlayTrackTime(clock: subtitleClock(), delay: subtitleDelay, scale: subtitleScale)
         let primary = feedTrack(for: desiredSubtitleID).flatMap { $0.textCodec == nil ? nil : $0 }
         let secondary = feedTrack(for: desiredSecondaryID).flatMap { $0.textCodec == nil ? nil : $0 }
         var wanted = Set([primary, secondary].compactMap { $0?.number })
@@ -1235,7 +1253,7 @@ public final class VLCEngine: PlaybackEngine {
         subtitleTask?.cancel(); subtitleTask = nil
         guard snapshot.status == .playing, !tracks.isEmpty else { return }
         let timelines = tracks.map { overlayTimeline(track: $0, feed: feed) }
-        guard let wait = Self.overlayWake(after: t, timelines: timelines, rate: snapshot.rate) else { return }
+        guard let wait = Self.overlayWake(after: t, timelines: timelines, rate: snapshot.rate * Float(subtitleScale)) else { return }
         subtitleTask = Task { [weak self] in
             try? await Task.sleep(for: wait)
             guard let self, !Task.isCancelled else { return }

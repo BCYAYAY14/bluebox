@@ -328,6 +328,23 @@ public struct TightLabelStyle: LabelStyle {
     }
 }
 
+// MARK: - Hit targets
+
+extension View {
+    /// Takes taps over at least `minimum` points each way around a control
+    /// drawn `width` × `height` (nil: already big enough that way), without
+    /// moving anything: the larger frame is handed back as negative padding,
+    /// so the look and the layout stay as they were. Not for controls in a
+    /// scroll view that hugs them, which only takes taps inside its own edges.
+    public func hitTarget(width: CGFloat? = nil, height: CGFloat? = nil, minimum: CGFloat = 44) -> some View {
+        let dx = width.map { max(0, (minimum - $0) / 2) } ?? 0
+        let dy = height.map { max(0, (minimum - $0) / 2) } ?? 0
+        return padding(.horizontal, dx).padding(.vertical, dy)
+            .contentShape(Rectangle())
+            .padding(.horizontal, -dx).padding(.vertical, -dy)
+    }
+}
+
 // MARK: - Chips
 
 /// A capsule filter chip ("TV Shows", "Movies"), outlined until selected.
@@ -354,7 +371,9 @@ public struct CategoryChip: View {
             .background(selected ? Palette.brand.opacity(0.28) : (hovering ? Palette.glassFill : .clear), in: Capsule())
             .overlay(Capsule().strokeBorder(selected ? Palette.brandBright.opacity(0.9) : .white.opacity(0.45), lineWidth: 1))
             .foregroundStyle(.white)
-            .contentShape(Capsule())
+            // Drawn 34 high; taken 44 high, which is what the row makes room for.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
         .onHover { hovering = $0 }

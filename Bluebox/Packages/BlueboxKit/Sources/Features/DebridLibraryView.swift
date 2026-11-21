@@ -26,7 +26,7 @@ public struct DebridLibraryView: View {
                     header(inset: inset)
                     if app.debridLibraryName == nil {
                         StateMessage(systemImage: "externaldrive.badge.icloud", title: "No debrid library",
-                                     message: "Choose a debrid service and add its API key in Settings › Sources to browse what's in your cloud.")
+                                     message: "Choose a debrid service and add its API key in Settings › Torrents & Debrid to browse what's in your cloud.")
                             .frame(maxWidth: .infinity)
                     } else if let error, contents == nil {
                         StateMessage(systemImage: "exclamationmark.triangle", title: "Couldn't load your library", message: error,

@@ -12,15 +12,45 @@ public struct AppToast: Identifiable, Equatable {
     public let message: String?
     public let style: Style
     public let actionTitle: String?
+    /// The parts that are a film, show, list or folder name: shown as they
+    /// are, never looked up in the translations (a film called "Settings").
+    public let verbatim: Verbatim
     let action: (@MainActor () -> Void)?
 
-    public init(_ title: String, message: String? = nil, style: Style = .info,
+    public struct Verbatim: OptionSet, Sendable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+        public static let title = Verbatim(rawValue: 1)
+        public static let message = Verbatim(rawValue: 2)
+    }
+
+    public init(_ title: String, message: String? = nil, style: Style = .info, verbatim: Verbatim = [],
                 actionTitle: String? = nil, action: (@MainActor () -> Void)? = nil) {
         self.title = title
         self.message = message
         self.style = style
+        self.verbatim = verbatim
         self.actionTitle = action == nil ? nil : actionTitle
         self.action = action
+    }
+
+    /// A toast whose message names something (“Dune · 1080p”): the title is
+    /// translated as usual, the message is drawn exactly as given. Translate
+    /// any fixed words in it first, with `AppToast.translated(_:)`.
+    public init(_ title: String, verbatimMessage: String, style: Style = .info,
+                actionTitle: String? = nil, action: (@MainActor () -> Void)? = nil) {
+        self.title = title
+        self.message = verbatimMessage
+        self.style = style
+        self.verbatim = .message
+        self.actionTitle = action == nil ? nil : actionTitle
+        self.action = action
+    }
+
+    /// A fixed English UI string (a download's failure reason) in the app's
+    /// language, for building a verbatim message around a name.
+    public static func translated(_ english: String) -> String {
+        english.contains("%") ? english : Bundle.main.localizedString(forKey: english, value: english, table: nil)
     }
 
     /// Longer for errors and anything with a button, so there's time to read and tap.
@@ -83,9 +113,14 @@ public struct ToastHost: ViewModifier {
         .animation(Motion.standard(reduceMotion), value: model.toast)
     }
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+
     private var bottomInset: CGFloat {
         #if os(iOS)
-        64  // above the tab bar
+        // Above the tab bar on iPhone; iPad has the top bar instead, so only the margin.
+        sizeClass == .compact ? 64 : 28
         #else
         28
         #endif
@@ -93,6 +128,17 @@ public struct ToastHost: ViewModifier {
 
     private func dismiss(_ toast: AppToast) {
         if model.toast == toast { model.toast = nil }
+    }
+}
+
+/// A toast's words: a name as it is, anything else through the translations.
+private struct ToastText: View {
+    let text: String
+    let verbatim: Bool
+    init(_ text: String, verbatim: Bool) { self.text = text; self.verbatim = verbatim }
+
+    var body: some View {
+        if verbatim { Text(verbatim: text) } else { Text(ui: text) }
     }
 }
 
@@ -107,9 +153,11 @@ private struct ToastView: View {
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ui: toast.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                ToastText(toast.title, verbatim: toast.verbatim.contains(.title))
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                 if let message = toast.message {
-                    Text(ui: message).font(.footnote).foregroundStyle(Palette.textSecondary)
+                    ToastText(message, verbatim: toast.verbatim.contains(.message))
+                        .font(.footnote).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

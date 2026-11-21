@@ -24,6 +24,8 @@ let package = Package(
     dependencies: [
         // VLC plays the containers AVFoundation can't (MKV, AVI, WebM…), which is most torrent releases.
         .package(url: "https://github.com/harflabs/SwiftVLC.git", revision: "6e8ad130a40730cb0d3b8ddc96e19b4be02c341b"),
+        // Whisper on the device (Core ML), for generated subtitles in languages Apple's transcriber doesn't hear.
+        .package(url: "https://github.com/argmaxinc/WhisperKit.git", exact: "1.1.1"),
     ],
     targets: [
         .target(name: "Domain"),
@@ -75,6 +77,7 @@ let package = Package(
                 "Subtitles", "Persistence", "Playback", "Sync", "Torrent", "Downloads",
                 "TorrentStreaming", "VLCPlayback", "Addons", "SkipSegments", "DownloadsActivity",
                 "UpdateVerification", "SystemSnapshot",
+                .product(name: "WhisperKit", package: "WhisperKit"),
             ]
         ),
         .testTarget(name: "DomainTests", dependencies: ["Domain", "TestingSupport"]),

@@ -62,3 +62,17 @@ import Testing
         #expect(written.last == 69)
     }
 }
+
+/// The overlay follows a drift fix's speed on VLC's MKV text tracks.
+@Suite struct VLCOverlaySpeedTests {
+    @Test func theOverlayLooksUpTheTracksTimeWithDelayAndSpeed() {
+        // As SubtitleOffset.cueTime: (t − delay) × scale.
+        #expect(VLCEngine.overlayTrackTime(clock: 100, delay: 0, scale: 1) == 100)
+        #expect(VLCEngine.overlayTrackTime(clock: 100, delay: 2, scale: 1) == 98)
+        let scale = 25 / (24000.0 / 1001)
+        let offset = SubtitleOffset(seconds: -2, scale: scale)
+        for t in [10.0, 600, 5400] {
+            #expect(abs(VLCEngine.overlayTrackTime(clock: t, delay: offset.seconds, scale: offset.scale) - offset.cueTime(forPlayerTime: t)) < 1e-9)
+        }
+    }
+}

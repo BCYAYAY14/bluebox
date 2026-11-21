@@ -140,9 +140,9 @@ extension AppModel {
             let count = try await addLocalFolder(url)
             if count == 0 {
                 showToast(AppToast(name, message: "Added, but there are no videos in it yet. Bluebox looks for \(LocalFolderSource.extensionList) files.",
-                                   style: .info))
+                                   style: .info, verbatim: .title))
             } else {
-                showToast(AppToast(name, message: "Added to My Sources · \(count) video\(count == 1 ? "" : "s")", style: .success))
+                showToast(AppToast(name, message: "Added to My Sources · \(count) video\(count == 1 ? "" : "s")", style: .success, verbatim: .title))
             }
         } catch {
             alert = AppAlert(title: "Couldn't add “\(name)”", message: UserFacingError.message(for: error))

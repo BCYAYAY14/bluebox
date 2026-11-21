@@ -5,6 +5,7 @@ import Observation
 import Persistence
 import Playback
 import SkipSegments
+import Subtitles
 import VLCPlayback
 
 /// Settings added with the Settings redesign: playback, subtitle and network
@@ -56,6 +57,12 @@ public final class AppSettings {
     public var preferredAudioLanguage: String? { didSet { save(preferredAudioLanguage, ProfileSettingKey.audioLanguage(profileID)) } }
     public var defaultSubtitleDelay: Double { didSet { save(defaultSubtitleDelay, PreferenceKey.defaultSubtitleDelay) } }
     public var autoSearchSubtitles: Bool { didSet { save(autoSearchSubtitles, PreferenceKey.autoSearchSubtitles) } }
+    /// A video with no subtitles in your language offers to generate them from its sound.
+    public var offersGeneratedSubtitles: Bool { didSet { save(offersGeneratedSubtitles, PreferenceKey.offersGeneratedSubtitles) } }
+    /// Whisper may listen to languages Apple's speech recognition doesn't know (and be downloaded for them).
+    public var allowsWhisper: Bool { didSet { save(allowsWhisper, PreferenceKey.allowsWhisper) } }
+    /// Sync to the Audio is offered on the player's Timing page.
+    public var offersAudioSync: Bool { didSet { save(offersAudioSync, PreferenceKey.offersAudioSync) } }
     /// Search Online sites turned off in Settings › Subtitles (`SubtitleSite` raw values).
     public var subtitleSitesOff: [String] { didSet { save(subtitleSitesOff, PreferenceKey.subtitleSitesOff) } }
     /// The older on/off switch for streaming on cellular. Kept (and its key) in step
@@ -152,6 +159,9 @@ public final class AppSettings {
         preferredAudioLanguage = prefs.value(String.self, for: ProfileSettingKey.audioLanguage(profileID))
         defaultSubtitleDelay = prefs.value(Double.self, for: PreferenceKey.defaultSubtitleDelay) ?? 0
         autoSearchSubtitles = prefs.value(Bool.self, for: PreferenceKey.autoSearchSubtitles) ?? false
+        offersGeneratedSubtitles = prefs.value(Bool.self, for: PreferenceKey.offersGeneratedSubtitles) ?? true
+        allowsWhisper = prefs.value(Bool.self, for: PreferenceKey.allowsWhisper) ?? true
+        offersAudioSync = prefs.value(Bool.self, for: PreferenceKey.offersAudioSync) ?? true
         subtitleSitesOff = prefs.value([String].self, for: PreferenceKey.subtitleSitesOff) ?? []
         let allowCellular = prefs.value(Bool.self, for: PreferenceKey.allowCellularStreaming) ?? true
         allowCellularStreaming = allowCellular
@@ -192,6 +202,9 @@ public final class AppSettings {
         load(PreferenceKey.upNextCountdown, 10, into: \.upNextCountdown)
         load(PreferenceKey.defaultSubtitleDelay, 0.0, into: \.defaultSubtitleDelay)
         load(PreferenceKey.autoSearchSubtitles, false, into: \.autoSearchSubtitles)
+        load(PreferenceKey.offersGeneratedSubtitles, true, into: \.offersGeneratedSubtitles)
+        load(PreferenceKey.allowsWhisper, true, into: \.allowsWhisper)
+        load(PreferenceKey.offersAudioSync, true, into: \.offersAudioSync)
         load(PreferenceKey.subtitleSitesOff, [String](), into: \.subtitleSitesOff)
         load(PreferenceKey.allowCellularStreaming, true, into: \.allowCellularStreaming)
         load(PreferenceKey.launchIntro, true, into: \.playLaunchIntro)
@@ -263,6 +276,9 @@ public final class AppSettings {
         preferredAudioLanguage = nil
         defaultSubtitleDelay = 0
         autoSearchSubtitles = false
+        offersGeneratedSubtitles = true
+        allowsWhisper = true
+        offersAudioSync = true
         subtitleSitesOff = []
         allowCellularStreaming = true
         playLaunchIntro = true
@@ -406,15 +422,42 @@ public enum PlayerFeatureKey {
 // MARK: - Applying playback defaults
 
 extension AppModel {
+    /// Subtitle timing saved in the preferences, per movie or episode: one
+    /// value per item (`PreferenceKey.subtitlePreference`), holding each
+    /// track's timing. On this device only, like the files it names.
+    func subtitleTimingMemory() -> SubtitleTimingMemory {
+        let prefs = self.prefs
+        return SubtitleTimingMemory(
+            load: { key, track in
+                prefs.value([String: SubtitleOffset].self, for: PreferenceKey.subtitlePreference(key))?[track]
+            },
+            save: { key, track, offset in
+                var all = prefs.value([String: SubtitleOffset].self, for: PreferenceKey.subtitlePreference(key)) ?? [:]
+                all[track] = offset
+                prefs.set(all.isEmpty ? nil : all, for: PreferenceKey.subtitlePreference(key))
+            })
+    }
+
     /// Applies Settings › Playback and Subtitles defaults to a session that just
-    /// started: audio language, subtitle delay and the OpenSubtitles fallback.
-    /// Tracks appear a moment after loading, so this waits briefly for them.
+    /// started: the title's kept subtitle file, audio language and the
+    /// automatic online search. (The subtitle delay the session applies itself,
+    /// under any timing saved for the track.) Tracks appear a moment after
+    /// loading, so this waits briefly for them.
     func applyPlaybackDefaults(to session: PlayerSession) {
         let settings = self.settings
         let key = session.item?.key
+        // For the next item: Settings may have changed while this one played.
+        session.defaultSubtitleDelay = settings.defaultSubtitleDelay
         Task { @MainActor [weak self, weak session] in
-            if settings.defaultSubtitleDelay != 0, let session, session.subtitleOffset.seconds == 0 {
-                session.nudgeSubtitles(by: settings.defaultSubtitleDelay)
+            // The file chosen for this title last time, before anything searches.
+            if let key {
+                for _ in 0..<8 where session?.snapshot.duration == nil { try? await Task.sleep(for: .milliseconds(250)) }
+                guard let session, session.item?.key == key else { return }
+                if let file = KeptSubtitleStore.shared.kept(for: key, duration: session.snapshot.duration) {
+                    // On unless Off was chosen for the show, or a pick was made in the meantime.
+                    let on = session.rememberedSubtitle?.isOff != true && session.subtitlePicks == 0
+                    session.importSubtitle(file, kept: true, select: on)
+                }
             }
             // Settings › Picture, unless this video was already adjusted.
             if !settings.pictureDefaults.isDefault, let session, session.videoAdjustments.isDefault {
@@ -440,16 +483,19 @@ extension AppModel {
                     try? await Task.sleep(for: .milliseconds(250))
                 }
             }
-            // Subtitles: if nothing in your language was found, search OpenSubtitles.
-            guard settings.autoSearchSubtitles, let self, self.hasOpenSubtitlesKey,
-                  let lang = self.subtitleStyle.preferredLanguage, let key else { return }
+            // Subtitles: if nothing in your language was found, search every site that's on.
+            guard settings.autoSearchSubtitles, let self, self.canSearchSubtitlesOnline(for: key), let key else { return }
             try? await Task.sleep(for: .seconds(3))  // let embedded tracks and the preferred-language pick settle
-            guard let session, session.item?.key == key, session.subtitleSelection == .off, session.rememberedSubtitle == nil else { return }
-            guard let results = try? await self.searchSubtitles(for: key),
-                  let best = results.filter({ $0.language.map { Self.sameLanguage($0, lang) } ?? false })
-                    .min(by: { ($0.machineTranslated ? 1 : 0) < ($1.machineTranslated ? 1 : 0) }),
+            guard let session, session.item?.key == key, session.subtitleSelection == .off,
+                  let lang = AutoSubtitleSearch.language(preferred: self.subtitleStyle.preferredLanguage, remembered: session.rememberedSubtitle,
+                                                         rule: session.ruleDecision) else { return }
+            // A pick made while it searches (Off included) is left alone.
+            let picks = session.subtitlePicks
+            let release = session.currentResource?.variant.displayName
+            let found = await self.searchAllSubtitles(for: key, release: release, title: session.item?.title)
+            guard let best = AutoSubtitleSearch.best(found.results, language: lang),
                   let url = try? await self.downloadSubtitle(best),
-                  session.item?.key == key, session.subtitleSelection == .off else { return }
+                  session.item?.key == key, session.subtitlePicks == picks, session.subtitleSelection == .off else { return }
             session.importSubtitle(url)
         }
     }

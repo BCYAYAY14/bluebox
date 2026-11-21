@@ -96,8 +96,12 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     /// and restyle text tracks (VLC). AVPlayer hands the text to Bluebox instead.
     public var drawsEmbeddedSubtitles = false
     /// True when `setEmbeddedSubtitleDelay` moves embedded subtitles, whoever
-    /// draws them (VLC: its own tracks and the text it hands to Bluebox).
+    /// draws them (VLC: its own tracks and the text it hands to Bluebox;
+    /// AVPlayer: the text it hands to Bluebox, held for the delay).
     public var delaysEmbeddedSubtitles = false
+    /// True when `setEmbeddedSubtitleScale` retimes the embedded tracks Bluebox
+    /// draws (`MediaTrack.drawnByBluebox`), so a drift fix works on them (VLC's MKV text tracks).
+    public var scalesEmbeddedSubtitles = false
     /// AirPlay is showing the video on another screen (AVPlayer).
     public var isExternalPlaybackActive = false
     public init() {}
@@ -139,6 +143,9 @@ public protocol PlaybackEngine: AnyObject {
     func setAudioEffects(_ effects: AudioEffects)
     /// Delays embedded subtitles the engine draws itself (positive = later).
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval)
+    /// The subtitle speed (`SubtitleOffset.scale`) for the embedded text tracks
+    /// Bluebox draws: a line timed at c in the track shows at c / scale + delay.
+    func setEmbeddedSubtitleScale(_ scale: Double)
     /// The look for embedded text subtitles the engine draws itself. Applied
     /// live; never reopens the stream.
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle)
@@ -160,6 +167,7 @@ public protocol PlaybackEngine: AnyObject {
 public extension PlaybackEngine {
     func selectSecondaryEmbeddedSubtitle(_ trackID: String?) {}
     func setEmbeddedSubtitleDelay(_ seconds: TimeInterval) {}
+    func setEmbeddedSubtitleScale(_ scale: Double) {}
     func setEmbeddedSubtitleStyle(_ style: SubtitleStyle) {}
     func setVolume(_ volume: Float, muted: Bool) {}
     func setAudioDelay(_ seconds: TimeInterval) {}

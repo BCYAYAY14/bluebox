@@ -26,6 +26,9 @@ public actor TorrentDownloader {
         /// Done; the path is relative to `folder(for:)`.
         case completed(String)
         case failed(String)
+        /// Failed in a way Retry won't fix (nobody shares it, the torrent is
+        /// damaged, no video in it): another release might.
+        case gaveUp(String)
     }
 
     public struct Progress: Sendable, Equatable {
@@ -63,8 +66,45 @@ public actor TorrentDownloader {
     }
     #endif
 
-    /// Metadata can take a while for thin torrents; a download waits longer than a stream.
-    static let metadataTimeout: TimeInterval = 300
+    /// Metadata can take a while for thin torrents; a download waits longer
+    /// than a stream, but not so long that you wait minutes for a dead one
+    /// (the failure offers Try Another Release).
+    static let metadataTimeout: TimeInterval = 120
+    /// With its file list but no peer at all for this long, a download gives
+    /// up rather than show "No peers" for hours.
+    static let noPeersTimeout: TimeInterval = 15 * 60
+
+    static let noPeersMessage = "Nobody has shared this release for 15 minutes. Try another release."
+
+    /// libtorrent's error as the event to report: a damaged torrent gives up
+    /// (another release might work), anything else fails and can be retried.
+    public static func failure(_ raw: String) -> Event {
+        let message = plainError(raw)
+        return message == damagedMessage ? .gaveUp(message) : .failed(message)
+    }
+
+    static let damagedMessage = "This torrent is damaged. Try another release."
+
+    /// libtorrent's error text in plain words, with what to do next.
+    public static func plainError(_ raw: String) -> String {
+        let text = raw.lowercased()
+        if text.contains("no space") || text.contains("disk full") || text.contains("not enough space") {
+            return "Your device is full. Free up space, then tap Retry."
+        }
+        if text.contains("permission denied") || text.contains("read-only") || text.contains("operation not permitted") {
+            return "Bluebox couldn't write the file. Tap Retry, or delete the download and start it again."
+        }
+        if text.contains("no such file") || text.contains("mismatching") || text.contains("file too short") || text.contains("too short") {
+            return "Part of the download went missing. Delete it and download it again."
+        }
+        if text.contains("tracker") || text.contains("timed out") || text.contains("connection") || text.contains("host") {
+            return "Couldn't reach anyone sharing this release. Tap Retry, or try another release."
+        }
+        if text.contains("invalid") || text.contains("bdecode") || text.contains("torrent file") {
+            return damagedMessage
+        }
+        return "The torrent stopped with a problem. Tap Retry, or try another release."
+    }
 
     public init(root: URL, settings: TorrentStreamSettings) {
         self.root = root
@@ -237,7 +277,7 @@ public actor TorrentDownloader {
             guard !Task.isCancelled else { return }
             TorrentEngine.shared.release(handle, user: user, deleteFiles: false)
             finished(id)
-            onEvent(.failed(TorrentStreamError.noPeers.localizedDescription))
+            onEvent(.gaveUp(TorrentStreamError.noPeers.localizedDescription))
             return
         }
         guard !Task.isCancelled else { return }
@@ -247,7 +287,7 @@ public actor TorrentDownloader {
         guard let file = FileSelection.choose(files, preferred: fileIndex, episode: episode) else {
             TorrentEngine.shared.release(handle, user: user, deleteFiles: true)
             finished(id)
-            onEvent(.failed(TorrentStreamError.noPlayableFile.localizedDescription))
+            onEvent(.gaveUp(TorrentStreamError.noPlayableFile.localizedDescription))
             return
         }
         remember(id, path: file.path, fileIndex: file.index)
@@ -257,6 +297,7 @@ public actor TorrentDownloader {
         // 3. Progress until the file is complete.
         var lastDone: Int64 = -1
         var lastProgress = Date()
+        var lastPeerAt = Date()
         var lastReport = Date.distantPast
         while !Task.isCancelled {
             // Completion counts checked pieces only; what's shown also counts
@@ -289,11 +330,21 @@ public actor TorrentDownloader {
                 await TorrentEngine.shared.saveResumeData(handle)
                 TorrentEngine.shared.release(handle, user: user, deleteFiles: false)
                 finished(id)
-                onEvent(.failed(error))
+                torrentLog.error("download: \(id, privacy: .public) failed: \(error, privacy: .public)")
+                onEvent(Self.failure(error))
                 return
             }
             onEvent(.progress(Progress(receivedBytes: arrived, totalBytes: file.size,
                                        bytesPerSecond: Double(status.downloadRate), peers: status.peers)))
+            if status.peers > 0 || arrived > lastDone { lastPeerAt = Date() }
+            if Date().timeIntervalSince(lastPeerAt) > Self.noPeersTimeout {
+                await TorrentEngine.shared.saveResumeData(handle)
+                TorrentEngine.shared.release(handle, user: user, deleteFiles: false)
+                finished(id)
+                torrentLog.notice("download: \(id, privacy: .public) gave up: no peers for \(Int(Self.noPeersTimeout)) s")
+                onEvent(.gaveUp(Self.noPeersMessage))
+                return
+            }
             if arrived > lastDone {
                 lastDone = arrived
                 lastProgress = Date()

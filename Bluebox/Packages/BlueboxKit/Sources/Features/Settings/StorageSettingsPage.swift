@@ -14,6 +14,8 @@ struct StorageSettingsPage: View {
     @State private var loaded = false
     @State private var confirm: Confirmation?
     @State private var erasing = false
+    /// Generated subtitles and the Whisper model that writes some of them.
+    @State private var generatedBytes: Int64 = 0
 
     enum Confirmation: String, Identifiable {
         case artwork, catalog, subtitles, streams, all, searchHistory, reset, erase
@@ -42,11 +44,12 @@ struct StorageSettingsPage: View {
                     DownloadsView()
                         .navigationTitle("Downloads")
                 }
+                LabeledContent("Generated Subtitles", value: loaded ? ByteText.string(generatedBytes) : "…")
                 LabeledContent("Diagnostics", value: loaded ? ByteText.string(usage.diagnostics) : "…")
             } header: {
                 Text("Your Files")
             } footer: {
-                Text("Open Downloads to delete them. Diagnostics are cleared in Advanced.")
+                Text("Open Downloads to delete them. Generated subtitles and the Whisper model are deleted in Subtitles, diagnostics in Advanced.")
             }
 
             Section {
@@ -70,7 +73,10 @@ struct StorageSettingsPage: View {
                 Text("Reset All Settings puts settings back to their defaults and keeps everything else. Erase All Data deletes everything Bluebox keeps on this device, then \(Self.quitWord). What's in your account stays there.")
             }
         }
-        .task { await refresh() }
+        .task {
+            await refresh()
+            generatedBytes = GeneratedSubtitleStore.shared.usage().bytes + WhisperModel.shared.bytesOnDisk
+        }
         .confirmationDialog(title(for: confirm), isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             titleVisibility: .visible, presenting: confirm) { c in
             Button(confirmTitle(for: c), role: .destructive) { Task { await perform(c) } }
